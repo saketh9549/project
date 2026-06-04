@@ -27,14 +27,13 @@ def cmd_index(args):
         
         # Show first couple of blocks as preview
         if blocks:
-            print("\nPreview of indexed blocks:")
+            print("\nPreview of indexed topics:")
             for i, block in enumerate(blocks[:3]):
                 start_str = format_timestamp(block['start_time'])
-                end_str = format_timestamp(block['end_time'])
-                preview_text = block['text'][:120] + "..." if len(block['text']) > 120 else block['text']
-                print(f"  [{start_str} -> {end_str}] {preview_text}")
+                topic_title = block.get('topic_title', 'Section')
+                print(f"  [{start_str}] {topic_title}")
             if len(blocks) > 3:
-                print(f"  ... and {len(blocks) - 3} more blocks. (Use 'show {video_id}' to view all)")
+                print(f"  ... and {len(blocks) - 3} more topics. (Use 'show {video_id}' to view the full timeline)")
                 
     except Exception as e:
         print(f"\nIndexing failed: {e}", file=sys.stderr)
@@ -74,14 +73,15 @@ def cmd_show(args):
     print(f"Video: {video['file_name']}")
     print(f"ID: {video_id}")
     print(f"Duration: {format_timestamp(video['duration'])}")
-    print(f"Total Blocks: {len(blocks)}")
-    print("-" * 60)
+    print(f"Total Topics: {len(blocks)}")
+    print()
+    print(f"{'TIMESTAMP':<10} | {'KEY MOMENT TOPIC'}")
+    print("-" * 65)
     
     for block in blocks:
         start_str = format_timestamp(block['start_time'])
-        end_str = format_timestamp(block['end_time'])
-        print(f"[{start_str} -> {end_str}] {block['text']}")
-        print()
+        topic_title = block.get('topic_title', 'Section')
+        print(f" {f'[{start_str}]':<9} | {topic_title}")
 
 def cmd_search(args):
     """Handler for the 'search' command."""
@@ -102,6 +102,7 @@ def cmd_search(args):
     for r in results:
         start_str = format_timestamp(r['start_time'])
         end_str = format_timestamp(r['end_time'])
+        topic_title = r.get('topic_title', 'Section')
         
         # Highlight match in terminal (case insensitive but preserving case)
         text = r['text']
@@ -120,7 +121,8 @@ def cmd_search(args):
             highlighted += f"**{text[pos:pos+len(query)].upper()}**"
             idx = pos + len(query)
             
-        print(f"[{start_str} -> {end_str}] {highlighted}")
+        print(f"[{start_str} -> {end_str}] ({topic_title})")
+        print(f"  {highlighted}")
         print()
 
 def cmd_delete(args):
