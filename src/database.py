@@ -27,17 +27,25 @@ def init_db():
         )
     """)
     
-    # Create semantic_blocks table
+    # Create semantic_blocks table with topic_title
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS semantic_blocks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             video_id TEXT NOT NULL,
             start_time REAL NOT NULL,
             end_time REAL NOT NULL,
+            topic_title TEXT NOT NULL DEFAULT 'Section',
             text TEXT NOT NULL,
             FOREIGN KEY (video_id) REFERENCES videos (id) ON DELETE CASCADE
         )
     """)
+    
+    # Check if we need to migrate an existing database to add the topic_title column
+    cursor.execute("PRAGMA table_info(semantic_blocks)")
+    columns = [row[1] for row in cursor.fetchall()]
+    if columns and "topic_title" not in columns:
+        print("[DB Migration] Adding missing topic_title column to semantic_blocks table...")
+        cursor.execute("ALTER TABLE semantic_blocks ADD COLUMN topic_title TEXT NOT NULL DEFAULT 'Section'")
     
     # Create indexes for faster queries
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_blocks_video_id ON semantic_blocks(video_id)")
@@ -69,6 +77,7 @@ def insert_semantic_blocks(video_id: str, blocks: List[Dict[str, Any]]) -> bool:
     {
         'start_time': float,
         'end_time': float,
+        'topic_title': str,
         'text': str
     }
     """
@@ -78,11 +87,11 @@ def insert_semantic_blocks(video_id: str, blocks: List[Dict[str, Any]]) -> bool:
             # First, clean up any existing blocks for this video to prevent duplicates
             conn.execute("DELETE FROM semantic_blocks WHERE video_id = ?", (video_id,))
             
-            # Batch insert blocks
+            # Batch insert blocks including topic_title
             conn.executemany("""
-                INSERT INTO semantic_blocks (video_id, start_time, end_time, text)
-                VALUES (?, ?, ?, ?)
-            """, [(video_id, b['start_time'], b['end_time'], b['text']) for b in blocks])
+                INSERT INTO semantic_blocks (video_id, start_time, end_time, topic_title, text)
+                VALUES (?, ?, ?, ?, ?)
+            """, [(video_id, b['start_time'], b['end_time'], b.get('topic_title', 'Section'), b['text']) for b in blocks])
         return True
     except sqlite3.Error as e:
         print(f"[DB Error] Failed to insert semantic blocks: {e}")

@@ -5,7 +5,7 @@ import hashlib
 from unittest.mock import patch, MagicMock
 
 # Import the modules we want to test
-from src.indexer import chunk_segments, generate_video_id
+from src.indexer import chunk_segments, generate_video_id, reconstruct_blocks_from_topics
 import src.database as db
 
 class TestConnection(sqlite3.Connection):
@@ -56,6 +56,54 @@ class TestIndexerChunking(unittest.TestCase):
         self.assertEqual(blocks[0]["end_time"], 75.0)
         self.assertEqual(blocks[0]["text"], "Very long monologue segment.")
 
+    def test_reconstruct_blocks_from_topics(self):
+        """Should group segments within the start_time of topics, and calculate correct end times."""
+        segments = [
+            {"start": 0.0, "end": 5.0, "text": "Welcome to Python."},
+            {"start": 5.0, "end": 12.0, "text": "Python is easy to learn."},
+            {"start": 12.0, "end": 20.0, "text": "Now, let's talk about Whisper."},
+            {"start": 20.0, "end": 30.0, "text": "Whisper does speech to text."}
+        ]
+        topics = [
+            {"start_time": 0.0, "topic": "Python Introduction"},
+            {"start_time": 12.0, "topic": "Whisper Overview"}
+        ]
+        video_duration = 35.0
+        
+        blocks = reconstruct_blocks_from_topics(segments, topics, video_duration)
+        
+        self.assertEqual(len(blocks), 2)
+        # Block 1: Python Introduction
+        self.assertEqual(blocks[0]["start_time"], 0.0)
+        self.assertEqual(blocks[0]["end_time"], 12.0)
+        self.assertEqual(blocks[0]["topic_title"], "Python Introduction")
+        self.assertEqual(blocks[0]["text"], "Welcome to Python. Python is easy to learn.")
+        
+        # Block 2: Whisper Overview
+        self.assertEqual(blocks[1]["start_time"], 12.0)
+        self.assertEqual(blocks[1]["end_time"], 35.0)
+        self.assertEqual(blocks[1]["topic_title"], "Whisper Overview")
+        self.assertEqual(blocks[1]["text"], "Now, let's talk about Whisper. Whisper does speech to text.")
+
+    def test_write_transcript_txt(self):
+        """Should format and write dialogue segments to a text file."""
+        segments = [
+            {"start": 0.0, "end": 5.0, "text": "Welcome to Python."},
+            {"start": 65.0, "end": 72.0, "text": "Learning is fun."}
+        ]
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_file = os.path.join(tmpdir, "test_transcript.txt")
+            from src.indexer import write_transcript_txt
+            write_transcript_txt(segments, out_file)
+            
+            self.assertTrue(os.path.exists(out_file))
+            with open(out_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+                
+            expected = "[00:00 -> 00:05] Welcome to Python.\n[01:05 -> 01:12] Learning is fun.\n"
+            self.assertEqual(content, expected)
+
 class TestDatabaseOperations(unittest.TestCase):
     def setUp(self):
         # We patch get_db_connection to return our custom TestConnection in-memory database
@@ -84,6 +132,7 @@ class TestDatabaseOperations(unittest.TestCase):
                 video_id TEXT NOT NULL,
                 start_time REAL NOT NULL,
                 end_time REAL NOT NULL,
+                topic_title TEXT NOT NULL DEFAULT 'Section',
                 text TEXT NOT NULL,
                 FOREIGN KEY (video_id) REFERENCES videos (id) ON DELETE CASCADE
             )
@@ -118,8 +167,8 @@ class TestDatabaseOperations(unittest.TestCase):
         db.insert_video(video_id, "/path/to/test2.mp4", "test2.mp4", 150.0)
         
         blocks = [
-            {"start_time": 0.0, "end_time": 50.0, "text": "Block 1 content"},
-            {"start_time": 50.0, "end_time": 110.0, "text": "Block 2 content"},
+            {"start_time": 0.0, "end_time": 50.0, "topic_title": "Intro", "text": "Block 1 content"},
+            {"start_time": 50.0, "end_time": 110.0, "topic_title": "Setup", "text": "Block 2 content"},
         ]
         
         success = db.insert_semantic_blocks(video_id, blocks)
@@ -128,8 +177,10 @@ class TestDatabaseOperations(unittest.TestCase):
         retrieved = db.get_video_blocks(video_id)
         self.assertEqual(len(retrieved), 2)
         self.assertEqual(retrieved[0]["start_time"], 0.0)
+        self.assertEqual(retrieved[0]["topic_title"], "Intro")
         self.assertEqual(retrieved[0]["text"], "Block 1 content")
         self.assertEqual(retrieved[1]["start_time"], 50.0)
+        self.assertEqual(retrieved[1]["topic_title"], "Setup")
         self.assertEqual(retrieved[1]["text"], "Block 2 content")
 
     def test_search_blocks(self):
@@ -138,8 +189,8 @@ class TestDatabaseOperations(unittest.TestCase):
         db.insert_video(video_id, "/path/to/test3.mp4", "test3.mp4", 100.0)
         
         blocks = [
-            {"start_time": 0.0, "end_time": 45.0, "text": "This is about Python scripting"},
-            {"start_time": 45.0, "end_time": 90.0, "text": "Here we discuss offline Whisper Docker setup"},
+            {"start_time": 0.0, "end_time": 45.0, "topic_title": "Python coding", "text": "This is about Python scripting"},
+            {"start_time": 45.0, "end_time": 90.0, "topic_title": "Whisper info", "text": "Here we discuss offline Whisper Docker setup"},
         ]
         db.insert_semantic_blocks(video_id, blocks)
         
@@ -159,7 +210,7 @@ class TestDatabaseOperations(unittest.TestCase):
         db.insert_video(video_id, "/path/to/test4.mp4", "test4.mp4", 90.0)
         
         blocks = [
-            {"start_time": 0.0, "end_time": 60.0, "text": "Block text"}
+            {"start_time": 0.0, "end_time": 60.0, "topic_title": "Topic", "text": "Block text"}
         ]
         db.insert_semantic_blocks(video_id, blocks)
         
