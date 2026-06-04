@@ -1,0 +1,174 @@
+import os
+import unittest
+import sqlite3
+import hashlib
+from unittest.mock import patch, MagicMock
+
+# Import the modules we want to test
+from src.indexer import chunk_segments, generate_video_id
+import src.database as db
+
+class TestConnection(sqlite3.Connection):
+    def close(self):
+        # Do nothing to prevent the connection from being closed prematurely
+        pass
+    
+    def real_close(self):
+        # Call the actual close method when we are ready to teardown
+        super().close()
+
+class TestIndexerChunking(unittest.TestCase):
+    def test_empty_segments(self):
+        """Should return empty list for empty input."""
+        self.assertEqual(chunk_segments([]), [])
+
+    def test_basic_chunking(self):
+        """Should group segments that fall within the target duration."""
+        segments = [
+            {"start": 0.0, "end": 10.0, "text": "Hello"},
+            {"start": 10.0, "end": 35.0, "text": "world"},
+            {"start": 35.0, "end": 55.0, "text": "this is a"},
+            {"start": 55.0, "end": 75.0, "text": "test segment."} # This crosses the 60s threshold from block_start (0.0)
+        ]
+        # target_duration = 60
+        # Block 1 should contain segment 1, 2, 3 (duration from start 0.0 to 55.0 <= 60.0)
+        # Segment 4 (ends at 75.0, so duration 75.0 > 60.0) should trigger a new block
+        blocks = chunk_segments(segments, target_duration=60.0)
+        
+        self.assertEqual(len(blocks), 2)
+        # Block 1
+        self.assertEqual(blocks[0]["start_time"], 0.0)
+        self.assertEqual(blocks[0]["end_time"], 55.0)
+        self.assertEqual(blocks[0]["text"], "Hello world this is a")
+        # Block 2
+        self.assertEqual(blocks[1]["start_time"], 55.0)
+        self.assertEqual(blocks[1]["end_time"], 75.0)
+        self.assertEqual(blocks[1]["text"], "test segment.")
+
+    def test_single_long_segment(self):
+        """Should handle segments that are longer than the target duration on their own."""
+        segments = [
+            {"start": 0.0, "end": 75.0, "text": "Very long monologue segment."}
+        ]
+        blocks = chunk_segments(segments, target_duration=60.0)
+        self.assertEqual(len(blocks), 1)
+        self.assertEqual(blocks[0]["start_time"], 0.0)
+        self.assertEqual(blocks[0]["end_time"], 75.0)
+        self.assertEqual(blocks[0]["text"], "Very long monologue segment.")
+
+class TestDatabaseOperations(unittest.TestCase):
+    def setUp(self):
+        # We patch get_db_connection to return our custom TestConnection in-memory database
+        self.conn = sqlite3.connect(":memory:", factory=TestConnection)
+        self.conn.row_factory = sqlite3.Row
+        self.conn.execute("PRAGMA foreign_keys = ON;")
+        
+        self.patcher = patch("src.database.get_db_connection")
+        self.mock_get_conn = self.patcher.start()
+        self.mock_get_conn.return_value = self.conn
+        
+        # Initialize schema in the test database
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS videos (
+                id TEXT PRIMARY KEY,
+                file_path TEXT UNIQUE NOT NULL,
+                file_name TEXT NOT NULL,
+                duration REAL NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS semantic_blocks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                video_id TEXT NOT NULL,
+                start_time REAL NOT NULL,
+                end_time REAL NOT NULL,
+                text TEXT NOT NULL,
+                FOREIGN KEY (video_id) REFERENCES videos (id) ON DELETE CASCADE
+            )
+        """)
+        self.conn.commit()
+
+    def tearDown(self):
+        self.patcher.stop()
+        # Explicitly close the actual connection object using real_close
+        self.conn.real_close()
+
+    def test_insert_and_get_video(self):
+        """Should successfully insert and retrieve video metadata."""
+        video_id = "test_vid_1"
+        file_path = "/path/to/test.mp4"
+        file_name = "test.mp4"
+        duration = 125.5
+        
+        success = db.insert_video(video_id, file_path, file_name, duration)
+        self.assertTrue(success)
+        
+        video = db.get_video(video_id)
+        self.assertIsNotNone(video)
+        self.assertEqual(video["id"], video_id)
+        self.assertEqual(video["file_path"], file_path)
+        self.assertEqual(video["file_name"], file_name)
+        self.assertEqual(video["duration"], duration)
+
+    def test_insert_and_get_blocks(self):
+        """Should successfully insert and retrieve semantic blocks for a video."""
+        video_id = "test_vid_2"
+        db.insert_video(video_id, "/path/to/test2.mp4", "test2.mp4", 150.0)
+        
+        blocks = [
+            {"start_time": 0.0, "end_time": 50.0, "text": "Block 1 content"},
+            {"start_time": 50.0, "end_time": 110.0, "text": "Block 2 content"},
+        ]
+        
+        success = db.insert_semantic_blocks(video_id, blocks)
+        self.assertTrue(success)
+        
+        retrieved = db.get_video_blocks(video_id)
+        self.assertEqual(len(retrieved), 2)
+        self.assertEqual(retrieved[0]["start_time"], 0.0)
+        self.assertEqual(retrieved[0]["text"], "Block 1 content")
+        self.assertEqual(retrieved[1]["start_time"], 50.0)
+        self.assertEqual(retrieved[1]["text"], "Block 2 content")
+
+    def test_search_blocks(self):
+        """Should successfully search block transcripts for keywords."""
+        video_id = "test_vid_3"
+        db.insert_video(video_id, "/path/to/test3.mp4", "test3.mp4", 100.0)
+        
+        blocks = [
+            {"start_time": 0.0, "end_time": 45.0, "text": "This is about Python scripting"},
+            {"start_time": 45.0, "end_time": 90.0, "text": "Here we discuss offline Whisper Docker setup"},
+        ]
+        db.insert_semantic_blocks(video_id, blocks)
+        
+        # Search for 'python'
+        python_results = db.search_blocks(video_id, "Python")
+        self.assertEqual(len(python_results), 1)
+        self.assertIn("Python", python_results[0]["text"])
+        
+        # Search for 'whisper' (case insensitive search test)
+        whisper_results = db.search_blocks(video_id, "whisper")
+        self.assertEqual(len(whisper_results), 1)
+        self.assertIn("Whisper", whisper_results[0]["text"])
+
+    def test_delete_cascade(self):
+        """Should delete blocks associated with a video when the video is deleted."""
+        video_id = "test_vid_4"
+        db.insert_video(video_id, "/path/to/test4.mp4", "test4.mp4", 90.0)
+        
+        blocks = [
+            {"start_time": 0.0, "end_time": 60.0, "text": "Block text"}
+        ]
+        db.insert_semantic_blocks(video_id, blocks)
+        
+        # Delete video
+        db.delete_video(video_id)
+        
+        # Verify video and blocks are gone
+        self.assertIsNone(db.get_video(video_id))
+        self.assertEqual(len(db.get_video_blocks(video_id)), 0)
+
+if __name__ == "__main__":
+    unittest.main()
