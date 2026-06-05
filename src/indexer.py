@@ -3,7 +3,7 @@ import hashlib
 import json
 from typing import List, Dict, Any, Tuple
 from pathlib import Path
-from src.config import get_temp_dir
+from src.config import get_temp_dir, get_transcripts_dir, get_analysed_dir
 from src.extractor import extract_audio, get_video_duration
 from src.transcriber import transcribe_audio, extract_segments
 import src.database as db
@@ -88,19 +88,58 @@ def reconstruct_blocks_from_topics(
     if not topics:
         return []
         
-    # Sort topics by start_time
-    topics = sorted(topics, key=lambda x: x.get('start_time', 0.0))
-    
-    blocks = []
-    for i, topic in enumerate(topics):
-        start_time = float(topic.get('start_time', 0.0))
-        topic_title = topic.get('topic', 'Untitled Topic')
+    # 1. Parse and validate start times
+    valid_topics = []
+    for topic in topics:
+        try:
+            start_time = float(topic.get('start_time', 0.0))
+        except (ValueError, TypeError):
+            continue
+            
+        # Ensure start_time is non-negative and strictly less than the video duration
+        if start_time < 0.0:
+            start_time = 0.0
+        if start_time >= video_duration:
+            continue
+            
+        valid_topics.append({
+            'start_time': start_time,
+            'topic': topic.get('topic', 'Untitled Topic')
+        })
         
-        # Calculate end_time: next topic's start_time or total video duration
-        if i < len(topics) - 1:
-            end_time = float(topics[i+1].get('start_time', 0.0))
+    if not valid_topics:
+        return []
+        
+    # 2. Sort by start_time
+    valid_topics = sorted(valid_topics, key=lambda x: x['start_time'])
+    
+    # 3. Deduplicate start times (if two topics have the same start time, keep the first one)
+    unique_topics = []
+    seen_starts = set()
+    for topic in valid_topics:
+        start_val = round(topic['start_time'], 2)
+        if start_val not in seen_starts:
+            seen_starts.add(start_val)
+            unique_topics.append(topic)
+            
+    if not unique_topics:
+        return []
+        
+    # 4. Construct blocks with strict end_time constraints
+    blocks = []
+    for i, topic in enumerate(unique_topics):
+        start_time = topic['start_time']
+        topic_title = topic['topic']
+        
+        # end_time is next topic's start_time or total video duration
+        if i < len(unique_topics) - 1:
+            end_time = unique_topics[i+1]['start_time']
         else:
             end_time = video_duration
+            
+        # Ensure start_time < end_time (safeguard)
+        if start_time >= end_time:
+            end_time = start_time + 0.1
             
         # Filter and merge text segments in this range
         seg_texts = []
@@ -122,10 +161,11 @@ def reconstruct_blocks_from_topics(
     return blocks
 
 def chunk_semantically_with_gemini(
+    transcript_path: str,
     segments: List[Dict[str, Any]], 
     video_duration: float
 ) -> List[Dict[str, Any]]:
-    """Query Gemini 1.5 Flash using the Google GenAI SDK to map segments into semantic topics."""
+    """Reads the saved transcript file, queries Gemini 1.5 Flash using the Google GenAI SDK to map segments into semantic topics."""
     api_key = os.getenv("GEMINI_API_KEY", "").strip()
     
     # Check if SDK is available and API key is present/valid
@@ -137,8 +177,14 @@ def chunk_semantically_with_gemini(
         print("[Indexer Warning] GEMINI_API_KEY is missing or configured as placeholder. Falling back to local chunker.")
         return chunk_segments(segments)
         
-    timeline_str = build_timeline_string(segments)
-    
+    try:
+        # Read the saved transcript file contents
+        with open(transcript_path, 'r', encoding='utf-8') as f:
+            timeline_str = f.read()
+    except Exception as e:
+        print(f"[Indexer Warning] Could not read transcript file at {transcript_path}: {e}. Falling back to local chunker.")
+        return chunk_segments(segments)
+        
     try:
         # Initialize Google GenAI client
         client = genai.Client(api_key=api_key)
@@ -149,28 +195,52 @@ def chunk_semantically_with_gemini(
             "You must return ONLY a raw JSON array of objects matching this exact schema:\n"
             '[{"start_time": float, "topic": "YouTube Style Title"}]\n'
             "Guidelines:\n"
-            "1. The start_time values MUST exactly match one of the start timestamps provided in brackets [START_TIME] in the input.\n"
-            "2. The first topic must start at the very first segment's timestamp (usually 0.00).\n"
-            "3. Topic titles must be concise, professional, and descriptive (YouTube moments style)."
+            "1. The start_time values in your output must represent the start time of the segment in float seconds.\n"
+            "   The input transcript is formatted as lines like: [START_TIMESTAMP -> END_TIMESTAMP] Text.\n"
+            "   Convert the starting timestamp (e.g., MM:SS or HH:MM:SS) into float seconds.\n"
+            "   Examples:\n"
+            "   - [00:00 -> 00:05] becomes 0.0\n"
+            "   - [01:05 -> 01:12] becomes 65.0\n"
+            "   - [01:02:15 -> 01:03:00] becomes 3735.0\n"
+            "2. The start_time you choose must match one of the start timestamps present in the brackets exactly.\n"
+            "3. The first topic must start at the very first segment's timestamp (usually 0.00).\n"
+            "4. Topic titles must be concise, professional, and descriptive (YouTube moments style)."
         )
         
         prompt = (
-            f"Here is the timestamped video transcript timeline. "
+            f"Here is the timestamped video transcript file contents. "
             f"Analyze it and identify the natural concept boundaries where topics shift:\n\n"
             f"{timeline_str}"
         )
         
-        print("[Indexer] Querying gemini-1.5-flash for topic boundaries...")
+        model_name = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite").strip()
+        print(f"[Indexer] Querying {model_name} for topic boundaries...")
         
-        response = client.models.generate_content(
-            model='gemini-1.5-flash',
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                system_instruction=system_instruction,
-                temperature=0.1
-            ),
-        )
+        try:
+            response = client.models.generate_content(
+                model=model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    system_instruction=system_instruction,
+                    temperature=0.1
+                ),
+            )
+        except Exception as api_err:
+            if model_name != "gemini-3.1-flash-lite":
+                print(f"[Indexer Warning] Model {model_name} failed: {api_err}. Retrying with fallback model gemini-3.1-flash-lite...")
+                model_name = "gemini-3.1-flash-lite"
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        system_instruction=system_instruction,
+                        temperature=0.1
+                    ),
+                )
+            else:
+                raise api_err
         
         # Clean response string if needed
         raw_text = response.text.strip()
@@ -239,9 +309,10 @@ def index_video(video_path: str, language: str = None) -> Tuple[str, List[Dict[s
         # 5. Extract timed segments
         segments = extract_segments(transcription_result)
         
-        # Save detailed dialogue transcript to a .txt file next to the video
-        transcript_path = os.path.splitext(abs_path)[0] + "_transcript.txt"
-        print(f"[Indexer] Saving dialogue transcript to: {os.path.basename(transcript_path)}")
+        # Save detailed dialogue transcript to a .txt file in the transcripts folder in the project workspace
+        transcript_filename = f"{video_id}_{os.path.splitext(file_name)[0]}_transcript.txt"
+        transcript_path = os.path.join(get_transcripts_dir(), transcript_filename)
+        print(f"[Indexer] Saving dialogue transcript to: {transcript_path}")
         write_transcript_txt(segments, transcript_path)
         
         # Fallback for duration if ffprobe failed
@@ -251,14 +322,14 @@ def index_video(video_path: str, language: str = None) -> Tuple[str, List[Dict[s
             else:
                 duration = 0.0
                 
-        # 6. Group segments into semantic topic blocks (Gemini with local fallback)
-        blocks = chunk_semantically_with_gemini(segments, duration)
+        # 6. Group segments into local sentence-aligned semantic blocks (offline indexing default)
+        blocks = chunk_segments(segments)
         
         # 7. Write to database
         db.insert_video(video_id, abs_path, file_name, duration)
         db.insert_semantic_blocks(video_id, blocks)
         
-        print(f"[Indexer] Successfully indexed {len(blocks)} topic blocks for video {file_name}!")
+        print(f"[Indexer] Successfully indexed {len(blocks)} blocks for video {file_name}!")
         return video_id, blocks
         
     finally:
@@ -269,3 +340,110 @@ def index_video(video_path: str, language: str = None) -> Tuple[str, List[Dict[s
                 print(f"[Indexer] Cleaned up temporary audio file: {os.path.basename(audio_path)}")
             except Exception as e:
                 print(f"[Indexer Warning] Failed to delete temporary audio file: {e}")
+
+def parse_transcript_txt(transcript_path: str) -> List[Dict[str, Any]]:
+    """Step 1: Parses dialogue transcript back to segments structure to reconstruct blocks."""
+    segments = []
+    with open(transcript_path, 'r', encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if not line.startswith("[") or " -> " not in line:
+                continue
+            try:
+                bracket_end = line.find("]")
+                if bracket_end == -1:
+                    continue
+                time_part = line[1:bracket_end]
+                text_part = line[bracket_end+1:].strip()
+                
+                start_str, end_str = time_part.split(" -> ")
+                
+                def parse_time_str(t_str: str) -> float:
+                    parts = list(map(int, t_str.split(":")))
+                    if len(parts) == 3: # HH:MM:SS
+                        return parts[0] * 3600 + parts[1] * 60 + parts[2]
+                    elif len(parts) == 2: # MM:SS
+                        return parts[0] * 60 + parts[1]
+                    return 0.0
+                    
+                segments.append({
+                    "start": parse_time_str(start_str),
+                    "end": parse_time_str(end_str),
+                    "text": text_part
+                })
+            except Exception:
+                continue
+    return segments
+
+def analyse_video(video_id_or_path: str) -> str:
+    """Command 2: Queries Gemini on the saved transcript, updates DB blocks, and writes analysed timeline file."""
+    # 1. Fetch video details from DB
+    video = db.get_video(video_id_or_path)
+    if not video:
+        video = db.get_video_by_path(video_id_or_path)
+        
+    if not video:
+        raise ValueError(f"Video ID or path '{video_id_or_path}' not found. Please index it first.")
+        
+    video_id = video['id']
+    file_name = video['file_name']
+    duration = video['duration']
+    
+    # 2. Locate transcript file
+    transcript_filename = f"{video_id}_{os.path.splitext(file_name)[0]}_transcript.txt"
+    transcript_path = os.path.join(get_transcripts_dir(), transcript_filename)
+    if not os.path.exists(transcript_path):
+        # Fallback to scanning folder for any match starting with ID
+        found = False
+        for f_name in os.listdir(get_transcripts_dir()):
+            if f_name.startswith(video_id):
+                transcript_path = os.path.join(get_transcripts_dir(), f_name)
+                found = True
+                break
+        if not found:
+            raise FileNotFoundError(f"Saved transcript file not found for video ID: {video_id}")
+            
+    print(f"[Analyse] Found saved transcript: {os.path.basename(transcript_path)}")
+    
+    # 3. Parse segments back
+    segments = parse_transcript_txt(transcript_path)
+    if not segments:
+        raise ValueError(f"No valid dialogue segments could be parsed from transcript at {transcript_path}")
+        
+    # 4. Call Gemini on transcript file contents
+    blocks = chunk_semantically_with_gemini(transcript_path, segments, duration)
+    
+    # Check if Gemini actually succeeded (Gemini chunking has topic titles, fallback has generic 'Section X')
+    is_fallback = all(b.get('topic_title', '').startswith('Section ') for b in blocks)
+    if is_fallback and os.getenv("GEMINI_API_KEY", "").strip() in ("", '""', "your_gemini_api_key_here"):
+         print("[Analyse Warning] Gemini analysis ran in fallback mode because API key is not set.")
+    
+    # 5. Write semantic blocks to SQLite (updating database blocks)
+    db.insert_semantic_blocks(video_id, blocks)
+    
+    # 6. Save newly analysed chapters transcript file
+    analysed_filename = f"{video_id}_{os.path.splitext(file_name)[0]}_analysed.txt"
+    analysed_path = os.path.join(get_analysed_dir(), analysed_filename)
+    
+    with open(analysed_path, 'w', encoding='utf-8') as f:
+        f.write(f"VIDEO: {file_name}\n")
+        f.write(f"VIDEO ID: {video_id}\n")
+        f.write(f"DURATION: {format_timestamp(duration)}\n")
+        f.write("=" * 65 + "\n")
+        f.write("KEY MOMENTS TIMELINE:\n")
+        f.write("-" * 65 + "\n")
+        for block in blocks:
+            start_str = format_timestamp(block['start_time'])
+            f.write(f" {f'[{start_str}]':<9} | {block['topic_title']}\n")
+        f.write("=" * 65 + "\n\n")
+        
+        f.write("DETAILED TOPIC-WISE TRANSCRIPT:\n")
+        f.write("=" * 65 + "\n\n")
+        for block in blocks:
+            start_str = format_timestamp(block['start_time'])
+            end_str = format_timestamp(block['end_time'])
+            f.write(f"=== {f'[{start_str} -> {end_str}]':<17} {block['topic_title']} ===\n")
+            f.write(f"{block['text']}\n\n")
+            
+    print(f"[Analyse] Successfully saved analysed transcript index to: {analysed_path}")
+    return analysed_path

@@ -141,6 +141,17 @@ def cmd_delete(args):
         print("Failed to delete video.", file=sys.stderr)
         sys.exit(1)
 
+def cmd_analyse(args):
+    """Handler for the 'analyse' command."""
+    from src.indexer import analyse_video
+    try:
+        analysed_path = analyse_video(args.video_id)
+        print(f"\nSuccess! Analysis completed.")
+        print(f"Output saved to: {analysed_path}")
+    except Exception as e:
+        print(f"\nAnalysis failed: {e}", file=sys.stderr)
+        sys.exit(1)
+
 def main():
     parser = argparse.ArgumentParser(
         description="Offline-First Video Chapter Indexer",
@@ -173,6 +184,11 @@ def main():
     p_delete = subparsers.add_parser("delete", help="Remove a video and its blocks from the index")
     p_delete.add_argument("video_id", help="Video ID (or path) to delete")
     p_delete.set_defaults(func=cmd_delete)
+
+    # analyse command
+    p_analyse = subparsers.add_parser("analyse", help="Analyse transcript using Gemini to generate topic boundaries")
+    p_analyse.add_argument("video_id", help="Video ID (or path) to analyse")
+    p_analyse.set_defaults(func=cmd_analyse)
 
     args = parser.parse_args()
     args.func(args)

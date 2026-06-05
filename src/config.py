@@ -28,6 +28,14 @@ TEMP_DIR.mkdir(parents=True, exist_ok=True)
 # Path to ffmpeg executable
 FFMPEG_PATH = os.getenv("FFMPEG_PATH", "ffmpeg")
 
+# Transcripts output directory in the project
+TRANSCRIPTS_DIR = BASE_DIR / "transcripts"
+TRANSCRIPTS_DIR.mkdir(parents=True, exist_ok=True)
+
+# Analysed transcripts output directory in the project
+ANALYSED_DIR = BASE_DIR / "analysed"
+ANALYSED_DIR.mkdir(parents=True, exist_ok=True)
+
 def get_db_path() -> str:
     """Returns the absolute path to the database file as a string."""
     return str(DB_PATH)
@@ -35,3 +43,11 @@ def get_db_path() -> str:
 def get_temp_dir() -> Path:
     """Returns the temporary directory path."""
     return TEMP_DIR
+
+def get_transcripts_dir() -> Path:
+    """Returns the transcripts directory path."""
+    return TRANSCRIPTS_DIR
+
+def get_analysed_dir() -> Path:
+    """Returns the analysed transcripts directory path."""
+    return ANALYSED_DIR

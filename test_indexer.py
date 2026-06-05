@@ -104,6 +104,28 @@ class TestIndexerChunking(unittest.TestCase):
             expected = "[00:00 -> 00:05] Welcome to Python.\n[01:05 -> 01:12] Learning is fun.\n"
             self.assertEqual(content, expected)
 
+    def test_parse_transcript_txt(self):
+        """Should parse dialogue transcript file back to segment list."""
+        content = "[00:00 -> 00:05] Welcome to Python.\n[01:05 -> 01:12] Learning is fun.\n"
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file_path = os.path.join(tmpdir, "test_parse.txt")
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+                
+            from src.indexer import parse_transcript_txt
+            segments = parse_transcript_txt(file_path)
+            
+            self.assertEqual(len(segments), 2)
+            # Segment 1
+            self.assertEqual(segments[0]["start"], 0.0)
+            self.assertEqual(segments[0]["end"], 5.0)
+            self.assertEqual(segments[0]["text"], "Welcome to Python.")
+            # Segment 2
+            self.assertEqual(segments[1]["start"], 65.0)
+            self.assertEqual(segments[1]["end"], 72.0)
+            self.assertEqual(segments[1]["text"], "Learning is fun.")
+
 class TestDatabaseOperations(unittest.TestCase):
     def setUp(self):
         # We patch get_db_connection to return our custom TestConnection in-memory database
@@ -220,6 +242,103 @@ class TestDatabaseOperations(unittest.TestCase):
         # Verify video and blocks are gone
         self.assertIsNone(db.get_video(video_id))
         self.assertEqual(len(db.get_video_blocks(video_id)), 0)
+
+class TestGeminiChunkingFallback(unittest.TestCase):
+    @patch("src.indexer.GEMINI_AVAILABLE", True)
+    @patch("os.getenv")
+    @patch("google.genai.Client")
+    def test_fallback_when_primary_fails(self, mock_client_class, mock_getenv):
+        # Setup mock environment
+        def getenv_side_effect(key, default=None):
+            if key == "GEMINI_API_KEY":
+                return "dummy_api_key"
+            if key == "GEMINI_MODEL":
+                return "gemini-1.5-flash"
+            return default
+        mock_getenv.side_effect = getenv_side_effect
+        
+        # Setup mock client
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        
+        # Mock generate_content to raise 404 for gemini-1.5-flash, but succeed for gemini-3.1-flash-lite
+        def generate_content_side_effect(model, contents, config):
+            if model == "gemini-1.5-flash":
+                raise Exception("404 NOT_FOUND: model not found")
+            elif model == "gemini-3.1-flash-lite":
+                response = MagicMock()
+                response.text = '[{"start_time": 0.0, "topic": "Introduction"}]'
+                return response
+            raise Exception("Unknown model")
+            
+        mock_client.models.generate_content.side_effect = generate_content_side_effect
+        
+        # Call chunk_semantically_with_gemini
+        import tempfile
+        import os
+        from src.indexer import chunk_semantically_with_gemini
+        
+        with tempfile.NamedTemporaryFile(mode='w', delete=False, encoding='utf-8') as tmp:
+            tmp.write("[00:00 -> 00:10] Hello world\n")
+            transcript_path = tmp.name
+            
+        try:
+            segments = [{"start": 0.0, "end": 10.0, "text": "Hello world"}]
+            blocks = chunk_semantically_with_gemini(transcript_path, segments, 10.0)
+            
+            # Verify blocks was correctly reconstructed using the fallback model
+            self.assertEqual(len(blocks), 1)
+            self.assertEqual(blocks[0]["topic_title"], "Introduction")
+            self.assertEqual(blocks[0]["text"], "Hello world")
+            
+            # Verify that client.models.generate_content was called twice
+            self.assertEqual(mock_client.models.generate_content.call_count, 2)
+            
+            calls = mock_client.models.generate_content.call_args_list
+            self.assertEqual(calls[0].kwargs["model"], "gemini-1.5-flash")
+            self.assertEqual(calls[1].kwargs["model"], "gemini-3.1-flash-lite")
+        finally:
+            if os.path.exists(transcript_path):
+                os.remove(transcript_path)
+
+    @patch("src.indexer.GEMINI_AVAILABLE", True)
+    @patch("os.getenv")
+    @patch("google.genai.Client")
+    def test_local_fallback_when_all_fail(self, mock_client_class, mock_getenv):
+        # Setup mock environment
+        def getenv_side_effect(key, default=None):
+            if key == "GEMINI_API_KEY":
+                return "dummy_api_key"
+            if key == "GEMINI_MODEL":
+                return "gemini-1.5-flash"
+            return default
+        mock_getenv.side_effect = getenv_side_effect
+        
+        # Setup mock client
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_client.models.generate_content.side_effect = Exception("All models failed")
+        
+        # Call chunk_semantically_with_gemini
+        import tempfile
+        import os
+        from src.indexer import chunk_semantically_with_gemini
+        
+        with tempfile.NamedTemporaryFile(mode='w', delete=False, encoding='utf-8') as tmp:
+            tmp.write("[00:00 -> 00:10] Hello world\n")
+            transcript_path = tmp.name
+            
+        try:
+            segments = [{"start": 0.0, "end": 10.0, "text": "Hello world"}]
+            blocks = chunk_semantically_with_gemini(transcript_path, segments, 10.0)
+            
+            # Verify it fell back to local chunking (Section 1)
+            self.assertEqual(len(blocks), 1)
+            self.assertEqual(blocks[0]["topic_title"], "Section 1")
+            self.assertEqual(blocks[0]["text"], "Hello world")
+        finally:
+            if os.path.exists(transcript_path):
+                os.remove(transcript_path)
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,0 +1,14 @@
+# Environment configuration
+.env
+
+# Cache directories
+__pycache__/
+*.pyc
+
+# Local SQLite databases
+data/
+
+# Generated directories
+temp/
+transcripts/
+analysed/
