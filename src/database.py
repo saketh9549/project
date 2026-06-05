@@ -163,3 +163,12 @@ def delete_video(video_id: str) -> bool:
         return False
     finally:
         conn.close()
+
+def get_semantic_block(block_id: int) -> Optional[Dict[str, Any]]:
+    """Retrieves a specific semantic block by its unique ID."""
+    conn = get_db_connection()
+    try:
+        row = conn.execute("SELECT * FROM semantic_blocks WHERE id = ?", (block_id,)).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()

@@ -26,15 +26,17 @@ The indexing pipeline processes local video files through the following stages:
 4. **Transcript Archival (`src/indexer.py`):**
    Saves a detailed dialogue transcript formatted as `[MM:SS -> MM:SS] dialogue line` into a centralized `transcripts/` directory inside the project root.
 
-5. **Gemini Topic Segmentation (`src/indexer.py`):**
-   Reads the saved transcript file and feeds it to `gemini-1.5-flash` using the modern `google-genai` SDK. Gemini acts as a Video Metadata Engineer, parsing the time ranges, determining topic boundaries, and returning structured JSON:
+5. **Gemini Topic Segmentation & Fallback (`src/indexer.py`):**
+   Reads the saved transcript file and feeds it to the configured model (defined by `GEMINI_MODEL` in `.env`, defaulting to `gemini-3.1-flash-lite`) using the modern `google-genai` SDK. Gemini acts as a Video Metadata Engineer, parsing the time ranges, determining topic boundaries, and returning structured JSON:
    ```json
    [
      {"start_time": 0.0, "topic": "Introduction"},
      {"start_time": 65.0, "topic": "Installation Guide"}
    ]
    ```
-   *Note: If your `GEMINI_API_KEY` is missing or the request fails, the pipeline falls back gracefully to a local ~60-second sentence-aligned chunker.*
+   - **Robust Model Fallback:** If the primary model fails or is unavailable (e.g. throws a `404 NOT_FOUND` for `gemini-1.5-flash`), the indexer automatically retries the request using `gemini-3.1-flash-lite`.
+   - **Timestamp Bounds Check:** Any hallucinated timestamps at or after the actual video duration are ignored, and checks prevent inverted timestamp ranges (such as `[05:47 -> 05:14]`) for the final chapter.
+   - **Offline Fallback:** If both API models fail or the API key is missing, it falls back gracefully to a local ~60-second sentence-aligned chunker.
 
 6. **SQLite Storage & Indexing (`src/database.py`):**
    Reconstructs text blocks by matching Whisper segments into Gemini's topic slots and saves them to a local SQLite database (`data/indexer.db`) with cascading deletions.
@@ -69,6 +71,7 @@ The indexing pipeline processes local video files through the following stages:
    ```env
    GEMINI_API_KEY="AIzaSy..."
    DB_PATH="data/indexer.db"
+   GEMINI_MODEL="gemini-3.1-flash-lite"
    ```
 
 ---
@@ -108,7 +111,7 @@ ca84fc53ba36f8eb   | 3333.mp3                       | 05:14      | 2026-06-04 15
 ```
 
 ### 4. Show Video Chapters (Key Moments Timeline)
-Displays the generated semantic moments timeline in a professional YouTube-style moments layout:
+Displays the generated semantic moments timeline in a professional YouTube-style moments layout with unique IDs:
 ```bash
 python main.py show ca84fc53ba36f8eb
 ```
@@ -119,17 +122,37 @@ ID: ca84fc53ba36f8eb
 Duration: 05:14
 Total Topics: 6
 
-TIMESTAMP  | KEY MOMENT TOPIC
------------------------------------------------------------------
-  [00:00]   | Introduction and Setup
-  [00:59]   | Installing FFmpeg and Whisper Libraries
-  [01:52]   | Initializing Local WhisperModel
-  [02:48]   | Running Segment boundary checks
-  [03:47]   | Generating JSON boundaries via Gemini
-  [04:56]   | Summary of Execution Results
+CHAPTER ID           | TIMESTAMP  | KEY MOMENT TOPIC
+---------------------------------------------------------------------------
+ ca84fc53ba36f8eb-1   |  [00:00]  | Introduction and Setup
+ ca84fc53ba36f8eb-2   |  [00:59]  | Installing FFmpeg and Whisper Libraries
+ ca84fc53ba36f8eb-3   |  [01:52]  | Initializing Local WhisperModel
+ ca84fc53ba36f8eb-4   |  [02:48]  | Running Segment boundary checks
+ ca84fc53ba36f8eb-5   |  [03:47]  | Generating JSON boundaries via Gemini
+ ca84fc53ba36f8eb-6   |  [04:56]  | Summary of Execution Results
 ```
 
-### 5. Search Transcript Snippets
+### 5. Summarize a Specific Chapter/Moment
+Generates a concise, bulleted summary of a specific moment using the Gemini API based on its unique chapter ID:
+```bash
+python main.py summarize ca84fc53ba36f8eb-1
+```
+**Example output:**
+```
+Summarizing Chapter for: 3333.mp3
+Topic: Introduction and Setup
+Time Range: [00:00 -> 00:59]
+-----------------------------------------------------------------
+[Summarizer] Querying gemini-3.1-flash-lite for summary...
+
+SUMMARY:
+### Summary: Introduction and Setup
+This chapter outlines the initial setup steps for running the pipeline.
+- Explains configuration options in .env.
+- Configures base directories for audio extraction.
+```
+
+### 6. Search Transcript Snippets
 Searches for keywords across all indexed text blocks for a video, displaying matched topics and highlighting keyword hits:
 ```bash
 python main.py search ca84fc53ba36f8eb "Whisper"
@@ -143,7 +166,7 @@ Found 1 matching block(s):
   Once the audio file is ready, we initialize the **WHISPER** model locally on our CPU.
 ```
 
-### 6. Delete a Video Index
+### 7. Delete a Video Index
 Wipes a video and all of its associated semantic blocks from the SQLite database:
 ```bash
 python main.py delete ca84fc53ba36f8eb
@@ -153,15 +176,15 @@ python main.py delete ca84fc53ba36f8eb
 
 ## Running Automated Tests
 
-To ensure the integrity of database queries, semantic chunking boundaries, and segment mapping calculations, run the unit test suite:
+To ensure the integrity of database queries, semantic chunking boundaries, segment mapping calculations, and Gemini model fallback mechanisms, run the unit test suite:
 ```bash
 python -m unittest test_indexer.py
 ```
 Outputs:
 ```
-..........
+............
 ----------------------------------------------------------------------
-Ran 10 tests in 0.017s
+Ran 12 tests in 0.026s
 
 OK
 ```

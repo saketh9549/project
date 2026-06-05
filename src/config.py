@@ -36,6 +36,10 @@ TRANSCRIPTS_DIR.mkdir(parents=True, exist_ok=True)
 ANALYSED_DIR = BASE_DIR / "analysed"
 ANALYSED_DIR.mkdir(parents=True, exist_ok=True)
 
+# Summaries output directory in the project
+SUMMARIES_DIR = BASE_DIR / "summaries"
+SUMMARIES_DIR.mkdir(parents=True, exist_ok=True)
+
 def get_db_path() -> str:
     """Returns the absolute path to the database file as a string."""
     return str(DB_PATH)
@@ -51,3 +55,7 @@ def get_transcripts_dir() -> Path:
 def get_analysed_dir() -> Path:
     """Returns the analysed transcripts directory path."""
     return ANALYSED_DIR
+
+def get_summaries_dir() -> Path:
+    """Returns the summaries directory path."""
+    return SUMMARIES_DIR

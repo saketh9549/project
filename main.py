@@ -1,4 +1,5 @@
 import sys
+import os
 import argparse
 from pathlib import Path
 from src.indexer import index_video
@@ -75,13 +76,14 @@ def cmd_show(args):
     print(f"Duration: {format_timestamp(video['duration'])}")
     print(f"Total Topics: {len(blocks)}")
     print()
-    print(f"{'TIMESTAMP':<10} | {'KEY MOMENT TOPIC'}")
-    print("-" * 65)
+    print(f"{'CHAPTER ID':<20} | {'TIMESTAMP':<10} | {'KEY MOMENT TOPIC'}")
+    print("-" * 85)
     
-    for block in blocks:
+    for idx, block in enumerate(blocks, start=1):
+        chapter_id = f"{video_id}-{idx}"
         start_str = format_timestamp(block['start_time'])
         topic_title = block.get('topic_title', 'Section')
-        print(f" {f'[{start_str}]':<9} | {topic_title}")
+        print(f" {chapter_id:<19} |  [{start_str}]  | {topic_title}")
 
 def cmd_search(args):
     """Handler for the 'search' command."""
@@ -152,6 +154,164 @@ def cmd_analyse(args):
         print(f"\nAnalysis failed: {e}", file=sys.stderr)
         sys.exit(1)
 
+def cmd_summarize(args):
+    """Handler for the 'summarize' command."""
+    block_id_str = args.block_id.strip()
+    block = None
+    
+    if "-" in block_id_str:
+        # Format: video_id-index
+        parts = block_id_str.rsplit("-", 1)
+        if len(parts) == 2:
+            video_id, idx_str = parts
+            try:
+                chapter_index = int(idx_str)
+                if chapter_index < 1:
+                    raise ValueError()
+            except ValueError:
+                print(f"Error: Chapter index in '{block_id_str}' must be a positive integer.", file=sys.stderr)
+                sys.exit(1)
+                
+            # Fetch blocks sorted by start_time
+            blocks = db.get_video_blocks(video_id)
+            if not blocks:
+                # Check if video exists at all
+                video = db.get_video(video_id)
+                if not video:
+                    print(f"Error: Video ID '{video_id}' not found in database.", file=sys.stderr)
+                else:
+                    print(f"Error: Video '{video['file_name']}' has no indexed chapters.", file=sys.stderr)
+                sys.exit(1)
+                
+            if chapter_index > len(blocks):
+                print(f"Error: Chapter index {chapter_index} is out of range. Video has only {len(blocks)} chapters.", file=sys.stderr)
+                sys.exit(1)
+                
+            block = blocks[chapter_index - 1]
+    else:
+        # Format: raw database integer ID
+        try:
+            db_id = int(block_id_str)
+            block = db.get_semantic_block(db_id)
+        except ValueError:
+            pass
+            
+    if not block:
+        print(f"Error: Chapter ID '{block_id_str}' not found in database. Use format '<video_id>-<index>' (e.g. 0c1387473782fe33-1).", file=sys.stderr)
+        sys.exit(1)
+        
+    # Get associated video details and calculate chapter_id
+    video_id = block['video_id']
+    video = db.get_video(video_id)
+    video_name = video['file_name'] if video else "Unknown Video"
+    
+    # Calculate chapter_id dynamically
+    all_video_blocks = db.get_video_blocks(video_id)
+    block_index = 1
+    for idx, b in enumerate(all_video_blocks, start=1):
+        if b['id'] == block['id']:
+            block_index = idx
+            break
+    chapter_id = f"{video_id}-{block_index}"
+    
+    start_str = format_timestamp(block['start_time'])
+    end_str = format_timestamp(block['end_time'])
+    
+    print(f"Summarizing Chapter for: {video_name}")
+    print(f"Topic: {block['topic_title']}")
+    print(f"Time Range: [{start_str} -> {end_str}]")
+    print("-" * 65)
+    
+    transcript_text = block['text'].strip()
+    if not transcript_text:
+        print("This chapter has no transcript text to summarize.")
+        return
+        
+    # Call Gemini to summarize
+    api_key = os.getenv("GEMINI_API_KEY", "").strip()
+    
+    # Check if google-genai is installed
+    from src.indexer import GEMINI_AVAILABLE
+    if not GEMINI_AVAILABLE or not api_key or api_key == '""' or "your_gemini_api_key_here" in api_key:
+        print("[Warning] Gemini API is not configured or available. Printing raw text instead:")
+        print(transcript_text)
+        return
+        
+    try:
+        from google import genai
+        from google.genai import types
+        
+        client = genai.Client(api_key=api_key)
+        
+        system_instruction = (
+            "You are a professional video content summarizer. "
+            "Your task is to write a concise, bulleted summary of the provided chapter transcript. "
+            "Highlight key takeaways, action items, and important ideas."
+        )
+        
+        prompt = (
+            f"Please summarize the following video chapter transcript:\n\n"
+            f"Topic: {block['topic_title']}\n"
+            f"Transcript:\n{transcript_text}"
+        )
+        
+        model_name = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite").strip()
+        print(f"[Summarizer] Querying {model_name} for summary...")
+        
+        try:
+            response = client.models.generate_content(
+                model=model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=system_instruction,
+                    temperature=0.2
+                ),
+            )
+        except Exception as e:
+            if model_name != "gemini-3.1-flash-lite":
+                print(f"[Summarizer Warning] Model {model_name} failed: {e}. Retrying with fallback model gemini-3.1-flash-lite...")
+                model_name = "gemini-3.1-flash-lite"
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        system_instruction=system_instruction,
+                        temperature=0.2
+                    ),
+                )
+            else:
+                raise e
+                
+        summary_text = response.text.strip()
+        print("\nSUMMARY:")
+        print(summary_text)
+        
+        # Save summary to file in the summaries directory
+        from src.config import get_summaries_dir
+        summaries_dir = get_summaries_dir()
+        
+        summary_filename = f"{video_id}_{chapter_id}_summary.txt"
+        summary_filepath = os.path.join(summaries_dir, summary_filename)
+        
+        file_content = (
+            f"VIDEO ID: {video_id}\n"
+            f"CHAPTER ID: {chapter_id}\n"
+            f"TOPIC: {block['topic_title']}\n"
+            f"TIME RANGE: [{start_str} -> {end_str}]\n"
+            f"{'=' * 65}\n\n"
+            f"{summary_text}\n"
+        )
+        
+        with open(summary_filepath, 'w', encoding='utf-8') as sf:
+            sf.write(file_content)
+            
+        print(f"\n[Summarizer] Summary successfully saved to: {summary_filepath}")
+        
+    except Exception as e:
+        print(f"[Summarizer Error] Failed to generate summary: {e}")
+        print("\nRaw Transcript Text:")
+        print(transcript_text)
+
 def main():
     parser = argparse.ArgumentParser(
         description="Offline-First Video Chapter Indexer",
@@ -189,6 +349,11 @@ def main():
     p_analyse = subparsers.add_parser("analyse", help="Analyse transcript using Gemini to generate topic boundaries")
     p_analyse.add_argument("video_id", help="Video ID (or path) to analyse")
     p_analyse.set_defaults(func=cmd_analyse)
+
+    # summarize command
+    p_summarize = subparsers.add_parser("summarize", help="Generate a Gemini summary for a specific chapter/block ID")
+    p_summarize.add_argument("block_id", help="The unique chapter/block ID from the timeline")
+    p_summarize.set_defaults(func=cmd_summarize)
 
     args = parser.parse_args()
     args.func(args)

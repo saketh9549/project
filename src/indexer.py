@@ -432,17 +432,19 @@ def analyse_video(video_id_or_path: str) -> str:
         f.write("=" * 65 + "\n")
         f.write("KEY MOMENTS TIMELINE:\n")
         f.write("-" * 65 + "\n")
-        for block in blocks:
+        for idx, block in enumerate(blocks, start=1):
             start_str = format_timestamp(block['start_time'])
-            f.write(f" {f'[{start_str}]':<9} | {block['topic_title']}\n")
+            chapter_id = f"{video_id}-{idx}"
+            f.write(f" {f'[{start_str}]':<9} | {chapter_id:<20} | {block['topic_title']}\n")
         f.write("=" * 65 + "\n\n")
         
         f.write("DETAILED TOPIC-WISE TRANSCRIPT:\n")
         f.write("=" * 65 + "\n\n")
-        for block in blocks:
+        for idx, block in enumerate(blocks, start=1):
             start_str = format_timestamp(block['start_time'])
             end_str = format_timestamp(block['end_time'])
-            f.write(f"=== {f'[{start_str} -> {end_str}]':<17} {block['topic_title']} ===\n")
+            chapter_id = f"{video_id}-{idx}"
+            f.write(f"=== {f'[{start_str} -> {end_str}]':<17} [ID: {chapter_id}] {block['topic_title']} ===\n")
             f.write(f"{block['text']}\n\n")
             
     print(f"[Analyse] Successfully saved analysed transcript index to: {analysed_path}")
