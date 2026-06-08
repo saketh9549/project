@@ -84,6 +84,22 @@ export default function App() {
     fetchVideos();
   }, []);
 
+  // Auto-dismiss success and error notifications after 2 seconds
+  useEffect(() => {
+    if (errorMsg || successMsg) {
+      // Do not auto-dismiss active loading/progress alerts
+      const isProgress = (successMsg && (successMsg.includes('Please wait') || successMsg.includes('Uploading')));
+      if (isProgress) return;
+
+      const timer = setTimeout(() => {
+        setErrorMsg(null);
+        setSuccessMsg(null);
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [errorMsg, successMsg]);
+
+
   const fetchVideos = async () => {
     try {
       const response = await fetch('/api/videos');
@@ -176,12 +192,18 @@ export default function App() {
       {/* Header */}
       <header className="border-b border-white/5 bg-gray-950/40 backdrop-blur-md px-8 py-3 flex items-center justify-between sticky top-0 z-50 gap-4">
         <div className="flex items-center gap-3 shrink-0">
-          <div className="h-9 w-9 rounded-lg bg-gradient-to-tr from-indigo-500 to-cyan-400 flex items-center justify-center font-bold text-black text-lg shadow-[0_0_15px_rgba(99,102,241,0.4)]">
-            E
-          </div>
+          <svg className="h-9.5 w-9.5 shadow-[0_0_15px_rgba(11,46,102,0.4)] rounded-xl" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect width="100" height="100" rx="24" fill="#0b2e66" />
+            <text x="50" y="56" fontFamily="system-ui, -apple-system, sans-serif" fontWeight="800" fontSize="46" fill="#ffffff" textAnchor="middle">S</text>
+            <rect x="14" y="68" width="26" height="16" rx="8" fill="#1b4995" />
+            <rect x="28" y="68" width="24" height="16" rx="8" fill="#2e69bf" />
+            <rect x="42" y="68" width="22" height="16" rx="8" fill="#4b8bec" />
+            <rect x="54" y="68" width="20" height="16" rx="8" fill="#7eb2ff" />
+            <rect x="64" y="68" width="22" height="16" rx="8" fill="#ffffff" />
+          </svg>
           <div>
             <h1 className="text-xl font-bold font-display bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent tracking-tight">
-              ECHOCHUNK
+              Summarix
             </h1>
             <p className="text-xs text-cyan-400 font-semibold tracking-widest uppercase mt-0.5">
               Video & Podcast Summary Generator
@@ -191,14 +213,18 @@ export default function App() {
 
         {/* Status Alerts Banners (Centered) */}
         <div className="flex-1 hidden md:flex justify-center px-4 max-w-lg mx-auto">
-          <StatusAlerts errorMsg={errorMsg} successMsg={successMsg} />
+          <StatusAlerts
+            errorMsg={errorMsg}
+            successMsg={successMsg}
+            onClear={() => { setErrorMsg(null); setSuccessMsg(null); }}
+          />
         </div>
 
         {/* User, Settings, Auth controls (Right-aligned) */}
         <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0 relative">
           {/* Settings Button */}
-          <button 
-            type="button" 
+          <button
+            type="button"
             className="p-2 text-gray-400 hover:text-white rounded-lg hover:bg-white/5 transition-all cursor-pointer group"
             title="Settings"
           >
@@ -230,7 +256,7 @@ export default function App() {
               {/* Dropdown Menu */}
               {showUserDropdown && (
                 <>
-                  <div 
+                  <div
                     onClick={() => setShowUserDropdown(false)}
                     className="fixed inset-0 z-40"
                   />
@@ -261,9 +287,9 @@ export default function App() {
           ) : (
             <>
               {/* User Profile Button */}
-              <button 
+              <button
                 onClick={() => setAuthMode('login')}
-                type="button" 
+                type="button"
                 className="p-2 text-gray-400 hover:text-white rounded-lg hover:bg-white/5 transition-all cursor-pointer flex items-center justify-center"
                 title="User Profile"
               >
@@ -275,18 +301,18 @@ export default function App() {
               <span className="h-4 w-[1px] bg-white/10 mx-1"></span>
 
               {/* Login Button */}
-              <button 
+              <button
                 onClick={() => setAuthMode('login')}
-                type="button" 
+                type="button"
                 className="text-xs font-bold text-gray-300 hover:text-cyan-400 transition-colors px-2.5 py-1.5 rounded-lg hover:bg-white/5 cursor-pointer"
               >
                 LOGIN
               </button>
 
               {/* Signup Button */}
-              <button 
+              <button
                 onClick={() => setAuthMode('signup')}
-                type="button" 
+                type="button"
                 className="text-xs font-bold bg-gradient-to-r from-indigo-500 to-cyan-400 hover:from-indigo-400 hover:to-cyan-300 text-black px-3.5 py-1.5 rounded-lg transition-all shadow-[0_0_10px_rgba(99,102,241,0.2)] hover:shadow-[0_0_15px_rgba(99,102,241,0.4)] cursor-pointer"
               >
                 SIGNUP
@@ -307,8 +333,8 @@ export default function App() {
               onClick={() => setSidebarTab('catalog')}
               type="button"
               className={`flex-1 text-center font-bold font-display py-2 text-xs tracking-wider border-b-2 transition-all cursor-pointer ${sidebarTab === 'catalog'
-                  ? 'text-indigo-400 border-indigo-500 shadow-[inset_0_-2px_0_0_rgb(99,102,241)]'
-                  : 'text-gray-500 border-transparent hover:text-gray-300'
+                ? 'text-indigo-400 border-indigo-500 shadow-[inset_0_-2px_0_0_rgb(99,102,241)]'
+                : 'text-gray-500 border-transparent hover:text-gray-300'
                 }`}
             >
               CATALOG
@@ -317,8 +343,8 @@ export default function App() {
               onClick={() => setSidebarTab('indexer')}
               type="button"
               className={`flex-1 text-center font-bold font-display py-2 text-xs tracking-wider border-b-2 transition-all cursor-pointer ${sidebarTab === 'indexer'
-                  ? 'text-indigo-400 border-indigo-500 shadow-[inset_0_-2px_0_0_rgb(99,102,241)]'
-                  : 'text-gray-500 border-transparent hover:text-gray-300'
+                ? 'text-indigo-400 border-indigo-500 shadow-[inset_0_-2px_0_0_rgb(99,102,241)]'
+                : 'text-gray-500 border-transparent hover:text-gray-300'
                 }`}
             >
               UPLOAD
@@ -398,6 +424,7 @@ export default function App() {
           <aside className="resizable-right-panel w-full lg:w-auto shrink-0 glass-panel p-5 rounded-2xl flex flex-col min-h-0">
             <SummaryConsole
               selectedChapter={selectedChapter}
+              chapters={chapters}
               showSuccess={showSuccess}
             />
           </aside>
@@ -429,7 +456,7 @@ export default function App() {
 
       {/* Footer */}
       <footer className="border-t border-white/5 bg-gray-950/20 py-3 px-6 text-center text-[10px] text-gray-500">
-        © 2026 Echochunk Video Chapter Indexer • Powered by Google Gemini and local audio transcribers
+        © 2026 Summarix Video Chapter Indexer • Powered by Google Gemini and local audio transcribers
       </footer>
     </div>
   );

@@ -6,7 +6,7 @@ export default function AuthModal({ isOpen, onClose, initialMode, onLoginSuccess
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  
+
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -64,7 +64,7 @@ export default function AuthModal({ isOpen, onClose, initialMode, onLoginSuccess
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       {/* Backdrop */}
-      <div 
+      <div
         onClick={onClose}
         className="absolute inset-0 bg-gray-950/80 backdrop-blur-sm cursor-pointer"
       />
@@ -72,7 +72,7 @@ export default function AuthModal({ isOpen, onClose, initialMode, onLoginSuccess
       {/* Modal Card */}
       <div className="relative w-full max-w-md glass-panel p-8 rounded-2xl border border-white/10 shadow-[0_0_50px_rgba(99,102,241,0.15)] flex flex-col min-h-0 z-10 animate-fade-in">
         {/* Close Button */}
-        <button 
+        <button
           onClick={onClose}
           type="button"
           className="absolute top-4 right-4 p-2 text-gray-500 hover:text-white rounded-lg hover:bg-white/5 transition-all cursor-pointer"
@@ -84,11 +84,17 @@ export default function AuthModal({ isOpen, onClose, initialMode, onLoginSuccess
 
         {/* Logo Icon */}
         <div className="flex items-center gap-3 mb-6">
-          <div className="h-8 w-8 rounded-lg bg-gradient-to-tr from-indigo-500 to-cyan-400 flex items-center justify-center font-bold text-black text-sm shadow-[0_0_10px_rgba(99,102,241,0.3)]">
-            E
-          </div>
+          <svg className="h-8 w-8 shadow-[0_0_10px_rgba(11,46,102,0.3)] rounded-lg" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect width="100" height="100" rx="24" fill="#0b2e66" />
+            <text x="50" y="56" fontFamily="system-ui, -apple-system, sans-serif" fontWeight="800" fontSize="46" fill="#ffffff" textAnchor="middle">S</text>
+            <rect x="14" y="68" width="26" height="16" rx="8" fill="#04204dff" />
+            <rect x="28" y="68" width="24" height="16" rx="8" fill="#214376ff" />
+            <rect x="42" y="68" width="22" height="16" rx="8" fill="#2e5faaff" />
+            <rect x="54" y="68" width="20" height="16" rx="8" fill="#3b6aa1ff" />
+            <rect x="64" y="68" width="22" height="16" rx="8" fill="#ffffff" />
+          </svg>
           <h2 className="text-lg font-bold font-display tracking-tight text-white uppercase">
-            {mode === 'login' ? 'Login to Echochunk' : 'Join Echochunk'}
+            {mode === 'login' ? 'Login to Summarix' : 'Join Summarix'}
           </h2>
         </div>
 
@@ -97,22 +103,20 @@ export default function AuthModal({ isOpen, onClose, initialMode, onLoginSuccess
           <button
             onClick={() => { setMode('login'); setError(''); }}
             type="button"
-            className={`flex-1 text-center font-bold font-display py-2.5 text-xs tracking-wider border-b-2 transition-all cursor-pointer ${
-              mode === 'login'
+            className={`flex-1 text-center font-bold font-display py-2.5 text-xs tracking-wider border-b-2 transition-all cursor-pointer ${mode === 'login'
                 ? 'text-indigo-400 border-indigo-500 shadow-[inset_0_-2px_0_0_rgb(99,102,241)]'
                 : 'text-gray-500 border-transparent hover:text-gray-300'
-            }`}
+              }`}
           >
             LOG IN
           </button>
           <button
             onClick={() => { setMode('signup'); setError(''); }}
             type="button"
-            className={`flex-1 text-center font-bold font-display py-2.5 text-xs tracking-wider border-b-2 transition-all cursor-pointer ${
-              mode === 'signup'
+            className={`flex-1 text-center font-bold font-display py-2.5 text-xs tracking-wider border-b-2 transition-all cursor-pointer ${mode === 'signup'
                 ? 'text-indigo-400 border-indigo-500 shadow-[inset_0_-2px_0_0_rgb(99,102,241)]'
                 : 'text-gray-500 border-transparent hover:text-gray-300'
-            }`}
+              }`}
           >
             SIGN UP
           </button>
@@ -146,7 +150,7 @@ export default function AuthModal({ isOpen, onClose, initialMode, onLoginSuccess
             <label className="text-[10px] font-semibold text-gray-400">Email Address</label>
             <input
               type="email"
-              placeholder="e.g. user@echochunk.io"
+              placeholder="e.g. user@summarix.io"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full bg-gray-900/60 border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 transition-all placeholder-gray-700"
@@ -205,7 +209,7 @@ export default function AuthModal({ isOpen, onClose, initialMode, onLoginSuccess
           {mode === 'login' ? (
             <>
               Don't have an account?{' '}
-              <button 
+              <button
                 onClick={() => { setMode('signup'); setError(''); }}
                 className="text-indigo-400 hover:underline font-semibold cursor-pointer"
               >
@@ -215,7 +219,7 @@ export default function AuthModal({ isOpen, onClose, initialMode, onLoginSuccess
           ) : (
             <>
               Already have an account?{' '}
-              <button 
+              <button
                 onClick={() => { setMode('login'); setError(''); }}
                 className="text-indigo-400 hover:underline font-semibold cursor-pointer"
               >

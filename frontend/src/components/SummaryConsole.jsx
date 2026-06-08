@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-export default function SummaryConsole({ selectedChapter, showSuccess }) {
+export default function SummaryConsole({ selectedChapter, chapters = [], showSuccess }) {
   const [summary, setSummary] = useState(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryCacheStatus, setSummaryCacheStatus] = useState(false);
@@ -94,13 +94,18 @@ export default function SummaryConsole({ selectedChapter, showSuccess }) {
     );
   }
 
+  const originalIndex = chapters && selectedChapter
+    ? chapters.findIndex(item => item.id === selectedChapter.id)
+    : -1;
+  const sectionName = originalIndex !== -1 ? `section-${originalIndex + 1}` : selectedChapter?.id;
+
   return (
     <div className="flex-grow flex flex-col min-h-0">
       {/* Console Header */}
       <div className="border-b border-white/5 pb-3 mb-4 flex items-start justify-between">
         <div>
           <h3 className="text-xs font-mono font-semibold text-cyan-400">
-            {selectedChapter.id}
+            {sectionName}
           </h3>
           <p className="text-xs text-white font-bold font-display mt-0.5 truncate max-w-[170px]">
             {selectedChapter.topic_title}
