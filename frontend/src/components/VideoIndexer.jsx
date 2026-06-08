@@ -205,6 +205,77 @@ export default function VideoIndexer({
           )}
         </button>
       </form>
+
+      {/* Language Code Legend Guide */}
+      <div className="mt-2 bg-gray-950/40 border border-white/5 rounded-xl p-3.5 select-none flex flex-col gap-2">
+        <h4 className="text-[10px] font-bold text-gray-400 tracking-wider uppercase flex items-center gap-1.5">
+          <svg className="w-3.5 h-3.5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 11.37 7.31 16.5 3 19" />
+          </svg>
+          Language Codes
+        </h4>
+        <p className="text-[9px] text-gray-500 leading-relaxed mb-1">
+          Click any code below to automatically prefill the language input field:
+        </p>
+        <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-[10px] font-mono">
+          <div 
+            onClick={() => !indexingLoading && !uploading && setLanguage('en')}
+            className="flex justify-between items-center border-b border-white/5 pb-1 hover:border-indigo-500/30 hover:bg-white/5 px-1 py-0.5 rounded transition-all cursor-pointer group"
+          >
+            <span className="text-gray-400 group-hover:text-gray-300 transition-colors">English</span>
+            <span className="text-cyan-400 font-bold bg-cyan-950/30 px-1 py-0.5 rounded border border-cyan-500/10">en</span>
+          </div>
+          <div 
+            onClick={() => !indexingLoading && !uploading && setLanguage('de')}
+            className="flex justify-between items-center border-b border-white/5 pb-1 hover:border-indigo-500/30 hover:bg-white/5 px-1 py-0.5 rounded transition-all cursor-pointer group"
+          >
+            <span className="text-gray-400 group-hover:text-gray-300 transition-colors">German</span>
+            <span className="text-cyan-400 font-bold bg-cyan-950/30 px-1 py-0.5 rounded border border-cyan-500/10">de</span>
+          </div>
+          <div 
+            onClick={() => !indexingLoading && !uploading && setLanguage('es')}
+            className="flex justify-between items-center border-b border-white/5 pb-1 hover:border-indigo-500/30 hover:bg-white/5 px-1 py-0.5 rounded transition-all cursor-pointer group"
+          >
+            <span className="text-gray-400 group-hover:text-gray-300 transition-colors">Spanish</span>
+            <span className="text-cyan-400 font-bold bg-cyan-950/30 px-1 py-0.5 rounded border border-cyan-500/10">es</span>
+          </div>
+          <div 
+            onClick={() => !indexingLoading && !uploading && setLanguage('fr')}
+            className="flex justify-between items-center border-b border-white/5 pb-1 hover:border-indigo-500/30 hover:bg-white/5 px-1 py-0.5 rounded transition-all cursor-pointer group"
+          >
+            <span className="text-gray-400 group-hover:text-gray-300 transition-colors">French</span>
+            <span className="text-cyan-400 font-bold bg-cyan-950/30 px-1 py-0.5 rounded border border-cyan-500/10">fr</span>
+          </div>
+          <div 
+            onClick={() => !indexingLoading && !uploading && setLanguage('it')}
+            className="flex justify-between items-center border-b border-white/5 pb-1 hover:border-indigo-500/30 hover:bg-white/5 px-1 py-0.5 rounded transition-all cursor-pointer group"
+          >
+            <span className="text-gray-400 group-hover:text-gray-300 transition-colors">Italian</span>
+            <span className="text-cyan-400 font-bold bg-cyan-950/30 px-1 py-0.5 rounded border border-cyan-500/10">it</span>
+          </div>
+          <div 
+            onClick={() => !indexingLoading && !uploading && setLanguage('ja')}
+            className="flex justify-between items-center border-b border-white/5 pb-1 hover:border-indigo-500/30 hover:bg-white/5 px-1 py-0.5 rounded transition-all cursor-pointer group"
+          >
+            <span className="text-gray-400 group-hover:text-gray-300 transition-colors">Japanese</span>
+            <span className="text-cyan-400 font-bold bg-cyan-950/30 px-1 py-0.5 rounded border border-cyan-500/10">ja</span>
+          </div>
+          <div 
+            onClick={() => !indexingLoading && !uploading && setLanguage('zh')}
+            className="flex justify-between items-center border-b border-white/5 pb-1 hover:border-indigo-500/30 hover:bg-white/5 px-1 py-0.5 rounded transition-all cursor-pointer group"
+          >
+            <span className="text-gray-400 group-hover:text-gray-300 transition-colors">Mandarin</span>
+            <span className="text-cyan-400 font-bold bg-cyan-950/30 px-1 py-0.5 rounded border border-cyan-500/10">zh</span>
+          </div>
+          <div 
+            onClick={() => !indexingLoading && !uploading && setLanguage('auto')}
+            className="flex justify-between items-center border-b border-white/5 pb-1 hover:border-indigo-500/30 hover:bg-white/5 px-1 py-0.5 rounded transition-all cursor-pointer group"
+          >
+            <span className="text-gray-400 group-hover:text-gray-300 transition-colors">Auto-Detect</span>
+            <span className="text-cyan-400 font-bold bg-cyan-950/30 px-1 py-0.5 rounded border border-cyan-500/10">auto</span>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
