@@ -5,9 +5,11 @@ import VideoIndexer from './components/VideoIndexer';
 import TimelineExplorer from './components/TimelineExplorer';
 import SummaryConsole from './components/SummaryConsole';
 import AuthModal from './components/AuthModal';
+import { apiUrl } from './lib/api';
 
 
 export default function App() {
+  const AUTH_STORAGE_KEY = 'summarix.currentUser';
   const [sidebarTab, setSidebarTab] = useState('catalog'); // 'catalog' or 'indexer'
   const [videos, setVideos] = useState([]);
   const [selectedVideo, setSelectedVideo] = useState(null);
@@ -23,7 +25,14 @@ export default function App() {
   const [rightWidth, setRightWidth] = useState(350); // width of summary console in px
 
   // Auth states
-  const [currentUser, setCurrentUser] = useState(null);
+  const [currentUser, setCurrentUser] = useState(() => {
+    try {
+      const savedUser = window.localStorage.getItem(AUTH_STORAGE_KEY);
+      return savedUser ? JSON.parse(savedUser) : null;
+    } catch {
+      return null;
+    }
+  });
   const [authMode, setAuthMode] = useState(null); // 'login', 'signup', or null
   const [showUserDropdown, setShowUserDropdown] = useState(false);
 
@@ -79,10 +88,25 @@ export default function App() {
 
 
 
-  // Fetch videos list on mount
+  // Fetch videos list only after a user session is available
   useEffect(() => {
-    fetchVideos();
-  }, []);
+    if (currentUser) {
+      fetchVideos();
+    }
+  }, [currentUser]);
+
+  // Persist the signed-in user across refreshes.
+  useEffect(() => {
+    try {
+      if (currentUser) {
+        window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(currentUser));
+      } else {
+        window.localStorage.removeItem(AUTH_STORAGE_KEY);
+      }
+    } catch {
+      // Ignore storage failures and keep the app usable.
+    }
+  }, [currentUser]);
 
   // Auto-dismiss success and error notifications after 2 seconds
   useEffect(() => {
@@ -102,7 +126,7 @@ export default function App() {
 
   const fetchVideos = async () => {
     try {
-      const response = await fetch('/api/videos');
+      const response = await fetch(apiUrl('/api/videos'));
       if (!response.ok) throw new Error('Failed to fetch videos');
       const data = await response.json();
       setVideos(data);
@@ -118,7 +142,7 @@ export default function App() {
     showError(null);
 
     try {
-      const response = await fetch(`/api/videos/${video.id}`);
+      const response = await fetch(apiUrl(`/api/videos/${video.id}`));
       if (!response.ok) throw new Error('Failed to load video chapters');
       const data = await response.json();
       setChapters(data.chapters || []);
@@ -132,7 +156,7 @@ export default function App() {
     if (!confirm('Are you sure you want to delete this video and all its indexed moments from the database?')) return;
 
     try {
-      const res = await fetch('/api/delete', {
+      const res = await fetch(apiUrl('/api/delete'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ video_id: videoId })
@@ -160,7 +184,7 @@ export default function App() {
     showSuccess('Analyzing boundaries with Gemini... Please wait.');
 
     try {
-      const response = await fetch('/api/analyse', {
+      const response = await fetch(apiUrl('/api/analyse'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ video_id: selectedVideo.id })
@@ -187,6 +211,15 @@ export default function App() {
     if (msg) setErrorMsg(null);
   };
 
+  const handleLogout = () => {
+    setCurrentUser(null);
+    setShowUserDropdown(false);
+    setAuthMode('login');
+    setSelectedVideo(null);
+    setSelectedChapter(null);
+    setChapters([]);
+  };
+
   return (
     <div className="flex flex-col min-h-screen">
       {/* Header */}
@@ -202,7 +235,7 @@ export default function App() {
             <rect x="64" y="68" width="22" height="16" rx="8" fill="#ffffff" />
           </svg>
           <div>
-            <h1 className="text-xl font-bold font-display bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent tracking-tight">
+            <h1 className="text-xl font-bold font-display bg-linear-to-tr from-white to-gray-400 bg-clip-text text-transparent tracking-tight">
               Summarix
             </h1>
             <p className="text-xs text-cyan-400 font-semibold tracking-widest uppercase mt-0.5">
@@ -242,10 +275,10 @@ export default function App() {
                 type="button"
                 className="flex items-center gap-2 p-1.5 px-3 bg-indigo-950/40 border border-indigo-500/20 rounded-xl hover:bg-indigo-950/60 hover:border-indigo-500/40 transition-all cursor-pointer"
               >
-                <div className="h-6 w-6 rounded-full bg-gradient-to-tr from-indigo-500 to-cyan-400 text-black font-bold text-[10px] flex items-center justify-center shadow-[0_0_8px_rgba(99,102,241,0.2)]">
+                <div className="h-6 w-6 rounded-full bg-linear-to-tr from-indigo-500 to-cyan-400 text-black font-bold text-[10px] flex items-center justify-center shadow-[0_0_8px_rgba(99,102,241,0.2)]">
                   {currentUser.name ? currentUser.name.slice(0, 2).toUpperCase() : 'U'}
                 </div>
-                <span className="hidden sm:inline text-xs font-semibold text-gray-300 max-w-[80px] truncate">
+                <span className="hidden sm:inline text-xs font-semibold text-gray-300 max-w-20 truncate">
                   {currentUser.name}
                 </span>
                 <svg className={`w-3.5 h-3.5 text-gray-400 transition-transform ${showUserDropdown ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -265,11 +298,10 @@ export default function App() {
                       <span className="text-[10px] text-gray-500 font-semibold uppercase tracking-wider">Signed in as</span>
                       <span className="text-xs text-white font-medium truncate">{currentUser.email}</span>
                     </div>
-                    <span className="h-[1px] bg-white/5 my-0.5"></span>
+                    <span className="h-px bg-white/5 my-0.5"></span>
                     <button
                       onClick={() => {
-                        setCurrentUser(null);
-                        setShowUserDropdown(false);
+                        handleLogout();
                         showSuccess('Logged out successfully.');
                       }}
                       type="button"
@@ -298,7 +330,7 @@ export default function App() {
                 </svg>
               </button>
 
-              <span className="h-4 w-[1px] bg-white/10 mx-1"></span>
+              <span className="h-4 w-px bg-white/10 mx-1"></span>
 
               {/* Login Button */}
               <button
@@ -313,7 +345,7 @@ export default function App() {
               <button
                 onClick={() => setAuthMode('signup')}
                 type="button"
-                className="text-xs font-bold bg-gradient-to-r from-indigo-500 to-cyan-400 hover:from-indigo-400 hover:to-cyan-300 text-black px-3.5 py-1.5 rounded-lg transition-all shadow-[0_0_10px_rgba(99,102,241,0.2)] hover:shadow-[0_0_15px_rgba(99,102,241,0.4)] cursor-pointer"
+                className="text-xs font-bold bg-linear-to-r from-indigo-500 to-cyan-400 hover:from-indigo-400 hover:to-cyan-300 text-black px-3.5 py-1.5 rounded-lg transition-all shadow-[0_0_10px_rgba(99,102,241,0.2)] hover:shadow-[0_0_15px_rgba(99,102,241,0.4)] cursor-pointer"
               >
                 SIGNUP
               </button>
@@ -381,7 +413,7 @@ export default function App() {
           className="hidden lg:flex items-center justify-center w-4 cursor-col-resize group select-none relative z-20 hover:scale-x-110 transition-transform"
         >
           {/* Splitter track visual */}
-          <div className="w-[1px] h-full bg-white/5 group-hover:bg-indigo-500/30 group-active:bg-indigo-500/50 rounded transition-colors" />
+          <div className="w-px h-full bg-white/5 group-hover:bg-indigo-500/30 group-active:bg-indigo-500/50 rounded transition-colors" />
           {/* Grab handle grip */}
           <div className="absolute w-1.5 h-8 bg-white/10 group-hover:bg-indigo-400 group-active:bg-indigo-500 rounded-full border border-white/10 shadow-[0_0_10px_rgba(99,102,241,0.2)] flex flex-col items-center justify-center gap-1 transition-all">
             <span className="w-0.5 h-0.5 rounded-full bg-white/40"></span>
@@ -391,10 +423,10 @@ export default function App() {
         </div>
 
         {/* Workspace containing Center Panel and Right Sidebar */}
-        <div className="flex-grow flex-1 flex flex-col lg:flex-row min-h-0 overflow-hidden relative gap-6 lg:gap-0">
+        <div className="grow flex-1 flex flex-col lg:flex-row min-h-0 overflow-hidden relative gap-6 lg:gap-0">
 
           {/* Center Panel (Timeline Explorer) */}
-          <main className="flex-grow flex-1 glass-panel p-6 rounded-2xl flex flex-col min-h-0">
+          <main className="grow flex-1 glass-panel p-6 rounded-2xl flex flex-col min-h-0">
             <TimelineExplorer
               selectedVideo={selectedVideo}
               chapters={chapters}
@@ -411,7 +443,7 @@ export default function App() {
             className="hidden lg:flex items-center justify-center w-4 cursor-col-resize group select-none relative z-20 hover:scale-x-110 transition-transform"
           >
             {/* Splitter track visual */}
-            <div className="w-[1px] h-full bg-white/5 group-hover:bg-indigo-500/30 group-active:bg-indigo-500/50 rounded transition-colors" />
+            <div className="w-px h-full bg-white/5 group-hover:bg-indigo-500/30 group-active:bg-indigo-500/50 rounded transition-colors" />
             {/* Grab handle grip */}
             <div className="absolute w-1.5 h-8 bg-white/10 group-hover:bg-indigo-400 group-active:bg-indigo-500 rounded-full border border-white/10 shadow-[0_0_10px_rgba(99,102,241,0.2)] flex flex-col items-center justify-center gap-1 transition-all">
               <span className="w-0.5 h-0.5 rounded-full bg-white/40"></span>

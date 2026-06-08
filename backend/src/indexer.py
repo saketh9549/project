@@ -16,7 +16,7 @@ try:
 except ImportError:
     GEMINI_AVAILABLE = False
 
-def generate_video_id(file_path: str) -> str:
+def generate_video_id(file_path: str, owner_email: str = "") -> str:
     """Generates a fast, unique fingerprint ID for a file.
     
     Combines absolute path, file size, and modification time to create a 
@@ -27,7 +27,7 @@ def generate_video_id(file_path: str) -> str:
         raise FileNotFoundError(f"File not found: {abs_path}")
         
     file_stat = os.stat(abs_path)
-    fingerprint = f"{abs_path}_{file_stat.st_size}_{file_stat.st_mtime}"
+    fingerprint = f"{owner_email.strip().lower()}_{abs_path}_{file_stat.st_size}_{file_stat.st_mtime}"
     return hashlib.sha256(fingerprint.encode('utf-8')).hexdigest()[:16]
 
 def chunk_segments(segments: List[Dict[str, Any]], target_duration: float = 60.0) -> List[Dict[str, Any]]:
@@ -282,14 +282,14 @@ def write_transcript_txt(segments: List[Dict[str, Any]], output_path: str):
             text = seg['text'].strip()
             f.write(f"[{start_str} -> {end_str}] {text}\n")
 
-def index_video(video_path: str, language: str = None) -> Tuple[str, List[Dict[str, Any]]]:
+def index_video(video_path: str, language: str = None, owner_email: str = "") -> Tuple[str, List[Dict[str, Any]]]:
     """Runs the full pipeline to extract, transcribe, chunk semantically, and index a video file."""
     abs_path = os.path.abspath(video_path)
     if not os.path.exists(abs_path):
         raise FileNotFoundError(f"Video file not found: {abs_path}")
         
     file_name = os.path.basename(abs_path)
-    video_id = generate_video_id(abs_path)
+    video_id = generate_video_id(abs_path, owner_email=owner_email)
     
     print(f"[Indexer] Processing video: {file_name} (ID: {video_id})")
     
@@ -326,7 +326,7 @@ def index_video(video_path: str, language: str = None) -> Tuple[str, List[Dict[s
         blocks = chunk_segments(segments)
         
         # 7. Write to database
-        db.insert_video(video_id, abs_path, file_name, duration)
+        db.insert_video(video_id, abs_path, file_name, duration, owner_email)
         db.insert_semantic_blocks(video_id, blocks)
         
         print(f"[Indexer] Successfully indexed {len(blocks)} blocks for video {file_name}!")
@@ -375,12 +375,12 @@ def parse_transcript_txt(transcript_path: str) -> List[Dict[str, Any]]:
                 continue
     return segments
 
-def analyse_video(video_id_or_path: str) -> str:
+def analyse_video(video_id_or_path: str, owner_email: str = "") -> str:
     """Command 2: Queries Gemini on the saved transcript, updates DB blocks, and writes analysed timeline file."""
     # 1. Fetch video details from DB
-    video = db.get_video(video_id_or_path)
+    video = db.get_video(video_id_or_path, owner_email)
     if not video:
-        video = db.get_video_by_path(video_id_or_path)
+        video = db.get_video_by_path(video_id_or_path, owner_email)
         
     if not video:
         raise ValueError(f"Video ID or path '{video_id_or_path}' not found. Please index it first.")

@@ -16,6 +16,19 @@ from main import format_timestamp
 PORT = 8000
 
 class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
+    def _get_owner_email(self, parsed_url, body=None):
+        query_params = urllib.parse.parse_qs(parsed_url.query)
+        owner_email = query_params.get("owner_email", [""])[0].strip()
+        if not owner_email and isinstance(body, dict):
+            owner_email = str(body.get("owner_email", "")).strip()
+        return owner_email
+
+    def _sanitize_owner_slug(self, owner_email: str) -> str:
+        slug = owner_email.strip().lower()
+        slug = slug.replace("@", "_at_")
+        slug = "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in slug)
+        return slug or "anonymous"
+
     def end_headers(self):
         # Enable CORS for local testing
         self.send_header('Access-Control-Allow-Origin', '*')
@@ -57,16 +70,20 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
                 self.send_json_response({"error": "Invalid JSON request body"}, 400)
                 return
 
-            self.handle_api_post(path, body)
+            self.handle_api_post(path, body, parsed_url)
         else:
             self.send_error(405, "Method Not Allowed")
 
     def handle_raw_upload(self, parsed_url):
         query_params = urllib.parse.parse_qs(parsed_url.query)
         filename = query_params.get("filename", [""])[0].strip()
+        owner_email = self._get_owner_email(parsed_url)
         
         if not filename:
             self.send_json_response({"error": "filename parameter is required in query string"}, 400)
+            return
+        if not owner_email:
+            self.send_json_response({"error": "owner_email parameter is required"}, 400)
             return
             
         safe_filename = os.path.basename(filename)
@@ -76,7 +93,7 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
             
         try:
             base_dir = os.path.dirname(os.path.abspath(__file__))
-            uploads_dir = os.path.join(base_dir, "data", "uploads")
+            uploads_dir = os.path.join(base_dir, "data", "uploads", self._sanitize_owner_slug(owner_email))
             os.makedirs(uploads_dir, exist_ok=True)
             
             file_path = os.path.join(uploads_dir, safe_filename)
@@ -111,6 +128,7 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
                 "success": True,
                 "file_path": file_path,
                 "file_name": safe_filename,
+                "owner_email": owner_email,
                 "message": "File uploaded successfully."
             })
         except Exception as e:
@@ -168,8 +186,12 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
 
         # Endpoint: GET /api/videos
         if path == "/api/videos":
+            owner_email = self._get_owner_email(parsed_url)
+            if not owner_email:
+                self.send_json_response({"error": "owner_email parameter is required"}, 400)
+                return
             try:
-                videos = db.list_videos()
+                videos = db.list_videos(owner_email)
                 video_list = []
                 for v in videos:
                     video_list.append({
@@ -192,8 +214,13 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
                 self.send_json_response({"error": "Video ID required"}, 400)
                 return
 
+            owner_email = self._get_owner_email(parsed_url)
+            if not owner_email:
+                self.send_json_response({"error": "owner_email parameter is required"}, 400)
+                return
+
             try:
-                video = db.get_video(video_id)
+                video = db.get_video(video_id, owner_email)
                 if not video:
                     self.send_json_response({"error": "Video not found"}, 404)
                     return
@@ -234,12 +261,21 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
             query_params = urllib.parse.parse_qs(parsed_url.query)
             video_id = query_params.get("video_id", [""])[0]
             query = query_params.get("query", [""])[0]
+            owner_email = self._get_owner_email(parsed_url)
 
             if not video_id or not query:
                 self.send_json_response({"error": "video_id and query params are required"}, 400)
                 return
+            if not owner_email:
+                self.send_json_response({"error": "owner_email parameter is required"}, 400)
+                return
 
             try:
+                video = db.get_video(video_id, owner_email)
+                if not video:
+                    self.send_json_response({"error": "Video not found"}, 404)
+                    return
+
                 results = db.search_blocks(video_id, query)
                 formatted_results = []
                 
@@ -266,16 +302,21 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
 
         self.send_json_response({"error": "Endpoint not found"}, 404)
 
-    def handle_api_post(self, path, body):
+    def handle_api_post(self, path, body, parsed_url=None):
+        owner_email = self._get_owner_email(parsed_url, body) if parsed_url else str(body.get("owner_email", "")).strip()
+
         # Endpoint: POST /api/delete
         if path == "/api/delete":
             video_id = body.get("video_id", "").strip()
             if not video_id:
                 self.send_json_response({"error": "video_id is required"}, 400)
                 return
+            if not owner_email:
+                self.send_json_response({"error": "owner_email is required"}, 400)
+                return
             try:
                 print(f"[Server API] Deleting video ID: {video_id} ...")
-                if db.delete_video(video_id):
+                if db.delete_video(video_id, owner_email):
                     self.send_json_response({
                         "success": True,
                         "message": f"Successfully deleted video '{video_id}'."
@@ -298,6 +339,9 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
             if not video_path:
                 self.send_json_response({"error": "video_path is required"}, 400)
                 return
+            if not owner_email:
+                self.send_json_response({"error": "owner_email is required"}, 400)
+                return
 
             if not os.path.exists(video_path):
                 self.send_json_response({"error": f"Local video file not found at path: {video_path}"}, 404)
@@ -305,7 +349,7 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
 
             try:
                 print(f"[Server API] Indexing video: {video_path} ...")
-                video_id, blocks = index_video(video_path, language=language)
+                video_id, blocks = index_video(video_path, language=language, owner_email=owner_email)
                 self.send_json_response({
                     "success": True,
                     "video_id": video_id,
@@ -321,10 +365,13 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
             if not video_id:
                 self.send_json_response({"error": "video_id is required"}, 400)
                 return
+            if not owner_email:
+                self.send_json_response({"error": "owner_email is required"}, 400)
+                return
 
             try:
                 print(f"[Server API] Running Gemini analysis for video ID: {video_id} ...")
-                analysed_path = analyse_video(video_id)
+                analysed_path = analyse_video(video_id, owner_email=owner_email)
                 self.send_json_response({
                     "success": True,
                     "analysed_path": analysed_path,
@@ -340,6 +387,9 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
             if not chapter_id:
                 self.send_json_response({"error": "chapter_id is required"}, 400)
                 return
+            if not owner_email:
+                self.send_json_response({"error": "owner_email is required"}, 400)
+                return
 
             try:
                 # Resolve block
@@ -349,6 +399,9 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
                     if len(parts) == 2:
                         video_id, idx_str = parts
                         chapter_index = int(idx_str)
+                        if not db.get_video(video_id, owner_email):
+                            self.send_json_response({"error": f"Chapter with ID '{chapter_id}' not found"}, 404)
+                            return
                         blocks = db.get_video_blocks(video_id)
                         if blocks and 1 <= chapter_index <= len(blocks):
                             block = blocks[chapter_index - 1]
@@ -357,6 +410,10 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
                     block = db.get_semantic_block(int(chapter_id))
 
                 if not block:
+                    self.send_json_response({"error": f"Chapter with ID '{chapter_id}' not found"}, 404)
+                    return
+
+                if not db.get_video(block["video_id"], owner_email):
                     self.send_json_response({"error": f"Chapter with ID '{chapter_id}' not found"}, 404)
                     return
 

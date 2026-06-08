@@ -23,6 +23,7 @@ def init_db():
             file_path TEXT UNIQUE NOT NULL,
             file_name TEXT NOT NULL,
             duration REAL NOT NULL,
+            owner_email TEXT NOT NULL DEFAULT '',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -46,23 +47,30 @@ def init_db():
     if columns and "topic_title" not in columns:
         print("[DB Migration] Adding missing topic_title column to semantic_blocks table...")
         cursor.execute("ALTER TABLE semantic_blocks ADD COLUMN topic_title TEXT NOT NULL DEFAULT 'Section'")
-    
+
+    cursor.execute("PRAGMA table_info(videos)")
+    video_columns = [row[1] for row in cursor.fetchall()]
+    if video_columns and "owner_email" not in video_columns:
+        print("[DB Migration] Adding missing owner_email column to videos table...")
+        cursor.execute("ALTER TABLE videos ADD COLUMN owner_email TEXT NOT NULL DEFAULT ''")
+
     # Create indexes for faster queries
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_blocks_video_id ON semantic_blocks(video_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_blocks_start_time ON semantic_blocks(video_id, start_time)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_videos_owner_email ON videos(owner_email)")
     
     conn.commit()
     conn.close()
 
-def insert_video(video_id: str, file_path: str, file_name: str, duration: float) -> bool:
+def insert_video(video_id: str, file_path: str, file_name: str, duration: float, owner_email: str = "") -> bool:
     """Inserts or replaces a video entry. Returns True on success."""
     conn = get_db_connection()
     try:
         with conn:
             conn.execute("""
-                INSERT OR REPLACE INTO videos (id, file_path, file_name, duration, created_at)
-                VALUES (?, ?, ?, ?, ?)
-            """, (video_id, file_path, file_name, duration, datetime.now().isoformat()))
+                INSERT OR REPLACE INTO videos (id, file_path, file_name, duration, owner_email, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (video_id, file_path, file_name, duration, owner_email, datetime.now().isoformat()))
         return True
     except sqlite3.Error as e:
         print(f"[DB Error] Failed to insert video: {e}")
@@ -99,29 +107,38 @@ def insert_semantic_blocks(video_id: str, blocks: List[Dict[str, Any]]) -> bool:
     finally:
         conn.close()
 
-def get_video(video_id: str) -> Optional[Dict[str, Any]]:
+def get_video(video_id: str, owner_email: str = "") -> Optional[Dict[str, Any]]:
     """Retrieves metadata for a specific video."""
     conn = get_db_connection()
     try:
-        row = conn.execute("SELECT * FROM videos WHERE id = ?", (video_id,)).fetchone()
+        if owner_email:
+            row = conn.execute("SELECT * FROM videos WHERE id = ? AND owner_email = ?", (video_id, owner_email)).fetchone()
+        else:
+            row = conn.execute("SELECT * FROM videos WHERE id = ?", (video_id,)).fetchone()
         return dict(row) if row else None
     finally:
         conn.close()
 
-def get_video_by_path(file_path: str) -> Optional[Dict[str, Any]]:
+def get_video_by_path(file_path: str, owner_email: str = "") -> Optional[Dict[str, Any]]:
     """Retrieves metadata for a specific video by its path."""
     conn = get_db_connection()
     try:
-        row = conn.execute("SELECT * FROM videos WHERE file_path = ?", (file_path,)).fetchone()
+        if owner_email:
+            row = conn.execute("SELECT * FROM videos WHERE file_path = ? AND owner_email = ?", (file_path, owner_email)).fetchone()
+        else:
+            row = conn.execute("SELECT * FROM videos WHERE file_path = ?", (file_path,)).fetchone()
         return dict(row) if row else None
     finally:
         conn.close()
 
-def list_videos() -> List[Dict[str, Any]]:
+def list_videos(owner_email: str = "") -> List[Dict[str, Any]]:
     """Lists all indexed videos, ordered by creation time descending."""
     conn = get_db_connection()
     try:
-        rows = conn.execute("SELECT * FROM videos ORDER BY created_at DESC").fetchall()
+        if owner_email:
+            rows = conn.execute("SELECT * FROM videos WHERE owner_email = ? ORDER BY created_at DESC", (owner_email,)).fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM videos ORDER BY created_at DESC").fetchall()
         return [dict(r) for r in rows]
     finally:
         conn.close()
@@ -151,12 +168,15 @@ def search_blocks(video_id: str, query: str) -> List[Dict[str, Any]]:
     finally:
         conn.close()
 
-def delete_video(video_id: str) -> bool:
+def delete_video(video_id: str, owner_email: str = "") -> bool:
     """Deletes a video and cascading blocks from the database."""
     conn = get_db_connection()
     try:
         with conn:
-            conn.execute("DELETE FROM videos WHERE id = ?", (video_id,))
+            if owner_email:
+                conn.execute("DELETE FROM videos WHERE id = ? AND owner_email = ?", (video_id, owner_email))
+            else:
+                conn.execute("DELETE FROM videos WHERE id = ?", (video_id,))
         return True
     except sqlite3.Error as e:
         print(f"[DB Error] Failed to delete video: {e}")

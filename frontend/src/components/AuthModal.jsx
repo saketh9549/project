@@ -62,7 +62,7 @@ export default function AuthModal({ isOpen, onClose, initialMode, onLoginSuccess
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-100 flex items-center justify-center p-4">
       {/* Backdrop */}
       <div
         onClick={onClose}
@@ -188,7 +188,7 @@ export default function AuthModal({ isOpen, onClose, initialMode, onLoginSuccess
           <button
             type="submit"
             disabled={loading}
-            className="w-full mt-4 bg-gradient-to-r from-indigo-500 to-cyan-400 hover:from-indigo-400 hover:to-cyan-300 text-black font-bold text-xs py-2.5 rounded-lg transition-all shadow-[0_3px_15px_rgba(99,102,241,0.25)] flex items-center justify-center gap-2 cursor-pointer"
+            className="w-full mt-4 bg-linear-to-r from-indigo-500 to-cyan-400 hover:from-indigo-400 hover:to-cyan-300 text-black font-bold text-xs py-2.5 rounded-lg transition-all shadow-[0_3px_15px_rgba(99,102,241,0.25)] flex items-center justify-center gap-2 cursor-pointer"
           >
             {loading ? (
               <>

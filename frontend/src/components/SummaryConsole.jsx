@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { apiUrl } from '../lib/api';
 
 export default function SummaryConsole({ selectedChapter, chapters = [], showSuccess }) {
   const [summary, setSummary] = useState(null);
@@ -18,7 +19,7 @@ export default function SummaryConsole({ selectedChapter, chapters = [], showSuc
     setSummaryLoading(true);
     
     try {
-      const response = await fetch('/api/summarize', {
+      const response = await fetch(apiUrl('/api/summarize'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ chapter_id: chapter.id })
