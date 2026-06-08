@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-export default function AuthModal({ isOpen, onClose, initialMode, onLoginSuccess }) {
+export default function AuthModal({ isOpen, onClose, initialMode, onLoginSuccess, canClose = true }) {
   const [mode, setMode] = useState(initialMode || 'login'); // 'login' or 'signup'
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
@@ -62,29 +62,31 @@ export default function AuthModal({ isOpen, onClose, initialMode, onLoginSuccess
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-100 flex items-center justify-center p-4">
       {/* Backdrop */}
-      <div 
-        onClick={onClose}
-        className="absolute inset-0 bg-gray-950/80 backdrop-blur-sm cursor-pointer"
+      <div
+        onClick={canClose ? onClose : undefined}
+        className={`absolute inset-0 bg-gray-950/80 backdrop-blur-sm ${canClose ? 'cursor-pointer' : 'cursor-default'}`}
       />
 
       {/* Modal Card */}
       <div className="relative w-full max-w-md glass-panel p-8 rounded-2xl border border-white/10 shadow-[0_0_50px_rgba(99,102,241,0.15)] flex flex-col min-h-0 z-10 animate-fade-in">
         {/* Close Button */}
-        <button 
-          onClick={onClose}
-          type="button"
-          className="absolute top-4 right-4 p-2 text-gray-500 hover:text-white rounded-lg hover:bg-white/5 transition-all cursor-pointer"
-        >
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
+        {canClose && (
+          <button
+            onClick={onClose}
+            type="button"
+            className="absolute top-4 right-4 p-2 text-gray-500 hover:text-white rounded-lg hover:bg-white/5 transition-all cursor-pointer"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        )}
 
         {/* Logo Icon */}
         <div className="flex items-center gap-3 mb-6">
-          <div className="h-8 w-8 rounded-lg bg-gradient-to-tr from-indigo-500 to-cyan-400 flex items-center justify-center font-bold text-black text-sm shadow-[0_0_10px_rgba(99,102,241,0.3)]">
+          <div className="h-8 w-8 rounded-lg bg-linear-to-tr from-indigo-500 to-cyan-400 flex items-center justify-center font-bold text-black text-sm shadow-[0_0_10px_rgba(99,102,241,0.3)]">
             E
           </div>
           <h2 className="text-lg font-bold font-display tracking-tight text-white uppercase">
@@ -184,7 +186,7 @@ export default function AuthModal({ isOpen, onClose, initialMode, onLoginSuccess
           <button
             type="submit"
             disabled={loading}
-            className="w-full mt-4 bg-gradient-to-r from-indigo-500 to-cyan-400 hover:from-indigo-400 hover:to-cyan-300 text-black font-bold text-xs py-2.5 rounded-lg transition-all shadow-[0_3px_15px_rgba(99,102,241,0.25)] flex items-center justify-center gap-2 cursor-pointer"
+            className="w-full mt-4 bg-linear-to-r from-indigo-500 to-cyan-400 hover:from-indigo-400 hover:to-cyan-300 text-black font-bold text-xs py-2.5 rounded-lg transition-all shadow-[0_3px_15px_rgba(99,102,241,0.25)] flex items-center justify-center gap-2 cursor-pointer"
           >
             {loading ? (
               <>

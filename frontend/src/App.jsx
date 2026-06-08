@@ -24,7 +24,6 @@ export default function App() {
 
   // Auth states
   const [currentUser, setCurrentUser] = useState(null);
-  const [authMode, setAuthMode] = useState(null); // 'login', 'signup', or null
   const [showUserDropdown, setShowUserDropdown] = useState(false);
 
   const handleLeftMouseDown = (e) => {
@@ -79,10 +78,12 @@ export default function App() {
 
 
 
-  // Fetch videos list on mount
+  // Fetch videos list only after sign-in
   useEffect(() => {
-    fetchVideos();
-  }, []);
+    if (currentUser) {
+      fetchVideos();
+    }
+  }, [currentUser]);
 
   const fetchVideos = async () => {
     try {
@@ -171,16 +172,43 @@ export default function App() {
     if (msg) setErrorMsg(null);
   };
 
+  const handleLogout = () => {
+    setCurrentUser(null);
+    setShowUserDropdown(false);
+    setSelectedVideo(null);
+    setChapters([]);
+    setSelectedChapter(null);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+  };
+
+  if (!currentUser) {
+    return (
+      <div className="flex min-h-screen flex-col bg-gray-950">
+        <AuthModal
+          isOpen={true}
+          canClose={false}
+          initialMode="login"
+          onClose={() => {}}
+          onLoginSuccess={(user) => {
+            setCurrentUser(user);
+            showSuccess(`Welcome back, ${user.name}! Successfully signed in.`);
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col min-h-screen">
       {/* Header */}
       <header className="border-b border-white/5 bg-gray-950/40 backdrop-blur-md px-8 py-3 flex items-center justify-between sticky top-0 z-50 gap-4">
         <div className="flex items-center gap-3 shrink-0">
-          <div className="h-9 w-9 rounded-lg bg-gradient-to-tr from-indigo-500 to-cyan-400 flex items-center justify-center font-bold text-black text-lg shadow-[0_0_15px_rgba(99,102,241,0.4)]">
+          <div className="h-9 w-9 rounded-lg bg-linear-to-tr from-indigo-500 to-cyan-400 flex items-center justify-center font-bold text-black text-lg shadow-[0_0_15px_rgba(99,102,241,0.4)]">
             E
           </div>
           <div>
-            <h1 className="text-xl font-bold font-display bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent tracking-tight">
+            <h1 className="text-xl font-bold font-display bg-linear-to-r from-white to-gray-400 bg-clip-text text-transparent tracking-tight">
               ECHOCHUNK
             </h1>
             <p className="text-xs text-cyan-400 font-semibold tracking-widest uppercase mt-0.5">
@@ -208,91 +236,54 @@ export default function App() {
             </svg>
           </button>
 
-          {currentUser ? (
-            <div className="relative">
-              {/* User initials circle avatar */}
-              <button
-                onClick={() => setShowUserDropdown(!showUserDropdown)}
-                type="button"
-                className="flex items-center gap-2 p-1.5 px-3 bg-indigo-950/40 border border-indigo-500/20 rounded-xl hover:bg-indigo-950/60 hover:border-indigo-500/40 transition-all cursor-pointer"
-              >
-                <div className="h-6 w-6 rounded-full bg-gradient-to-tr from-indigo-500 to-cyan-400 text-black font-bold text-[10px] flex items-center justify-center shadow-[0_0_8px_rgba(99,102,241,0.2)]">
-                  {currentUser.name ? currentUser.name.slice(0, 2).toUpperCase() : 'U'}
-                </div>
-                <span className="hidden sm:inline text-xs font-semibold text-gray-300 max-w-[80px] truncate">
-                  {currentUser.name}
-                </span>
-                <svg className={`w-3.5 h-3.5 text-gray-400 transition-transform ${showUserDropdown ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
+          <div className="relative">
+            {/* User initials circle avatar */}
+            <button
+              onClick={() => setShowUserDropdown(!showUserDropdown)}
+              type="button"
+              className="flex items-center gap-2 p-1.5 px-3 bg-indigo-950/40 border border-indigo-500/20 rounded-xl hover:bg-indigo-950/60 hover:border-indigo-500/40 transition-all cursor-pointer"
+            >
+              <div className="h-6 w-6 rounded-full bg-linear-to-tr from-indigo-500 to-cyan-400 text-black font-bold text-[10px] flex items-center justify-center shadow-[0_0_8px_rgba(99,102,241,0.2)]">
+                {currentUser.name ? currentUser.name.slice(0, 2).toUpperCase() : 'U'}
+              </div>
+              <span className="hidden sm:inline text-xs font-semibold text-gray-300 max-w-20 truncate">
+                {currentUser.name}
+              </span>
+              <svg className={`w-3.5 h-3.5 text-gray-400 transition-transform ${showUserDropdown ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
 
-              {/* Dropdown Menu */}
-              {showUserDropdown && (
-                <>
-                  <div 
-                    onClick={() => setShowUserDropdown(false)}
-                    className="fixed inset-0 z-40"
-                  />
-                  <div className="absolute right-0 mt-2 w-48 bg-gray-900 border border-white/10 rounded-xl p-3 shadow-2xl flex flex-col gap-2 z-50 animate-fade-in select-none">
-                    <div className="px-2 py-1 flex flex-col">
-                      <span className="text-[10px] text-gray-500 font-semibold uppercase tracking-wider">Signed in as</span>
-                      <span className="text-xs text-white font-medium truncate">{currentUser.email}</span>
-                    </div>
-                    <span className="h-[1px] bg-white/5 my-0.5"></span>
-                    <button
-                      onClick={() => {
-                        setCurrentUser(null);
-                        setShowUserDropdown(false);
-                        showSuccess('Logged out successfully.');
-                      }}
-                      type="button"
-                      className="w-full text-left px-2 py-1.5 text-xs text-red-400 hover:bg-red-950/20 hover:text-red-300 rounded-lg transition-colors font-semibold cursor-pointer flex items-center gap-1.5"
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                      </svg>
-                      Logout
-                    </button>
+            {/* Dropdown Menu */}
+            {showUserDropdown && (
+              <>
+                <div
+                  onClick={() => setShowUserDropdown(false)}
+                  className="fixed inset-0 z-40"
+                />
+                <div className="absolute right-0 mt-2 w-48 bg-gray-900 border border-white/10 rounded-xl p-3 shadow-2xl flex flex-col gap-2 z-50 animate-fade-in select-none">
+                  <div className="px-2 py-1 flex flex-col">
+                    <span className="text-[10px] text-gray-500 font-semibold uppercase tracking-wider">Signed in as</span>
+                    <span className="text-xs text-white font-medium truncate">{currentUser.email}</span>
                   </div>
-                </>
-              )}
-            </div>
-          ) : (
-            <>
-              {/* User Profile Button */}
-              <button 
-                onClick={() => setAuthMode('login')}
-                type="button" 
-                className="p-2 text-gray-400 hover:text-white rounded-lg hover:bg-white/5 transition-all cursor-pointer flex items-center justify-center"
-                title="User Profile"
-              >
-                <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                </svg>
-              </button>
-
-              <span className="h-4 w-[1px] bg-white/10 mx-1"></span>
-
-              {/* Login Button */}
-              <button 
-                onClick={() => setAuthMode('login')}
-                type="button" 
-                className="text-xs font-bold text-gray-300 hover:text-cyan-400 transition-colors px-2.5 py-1.5 rounded-lg hover:bg-white/5 cursor-pointer"
-              >
-                LOGIN
-              </button>
-
-              {/* Signup Button */}
-              <button 
-                onClick={() => setAuthMode('signup')}
-                type="button" 
-                className="text-xs font-bold bg-gradient-to-r from-indigo-500 to-cyan-400 hover:from-indigo-400 hover:to-cyan-300 text-black px-3.5 py-1.5 rounded-lg transition-all shadow-[0_0_10px_rgba(99,102,241,0.2)] hover:shadow-[0_0_15px_rgba(99,102,241,0.4)] cursor-pointer"
-              >
-                SIGNUP
-              </button>
-            </>
-          )}
+                  <span className="h-px bg-white/5 my-0.5"></span>
+                  <button
+                    onClick={() => {
+                      handleLogout();
+                      showSuccess('Logged out successfully.');
+                    }}
+                    type="button"
+                    className="w-full text-left px-2 py-1.5 text-xs text-red-400 hover:bg-red-950/20 hover:text-red-300 rounded-lg transition-colors font-semibold cursor-pointer flex items-center gap-1.5"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                    </svg>
+                    Logout
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </header>
 
@@ -355,7 +346,7 @@ export default function App() {
           className="hidden lg:flex items-center justify-center w-4 cursor-col-resize group select-none relative z-20 hover:scale-x-110 transition-transform"
         >
           {/* Splitter track visual */}
-          <div className="w-[1px] h-full bg-white/5 group-hover:bg-indigo-500/30 group-active:bg-indigo-500/50 rounded transition-colors" />
+          <div className="w-px h-full bg-white/5 group-hover:bg-indigo-500/30 group-active:bg-indigo-500/50 rounded transition-colors" />
           {/* Grab handle grip */}
           <div className="absolute w-1.5 h-8 bg-white/10 group-hover:bg-indigo-400 group-active:bg-indigo-500 rounded-full border border-white/10 shadow-[0_0_10px_rgba(99,102,241,0.2)] flex flex-col items-center justify-center gap-1 transition-all">
             <span className="w-0.5 h-0.5 rounded-full bg-white/40"></span>
@@ -365,10 +356,10 @@ export default function App() {
         </div>
 
         {/* Workspace containing Center Panel and Right Sidebar */}
-        <div className="flex-grow flex-1 flex flex-col lg:flex-row min-h-0 overflow-hidden relative gap-6 lg:gap-0">
+        <div className="grow flex-1 flex flex-col lg:flex-row min-h-0 overflow-hidden relative gap-6 lg:gap-0">
 
           {/* Center Panel (Timeline Explorer) */}
-          <main className="flex-grow flex-1 glass-panel p-6 rounded-2xl flex flex-col min-h-0">
+          <main className="grow flex-1 glass-panel p-6 rounded-2xl flex flex-col min-h-0">
             <TimelineExplorer
               selectedVideo={selectedVideo}
               chapters={chapters}
@@ -385,7 +376,7 @@ export default function App() {
             className="hidden lg:flex items-center justify-center w-4 cursor-col-resize group select-none relative z-20 hover:scale-x-110 transition-transform"
           >
             {/* Splitter track visual */}
-            <div className="w-[1px] h-full bg-white/5 group-hover:bg-indigo-500/30 group-active:bg-indigo-500/50 rounded transition-colors" />
+            <div className="w-px h-full bg-white/5 group-hover:bg-indigo-500/30 group-active:bg-indigo-500/50 rounded transition-colors" />
             {/* Grab handle grip */}
             <div className="absolute w-1.5 h-8 bg-white/10 group-hover:bg-indigo-400 group-active:bg-indigo-500 rounded-full border border-white/10 shadow-[0_0_10px_rgba(99,102,241,0.2)] flex flex-col items-center justify-center gap-1 transition-all">
               <span className="w-0.5 h-0.5 rounded-full bg-white/40"></span>
@@ -415,17 +406,6 @@ export default function App() {
           `}</style>
         </div>
       </div>
-
-      {/* Auth Modal Overlay */}
-      <AuthModal
-        isOpen={authMode !== null}
-        onClose={() => setAuthMode(null)}
-        initialMode={authMode}
-        onLoginSuccess={(user) => {
-          setCurrentUser(user);
-          showSuccess(`Welcome back, ${user.name}! Successfully signed in.`);
-        }}
-      />
 
       {/* Footer */}
       <footer className="border-t border-white/5 bg-gray-950/20 py-3 px-6 text-center text-[10px] text-gray-500">
