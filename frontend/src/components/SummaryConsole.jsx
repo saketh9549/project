@@ -193,7 +193,7 @@ export default function SummaryConsole({
   const sectionName = originalIndex !== -1 ? `section-${originalIndex + 1}` : selectedChapter?.id;
 
   return (
-    <div className="flex-grow flex flex-col min-h-0">
+    <div className="grow flex flex-col min-h-0">
       {/* Tab Switcher */}
       <div className="flex border-b border-white/5 mb-4 shrink-0">
         <button
@@ -230,12 +230,12 @@ export default function SummaryConsole({
             <h3 className="text-sm font-bold font-display text-white mb-1">
               Section Summary
             </h3>
-            <p className="text-gray-500 text-xs max-w-[200px]">
+            <p className="text-gray-500 text-xs max-w-50">
               Click on any chapter moment in the timeline to view or generate its bulleted AI summary.
             </p>
           </div>
         ) : (
-          <div className="flex-grow flex flex-col min-h-0">
+          <div className="grow flex flex-col min-h-0">
             {/* Console Header */}
             <div className="border-b border-white/5 pb-3 mb-4 flex items-start justify-between gap-4">
               <div className="min-w-0 flex-1">
@@ -288,7 +288,7 @@ export default function SummaryConsole({
                   </div>
                 </div>
               ) : (
-                <div className="flex-grow flex flex-col items-center justify-center py-8">
+                <div className="grow flex flex-col items-center justify-center py-8">
                   <p className="text-gray-500 text-xs text-center mb-4">No summary generated yet.</p>
                   <button
                     onClick={() => fetchSummary(selectedChapter)}
@@ -303,7 +303,7 @@ export default function SummaryConsole({
         )
       ) : (
         // --- Overall Summary View ---
-        <div className="flex-grow flex flex-col min-h-0">
+        <div className="grow flex flex-col min-h-0">
           {/* Console Header */}
           <div className="border-b border-white/5 pb-3 mb-4 flex items-start justify-between gap-4">
             <div className="min-w-0 flex-1">
@@ -345,7 +345,7 @@ export default function SummaryConsole({
                 </div>
               </div>
             ) : (
-              <div className="flex-grow flex flex-col items-center justify-center py-8">
+              <div className="grow flex flex-col items-center justify-center py-8">
                 <p className="text-gray-500 text-xs text-center mb-4">No overall summary generated yet.</p>
                 <button
                   onClick={onGenerateOverallSummary}

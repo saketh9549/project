@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-export default function AuthModal({ isOpen, onClose, initialMode, onLoginSuccess }) {
+export default function AuthModal({ isOpen, onClose, initialMode, onLoginSuccess, canClose = true }) {
   const [mode, setMode] = useState(initialMode || 'login'); // 'login' or 'signup'
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
@@ -65,13 +65,19 @@ export default function AuthModal({ isOpen, onClose, initialMode, onLoginSuccess
     <div className="fixed inset-0 z-100 flex items-center justify-center p-4">
       {/* Backdrop */}
       <div
+<<<<<<< HEAD
         onClick={onClose}
         className="absolute inset-0 bg-gray-950/80 backdrop-blur-sm cursor-pointer"
+=======
+        onClick={canClose ? onClose : undefined}
+        className={`absolute inset-0 bg-gray-950/80 backdrop-blur-sm ${canClose ? 'cursor-pointer' : 'cursor-default'}`}
+>>>>>>> ee27459 (changes 08-06)
       />
 
       {/* Modal Card */}
       <div className="relative w-full max-w-md glass-panel p-8 rounded-2xl border border-white/10 shadow-[0_0_50px_rgba(99,102,241,0.15)] flex flex-col min-h-0 z-10 animate-fade-in">
         {/* Close Button */}
+<<<<<<< HEAD
         <button
           onClick={onClose}
           type="button"
@@ -93,6 +99,25 @@ export default function AuthModal({ isOpen, onClose, initialMode, onLoginSuccess
             <rect x="54" y="68" width="20" height="16" rx="8" fill="#3b6aa1ff" />
             <rect x="64" y="68" width="22" height="16" rx="8" fill="#ffffff" />
           </svg>
+=======
+        {canClose && (
+          <button
+            onClick={onClose}
+            type="button"
+            className="absolute top-4 right-4 p-2 text-gray-500 hover:text-white rounded-lg hover:bg-white/5 transition-all cursor-pointer"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        )}
+
+        {/* Logo Icon */}
+        <div className="flex items-center gap-3 mb-6">
+          <div className="h-8 w-8 rounded-lg bg-linear-to-tr from-indigo-500 to-cyan-400 flex items-center justify-center font-bold text-black text-sm shadow-[0_0_10px_rgba(99,102,241,0.3)]">
+            E
+          </div>
+>>>>>>> ee27459 (changes 08-06)
           <h2 className="text-lg font-bold font-display tracking-tight text-white uppercase">
             {mode === 'login' ? 'Login to Summarix' : 'Join Summarix'}
           </h2>
