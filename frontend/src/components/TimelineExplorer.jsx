@@ -21,7 +21,7 @@ export default function TimelineExplorer({
     const query = e.target.value;
     setSearchQuery(query);
     if (!selectedVideo) return;
-    
+
     if (!query.trim()) {
       setSearchResults([]);
       return;
@@ -46,9 +46,9 @@ export default function TimelineExplorer({
     if (!highlight || !highlight.trim()) return text;
     const cleanHighlight = highlight.trim();
     const parts = text.split(new RegExp(`(${escapeRegExp(cleanHighlight)})`, 'gi'));
-    return parts.map((part, idx) => 
-      part.toLowerCase() === cleanHighlight.toLowerCase() 
-        ? <span key={idx} className="highlight-match">{part}</span> 
+    return parts.map((part, idx) =>
+      part.toLowerCase() === cleanHighlight.toLowerCase()
+        ? <span key={idx} className="highlight-match">{part}</span>
         : part
     );
   };
@@ -87,7 +87,7 @@ export default function TimelineExplorer({
             <span className="font-semibold text-cyan-400">Duration:</span> {selectedVideo.duration_str}
           </p>
         </div>
-        
+
         {/* Gemini Analysis Button */}
         <button
           onClick={handleAnalyseVideo}
@@ -107,7 +107,7 @@ export default function TimelineExplorer({
               <svg className="w-4 h-4 text-purple-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
               </svg>
-              <span>Run Gemini Boundary Analysis</span>
+              <span>Run Complete Analysis</span>
             </>
           )}
         </button>
@@ -143,8 +143,8 @@ export default function TimelineExplorer({
       <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-3">
         {displayedChapters.length === 0 ? (
           <div className="text-center text-gray-500 text-sm py-12">
-            {searchQuery.trim() 
-              ? "No moments match your search query." 
+            {searchQuery.trim()
+              ? "No moments match your search query."
               : "No chapters found. Click 'Run Gemini Boundary Analysis' to analyze topic boundaries."}
           </div>
         ) : (
@@ -154,11 +154,10 @@ export default function TimelineExplorer({
               <div
                 key={c.id}
                 onClick={() => onSelectChapter(c)}
-                className={`glass-panel glass-panel-hover p-4 rounded-xl cursor-pointer border text-left transition-all ${
-                  isSelected 
-                    ? 'border-cyan-500/50 bg-cyan-950/10 shadow-[0_0_15px_rgba(6,182,212,0.1)]' 
+                className={`glass-panel glass-panel-hover p-4 rounded-xl cursor-pointer border text-left transition-all ${isSelected
+                    ? 'border-cyan-500/50 bg-cyan-950/10 shadow-[0_0_15px_rgba(6,182,212,0.1)]'
                     : 'border-white/5'
-                }`}
+                  }`}
               >
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <span className="font-mono text-xs font-semibold text-cyan-400 tracking-wider">
@@ -168,11 +167,11 @@ export default function TimelineExplorer({
                     {c.start_time_str} → {c.end_time_str}
                   </span>
                 </div>
-                
+
                 <h4 className="font-bold text-sm text-white mt-2 font-display">
                   {c.topic_title}
                 </h4>
-                
+
                 <p className="text-gray-400 text-xs mt-1.5 leading-relaxed line-clamp-3">
                   {highlightText(c.text, searchQuery)}
                 </p>

@@ -14,7 +14,6 @@ from src.indexer import index_video, analyse_video
 from main import format_timestamp
 
 PORT = 8000
-FRONTEND_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend", "dist")
 
 class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
     def end_headers(self):
@@ -36,8 +35,7 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
         if path.startswith("/api/"):
             self.handle_api_get(path, parsed_url)
         else:
-            # Serve static files from frontend directory
-            self.handle_static_get(path)
+            self.send_error(404, "Not Found - Backend API Only")
 
     def do_POST(self):
         parsed_url = urllib.parse.urlparse(self.path)
@@ -118,39 +116,7 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
         except Exception as e:
             self.send_json_response({"error": f"Upload failed: {e}"}, 500)
 
-    def handle_static_get(self, path):
-        # Default to index.html
-        if path == "/" or path == "":
-            path = "/index.html"
-        
-        # Clean path to prevent path traversal vulnerability
-        clean_path = os.path.normpath(path).lstrip("/\\")
-        file_path = os.path.join(FRONTEND_DIR, clean_path)
-
-        # Ensure absolute paths for secure validation on Windows
-        abs_frontend_dir = os.path.abspath(FRONTEND_DIR)
-        abs_file_path = os.path.abspath(file_path)
-
-        # Check if file exists and is within frontend directory
-        if not abs_file_path.startswith(abs_frontend_dir) or not os.path.exists(abs_file_path) or os.path.isdir(abs_file_path):
-            self.send_error(404, "File Not Found")
-            return
-
-        # Guess MIME type
-        content_type, _ = mimetypes.guess_type(file_path)
-        if not content_type:
-            content_type = "application/octet-stream"
-
-        try:
-            with open(file_path, 'rb') as f:
-                content = f.read()
-            self.send_response(200)
-            self.send_header('Content-Type', content_type)
-            self.send_header('Content-Length', len(content))
-            self.end_headers()
-            self.wfile.write(content)
-        except Exception as e:
-            self.send_error(500, f"Internal Server Error: {e}")
+    # Static serving disabled for pure API operation
 
     def handle_api_get(self, path, parsed_url):
         # Initialize database tables
@@ -519,14 +485,12 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
 def run_server():
     # Setup folders
     db.init_db()
-    if not os.path.exists(FRONTEND_DIR):
-        os.makedirs(FRONTEND_DIR)
 
     # Allow port reuse to prevent address-already-in-use errors
     socketserver.TCPServer.allow_reuse_address = True
     with socketserver.TCPServer(("", PORT), LocalAPIRequestHandler) as httpd:
-        print(f"[Server] Video Chapter Indexer Dashboard is live!")
-        print(f"[Server] Open your browser and navigate to: http://localhost:{PORT}")
+        print(f"[Server] Video Chapter Indexer API is running on port {PORT}!")
+        print(f"[Server] API endpoints are mounted at http://localhost:{PORT}/api/")
         print("[Server] Press Ctrl+C to terminate the server.")
         try:
             httpd.serve_forever()
