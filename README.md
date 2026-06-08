@@ -158,6 +158,31 @@ python main.py delete ca84fc53ba36f8eb
 
 ---
 
+---
+
+## 🖥️ Web Dashboard GUI
+
+For an interactive web interface, you can start the local API server and open the premium dark-mode dashboard in your browser.
+
+### 1. Start the Local Server
+Launch the built-in server from the workspace root:
+```bash
+python server.py
+```
+This runs a zero-dependency server on port `8000`.
+
+### 2. Open the Dashboard
+Navigate to `http://localhost:8000` in your web browser.
+
+### 💡 Features in the Dashboard:
+- **Interactive File Indexer:** Type the absolute path of a local video file (e.g. `C:\path\to\video.mp4`), specify a language override, and click **Index Video** to trigger CPU Whisper transcription.
+- **Dynamic Catalog Browser:** Select from previously indexed video files to instantly load their moment timelines.
+- **One-Click Gemini Analysis:** If a video was only indexed locally (fallback chunker), click **Analyse with Gemini** to run semantic boundaries mapping.
+- **Keyword Search & Highlight:** Filter moments in real-time as you type, with matching phrases highlighted automatically.
+- **On-Demand Block Summarization:** Click the **Summarize** button on any moment card. The summary, key takeaways, and action items will display in the right sidebar console and automatically save to disk.
+
+---
+
 ## 🧪 Automated Testing
 
 We run comprehensive testing for chunking calculations, SQLite schemas, database cascading, and Gemini model fallback scenarios:
