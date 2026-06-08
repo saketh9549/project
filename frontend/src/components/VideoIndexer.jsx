@@ -16,31 +16,72 @@ export default function VideoIndexer({
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
 
-  const handleIndexVideo = async (e) => {
-    if (e) e.preventDefault();
-    if (!videoPath.trim()) return;
+  // Simulated Indexing progress states
+  const [indexingProgress, setIndexingProgress] = useState(0);
+  const [indexingStatus, setIndexingStatus] = useState('Initializing...');
+
+  const runIndexing = async (path, lang) => {
+    if (!path.trim()) return;
     
     onIndexStart();
     showError(null);
     showSuccess('Indexing video in progress... Please wait. This extracts audio and transcribes it.');
+    setIndexingProgress(0);
+    setIndexingStatus('Initializing audio extraction...');
+
+    // Start progress simulator
+    let currentProgress = 0;
+    const interval = setInterval(() => {
+      if (currentProgress < 15) {
+        currentProgress += 1.5;
+        setIndexingStatus('Extracting audio track...');
+      } else if (currentProgress < 75) {
+        currentProgress += 0.4;
+        setIndexingStatus('Transcribing dialogue (Whisper)...');
+      } else if (currentProgress < 95) {
+        currentProgress += 0.2;
+        setIndexingStatus('Analyzing semantic moments (Gemini)...');
+      } else if (currentProgress < 98) {
+        currentProgress += 0.05;
+        setIndexingStatus('Writing index tables...');
+      }
+      setIndexingProgress(Math.min(98, Math.round(currentProgress)));
+    }, 200);
     
     try {
       const response = await fetch('/api/index', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ video_path: videoPath.trim(), language: language.trim() || undefined })
+        body: JSON.stringify({ video_path: path.trim(), language: lang.trim() || undefined })
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Failed to index video');
       
+      // Stop simulator, go to 100%
+      clearInterval(interval);
+      setIndexingProgress(100);
+      setIndexingStatus('Indexing complete!');
       showSuccess(`Successfully indexed video! ID: ${data.video_id}`);
-      setVideoPath('');
-      setLanguage('');
-      onIndexSuccess();
+      
+      // Wait 1.5 seconds so user sees 100% completion screen
+      setTimeout(() => {
+        setVideoPath('');
+        setLanguage('');
+        setIndexingProgress(0);
+        onIndexSuccess();
+      }, 1500);
+
     } catch (err) {
+      clearInterval(interval);
+      setIndexingProgress(0);
       showError('Indexing failed: ' + err.message);
       onIndexError();
     }
+  };
+
+  const handleIndexVideo = async (e) => {
+    if (e) e.preventDefault();
+    runIndexing(videoPath, language);
   };
 
   // Drag and drop handlers
@@ -92,7 +133,9 @@ export default function VideoIndexer({
         try {
           const data = JSON.parse(xhr.responseText);
           setVideoPath(data.file_path);
-          showSuccess(`Uploaded '${file.name}' successfully! Path pre-filled.`);
+          showSuccess(`Uploaded successfully! Starting indexing...`);
+          // Automatically start indexing!
+          runIndexing(data.file_path, language);
         } catch (err) {
           showError("Upload response parsing failed.");
         }
@@ -114,6 +157,120 @@ export default function VideoIndexer({
 
     xhr.send(file);
   };
+
+  if (uploading) {
+    return (
+      <div className="flex-grow flex flex-col items-center justify-center p-6 text-center animate-fade-in h-[350px]">
+        {/* Glowing Progress Circle Ring */}
+        <div className="relative h-28 w-28 mb-6 flex items-center justify-center">
+          {/* Pulsing glow background */}
+          <div className="absolute inset-0 rounded-full bg-cyan-500/5 blur-md animate-pulse" />
+          
+          {/* SVG Progress Ring */}
+          <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+            {/* Track Circle */}
+            <circle
+              cx="50"
+              cy="50"
+              r="40"
+              className="stroke-white/5"
+              strokeWidth="6"
+              fill="transparent"
+            />
+            {/* Indicator Circle */}
+            <circle
+              cx="50"
+              cy="50"
+              r="40"
+              className="stroke-cyan-400 transition-all duration-150 ease-out"
+              strokeWidth="6"
+              fill="transparent"
+              strokeDasharray={251.2}
+              strokeDashoffset={251.2 - (251.2 * (uploadProgress || 0)) / 100}
+              strokeLinecap="round"
+            />
+          </svg>
+          {/* Centered Percentage Text */}
+          <span className="absolute text-xl font-bold font-mono text-white tracking-tighter">
+            {uploadProgress || 0}%
+          </span>
+        </div>
+
+        {/* Progress Text Description */}
+        <h3 className="font-bold text-xs text-white font-display uppercase tracking-wider mb-1">
+          Uploading media file...
+        </h3>
+        <p className="text-[10px] text-gray-500 max-w-[200px] leading-relaxed mx-auto">
+          Transferring your file to the server workspace uploads folder.
+        </p>
+
+        {/* Horizontal glowing loading bar */}
+        <div className="w-full max-w-[180px] bg-gray-900 rounded-full h-1 overflow-hidden mt-6 border border-white/5 mx-auto">
+          <div
+            className="bg-gradient-to-r from-cyan-500 to-indigo-400 h-1 rounded-full transition-all duration-150"
+            style={{ width: `${uploadProgress || 0}%` }}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (indexingLoading) {
+    return (
+      <div className="flex-grow flex flex-col items-center justify-center p-6 text-center animate-fade-in h-[350px]">
+        {/* Glowing Progress Circle Ring */}
+        <div className="relative h-28 w-28 mb-6 flex items-center justify-center">
+          {/* Pulsing glow background */}
+          <div className="absolute inset-0 rounded-full bg-indigo-500/5 blur-md animate-pulse" />
+          
+          {/* SVG Progress Ring */}
+          <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+            {/* Track Circle */}
+            <circle
+              cx="50"
+              cy="50"
+              r="40"
+              className="stroke-white/5"
+              strokeWidth="6"
+              fill="transparent"
+            />
+            {/* Indicator Circle */}
+            <circle
+              cx="50"
+              cy="50"
+              r="40"
+              className="stroke-indigo-500 transition-all duration-300 ease-out"
+              strokeWidth="6"
+              fill="transparent"
+              strokeDasharray={251.2}
+              strokeDashoffset={251.2 - (251.2 * indexingProgress) / 100}
+              strokeLinecap="round"
+            />
+          </svg>
+          {/* Centered Percentage Text */}
+          <span className="absolute text-xl font-bold font-mono text-white tracking-tighter">
+            {indexingProgress}%
+          </span>
+        </div>
+
+        {/* Progress Text Description */}
+        <h3 className="font-bold text-xs text-white font-display uppercase tracking-wider mb-1">
+          {indexingStatus}
+        </h3>
+        <p className="text-[10px] text-gray-500 max-w-[200px] leading-relaxed mx-auto">
+          Running speech-to-text models and Gemini semantic moments.
+        </p>
+
+        {/* Horizontal glowing loading bar */}
+        <div className="w-full max-w-[180px] bg-gray-900 rounded-full h-1 overflow-hidden mt-6 border border-white/5 mx-auto">
+          <div
+            className="bg-gradient-to-r from-indigo-500 to-cyan-400 h-1 rounded-full transition-all duration-300"
+            style={{ width: `${indexingProgress}%` }}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-4 overflow-y-auto max-h-[calc(100vh-190px)] pr-1">
@@ -139,31 +296,13 @@ export default function VideoIndexer({
           disabled={uploading || indexingLoading}
         />
         
-        {uploading ? (
-          <div className="w-full flex flex-col items-center gap-2">
-            <svg className="animate-spin h-5 w-5 text-cyan-400" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            <span className="text-[10px] text-gray-300 font-semibold">Uploading: {uploadProgress}%</span>
-            <div className="w-full bg-gray-800 rounded-full h-1 overflow-hidden mt-0.5 border border-white/5">
-              <div 
-                className="bg-gradient-to-r from-indigo-500 to-cyan-400 h-1 rounded-full transition-all duration-150" 
-                style={{ width: `${uploadProgress}%` }}
-              ></div>
-            </div>
-          </div>
-        ) : (
-          <>
-            <svg className="w-6 h-6 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-            </svg>
-            <div className="text-[11px] text-gray-300">
-              <span className="font-semibold text-indigo-400">Click to upload</span> or drag & drop
-            </div>
-            <div className="text-[9px] text-gray-500 font-mono">Accepts MP4, MP3, WAV, MKV...</div>
-          </>
-        )}
+        <svg className="w-6 h-6 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+        </svg>
+        <div className="text-[11px] text-gray-300">
+          <span className="font-semibold text-indigo-400">Click to upload</span> or drag & drop
+        </div>
+        <div className="text-[9px] text-gray-500 font-mono">Accepts MP4, MP3, WAV, MKV...</div>
       </div>
 
       {/* Selected target file path display status */}

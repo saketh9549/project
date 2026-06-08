@@ -148,8 +148,10 @@ export default function TimelineExplorer({
               : "No chapters found. Click 'Run Gemini Boundary Analysis' to analyze topic boundaries."}
           </div>
         ) : (
-          displayedChapters.map((c) => {
+          displayedChapters.map((c, idx) => {
             const isSelected = selectedChapter && selectedChapter.id === c.id;
+            const originalIndex = chapters.findIndex(item => item.id === c.id);
+            const sectionName = originalIndex !== -1 ? `section-${originalIndex + 1}` : c.id;
             return (
               <div
                 key={c.id}
@@ -161,7 +163,7 @@ export default function TimelineExplorer({
               >
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <span className="font-mono text-xs font-semibold text-cyan-400 tracking-wider">
-                    {c.id}
+                    {sectionName}
                   </span>
                   <span className="text-xs bg-gray-800/80 border border-white/5 text-gray-300 font-medium px-2 py-0.5 rounded-full font-mono">
                     {c.start_time_str} → {c.end_time_str}
