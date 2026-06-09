@@ -1,16 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { apiUrl } from '../lib/api';
 
-export default function SummaryConsole({
-  selectedChapter,
-  chapters = [],
-  showSuccess,
-  summaryTab = 'section',
-  setSummaryTab,
-  overallSummary,
-  overallSummaryLoading,
-  onGenerateOverallSummary
-}) {
+export default function SummaryConsole({ selectedChapter, chapters = [], showSuccess }) {
   const [summary, setSummary] = useState(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryCacheStatus, setSummaryCacheStatus] = useState(false);
@@ -66,10 +57,8 @@ export default function SummaryConsole({
   };
 
   const copySummaryToClipboard = () => {
-    const textToCopy = summaryTab === 'section' ? summary : overallSummary;
-    if (!textToCopy) return;
-    const plainText = stripMarkdown(textToCopy);
-    navigator.clipboard.writeText(plainText);
+    if (!summary) return;
+    navigator.clipboard.writeText(summary);
     if (showSuccess) {
       showSuccess('Summary copied to clipboard!');
       setTimeout(() => showSuccess(null), 3000);
@@ -153,35 +142,56 @@ export default function SummaryConsole({
     });
   };
 
-  const renderSummary = (text) => {
+  const renderMarkdown = (text) => {
     if (!text) return null;
-    const lines = text.split('\n');
+    
+    // Clean conversational intros first
+    const cleanedText = cleanSummaryText(text);
+    const lines = cleanedText.split('\n');
+    
     return lines.map((line, idx) => {
-      if (line.startsWith('### ')) {
-        return <h3 key={idx} className="text-md font-bold text-cyan-400 mt-4 mb-2 font-display uppercase tracking-wider">{line.substring(4)}</h3>;
+      const trimmed = line.trim();
+      if (trimmed === '---' || trimmed === '***') {
+        return <hr key={idx} className="border-t border-white/5 my-5" />;
+      }
+      if (line.startsWith('# ')) {
+        return (
+          <h1 key={idx} className="text-sm font-extrabold text-cyan-400 mt-6 mb-3 font-display uppercase tracking-wider border-b border-cyan-500/10 pb-1">
+            {parseInline(line.substring(2))}
+          </h1>
+        );
       }
       if (line.startsWith('## ')) {
-        return <h2 key={idx} className="text-lg font-bold text-indigo-400 mt-5 mb-2 font-display">{line.substring(3)}</h2>;
+        return (
+          <h2 key={idx} className="text-xs font-bold text-indigo-400 mt-5 mb-2 font-display uppercase tracking-widest flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.5)]"></span>
+            {parseInline(line.substring(3))}
+          </h2>
+        );
+      }
+      if (line.startsWith('### ')) {
+        return (
+          <h3 key={idx} className="text-[11px] font-bold text-gray-200 mt-4 mb-2 font-display uppercase tracking-wider">
+            {parseInline(line.substring(4))}
+          </h3>
+        );
       }
       if (line.startsWith('• ') || line.startsWith('* ') || line.startsWith('- ')) {
         const content = line.replace(/^[•*\-]\s+/, '');
         return (
-          <li key={idx} className="ml-4 list-disc text-gray-300 my-1.5 pl-1 leading-relaxed">
-            {parseBold(content)}
+          <li key={idx} className="ml-4 list-disc text-gray-300 my-1.5 pl-1 leading-relaxed text-xs">
+            {parseInline(content)}
           </li>
         );
       }
-      return <p key={idx} className="text-gray-300 my-2 leading-relaxed text-sm">{parseBold(line)}</p>;
-    });
-  };
-
-  const parseBold = (text) => {
-    const parts = text.split(/\*\*([^*]+)\*\*/g);
-    return parts.map((part, index) => {
-      if (index % 2 === 1) {
-        return <strong key={index} className="text-white font-semibold">{part}</strong>;
-      }
-      return part;
+      
+      // Render normal paragraph
+      if (trimmed === '') return <div key={idx} className="h-2" />;
+      return (
+        <p key={idx} className="text-gray-300 my-2 leading-relaxed text-xs">
+          {parseInline(line)}
+        </p>
+      );
     });
   };
 
@@ -210,7 +220,6 @@ export default function SummaryConsole({
 
   return (
     <div className="grow flex flex-col min-h-0">
-      {/* Console Header */}
       <div className="border-b border-white/5 pb-3 mb-4 flex items-start justify-between">
         <div>
           <h3 className="text-xs font-mono font-semibold text-cyan-400">
@@ -223,7 +232,6 @@ export default function SummaryConsole({
             [{selectedChapter.start_time_str} → {selectedChapter.end_time_str}]
           </p>
         </div>
-        
         {summary && !summaryLoading && (
           <button
             onClick={copySummaryToClipboard}
@@ -237,7 +245,6 @@ export default function SummaryConsole({
         )}
       </div>
 
-      {/* Console Body */}
       <div className="flex-1 overflow-y-auto pr-1 flex flex-col">
         {summaryLoading ? (
           <div className="flex-1 flex flex-col items-center justify-center py-12">

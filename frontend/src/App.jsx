@@ -108,7 +108,7 @@ export default function App() {
     } finally {
       setAnalysisLoading(false);
     }
-  };
+  }
 
   const handleLeftMouseDown = (e) => {
     e.preventDefault();
@@ -201,9 +201,10 @@ export default function App() {
             <button
               onClick={() => setSidebarTab('catalog')}
               type="button"
-              className={`flex-1 text-center font-bold font-display py-2 text-xs tracking-wider border-b-2 transition-all cursor-pointer ${sidebarTab === 'catalog'
-                ? 'text-indigo-400 border-indigo-500 shadow-[inset_0_-2px_0_0_rgb(99,102,241)]'
-                : 'text-gray-500 border-transparent hover:text-gray-300'
+              className={`flex-1 text-center font-bold font-display py-2 text-xs tracking-wider border-b-2 transition-all cursor-pointer ${
+                sidebarTab === 'catalog'
+                  ? 'text-indigo-400 border-indigo-500 shadow-[inset_0_-2px_0_0_rgb(99,102,241)]'
+                  : 'text-gray-500 border-transparent hover:text-gray-300'
               }`}
             >
               CATALOG
@@ -211,9 +212,10 @@ export default function App() {
             <button
               onClick={() => setSidebarTab('indexer')}
               type="button"
-              className={`flex-1 text-center font-bold font-display py-2 text-xs tracking-wider border-b-2 transition-all cursor-pointer ${sidebarTab === 'indexer'
-                ? 'text-indigo-400 border-indigo-500 shadow-[inset_0_-2px_0_0_rgb(99,102,241)]'
-                : 'text-gray-500 border-transparent hover:text-gray-300'
+              className={`flex-1 text-center font-bold font-display py-2 text-xs tracking-wider border-b-2 transition-all cursor-pointer ${
+                sidebarTab === 'indexer'
+                  ? 'text-indigo-400 border-indigo-500 shadow-[inset_0_-2px_0_0_rgb(99,102,241)]'
+                  : 'text-gray-500 border-transparent hover:text-gray-300'
               }`}
             >
               UPLOAD
