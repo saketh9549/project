@@ -12,7 +12,6 @@ export default function App() {
   const [selectedVideo, setSelectedVideo] = useState(null);
   const [chapters, setChapters] = useState([]);
   const [selectedChapter, setSelectedChapter] = useState(null);
-
   const [indexingLoading, setIndexingLoading] = useState(false);
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);

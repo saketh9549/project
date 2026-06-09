@@ -16,7 +16,7 @@ export default function SummaryConsole({ selectedChapter, chapters = [], showSuc
         const indent = line.slice(0, line.length - trimmed.length);
         const normalizedBullet = trimmed.startsWith('* ')
           ? `- ${trimmed.slice(2)}`
-          : trimmed.startsWith('• ')
+          : trimmed.startsWith('â€¢ ')
             ? `- ${trimmed.slice(2)}`
             : trimmed;
 
@@ -150,7 +150,6 @@ export default function SummaryConsole({ selectedChapter, chapters = [], showSuc
 
   return (
     <div className="grow flex flex-col min-h-0">
-      {/* Console Header */}
       <div className="border-b border-white/5 pb-3 mb-4 flex items-start justify-between">
         <div>
           <h3 className="text-xs font-mono font-semibold text-cyan-400">
@@ -160,7 +159,7 @@ export default function SummaryConsole({ selectedChapter, chapters = [], showSuc
             {selectedChapter.topic_title}
           </p>
           <p className="text-[10px] text-gray-400 mt-0.5 font-mono">
-            [{selectedChapter.start_time_str} → {selectedChapter.end_time_str}]
+            [{selectedChapter.start_time_str} â†’ {selectedChapter.end_time_str}]
           </p>
         </div>
 
@@ -177,7 +176,6 @@ export default function SummaryConsole({ selectedChapter, chapters = [], showSuc
         )}
       </div>
 
-      {/* Console Body */}
       <div className="flex-1 overflow-y-auto pr-1 flex flex-col">
         {summaryLoading ? (
           <div className="flex-1 flex flex-col items-center justify-center py-12">

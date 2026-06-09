@@ -3,7 +3,7 @@ import hashlib
 import json
 from typing import List, Dict, Any, Tuple
 from pathlib import Path
-from src.config import get_temp_dir, get_transcripts_dir, get_analysed_dir
+from src.config import get_temp_dir
 from src.extractor import extract_audio, get_video_duration
 from src.transcriber import transcribe_audio, extract_segments
 import src.database as db
@@ -16,19 +16,20 @@ try:
 except ImportError:
     GEMINI_AVAILABLE = False
 
-def generate_video_id(file_path: str) -> str:
+def generate_video_id(file_path: str, owner_email: str = "") -> str:
     """Generates a fast, unique fingerprint ID for a file.
     
     Combines absolute path, file size, and modification time to create a 
-    deterministic 16-character SHA-256 hash. Avoids reading the whole file.
+    deterministic 24-character SHA-256 hash (valid MongoDB ObjectId format).
+    Avoids reading the whole file.
     """
     abs_path = os.path.abspath(file_path)
     if not os.path.exists(abs_path):
         raise FileNotFoundError(f"File not found: {abs_path}")
         
     file_stat = os.stat(abs_path)
-    fingerprint = f"{abs_path}_{file_stat.st_size}_{file_stat.st_mtime}"
-    return hashlib.sha256(fingerprint.encode('utf-8')).hexdigest()[:16]
+    fingerprint = f"{owner_email.strip().lower()}_{abs_path}_{file_stat.st_size}_{file_stat.st_mtime}"
+    return hashlib.sha256(fingerprint.encode('utf-8')).hexdigest()[:24]
 
 def chunk_segments(segments: List[Dict[str, Any]], target_duration: float = 60.0) -> List[Dict[str, Any]]:
     """Legacy/Fallback Chunker: Groups transcription segments into blocks of ~60 seconds.
@@ -88,7 +89,6 @@ def reconstruct_blocks_from_topics(
     if not topics:
         return []
         
-    # 1. Parse and validate start times
     valid_topics = []
     for topic in topics:
         try:
@@ -96,7 +96,6 @@ def reconstruct_blocks_from_topics(
         except (ValueError, TypeError):
             continue
             
-        # Ensure start_time is non-negative and strictly less than the video duration
         if start_time < 0.0:
             start_time = 0.0
         if start_time >= video_duration:
@@ -110,10 +109,8 @@ def reconstruct_blocks_from_topics(
     if not valid_topics:
         return []
         
-    # 2. Sort by start_time
     valid_topics = sorted(valid_topics, key=lambda x: x['start_time'])
     
-    # 3. Deduplicate start times (if two topics have the same start time, keep the first one)
     unique_topics = []
     seen_starts = set()
     for topic in valid_topics:
@@ -125,27 +122,22 @@ def reconstruct_blocks_from_topics(
     if not unique_topics:
         return []
         
-    # 4. Construct blocks with strict end_time constraints
     blocks = []
     for i, topic in enumerate(unique_topics):
         start_time = topic['start_time']
         topic_title = topic['topic']
         
-        # end_time is next topic's start_time or total video duration
         if i < len(unique_topics) - 1:
             end_time = unique_topics[i+1]['start_time']
         else:
             end_time = video_duration
             
-        # Ensure start_time < end_time (safeguard)
         if start_time >= end_time:
             end_time = start_time + 0.1
             
-        # Filter and merge text segments in this range
         seg_texts = []
         for seg in segments:
             seg_start = seg['start']
-            # Match if segment start is within topic boundary (with small float epsilon)
             if start_time - 0.05 <= seg_start < end_time - 0.05:
                 seg_texts.append(seg['text'])
                 
@@ -161,14 +153,13 @@ def reconstruct_blocks_from_topics(
     return blocks
 
 def chunk_semantically_with_gemini(
-    transcript_path: str,
+    timeline_str: str,
     segments: List[Dict[str, Any]], 
     video_duration: float
 ) -> List[Dict[str, Any]]:
-    """Reads the saved transcript file, queries Gemini 1.5 Flash using the Google GenAI SDK to map segments into semantic topics."""
+    """Queries Gemini 1.5 Flash using the Google GenAI SDK to map segments into semantic topics."""
     api_key = os.getenv("GEMINI_API_KEY", "").strip()
     
-    # Check if SDK is available and API key is present/valid
     if not GEMINI_AVAILABLE:
         print("[Indexer Warning] google-genai SDK is not installed. Falling back to local chunker.")
         return chunk_segments(segments)
@@ -178,15 +169,6 @@ def chunk_semantically_with_gemini(
         return chunk_segments(segments)
         
     try:
-        # Read the saved transcript file contents
-        with open(transcript_path, 'r', encoding='utf-8') as f:
-            timeline_str = f.read()
-    except Exception as e:
-        print(f"[Indexer Warning] Could not read transcript file at {transcript_path}: {e}. Falling back to local chunker.")
-        return chunk_segments(segments)
-        
-    try:
-        # Initialize Google GenAI client
         client = genai.Client(api_key=api_key)
         
         system_instruction = (
@@ -208,7 +190,7 @@ def chunk_semantically_with_gemini(
         )
         
         prompt = (
-            f"Here is the timestamped video transcript file contents. "
+            f"Here is the timestamped video transcript. "
             f"Analyze it and identify the natural concept boundaries where topics shift:\n\n"
             f"{timeline_str}"
         )
@@ -242,7 +224,6 @@ def chunk_semantically_with_gemini(
             else:
                 raise api_err
         
-        # Clean response string if needed
         raw_text = response.text.strip()
         if raw_text.startswith("```json"):
             raw_text = raw_text[7:]
@@ -273,27 +254,28 @@ def format_timestamp(seconds: float) -> str:
         return f"{h:02d}:{m:02d}:{s:02d}"
     return f"{m:02d}:{s:02d}"
 
-def write_transcript_txt(segments: List[Dict[str, Any]], output_path: str):
-    """Writes transcription segments to a text file with start and end times."""
-    with open(output_path, 'w', encoding='utf-8') as f:
-        for seg in segments:
-            start_str = format_timestamp(seg['start'])
-            end_str = format_timestamp(seg['end'])
-            text = seg['text'].strip()
-            f.write(f"[{start_str} -> {end_str}] {text}\n")
+def build_transcript_string(segments: List[Dict[str, Any]]) -> str:
+    """Generates dialogue transcript string with start and end times in-memory."""
+    lines = []
+    for seg in segments:
+        start_str = format_timestamp(seg['start'])
+        end_str = format_timestamp(seg['end'])
+        text = seg['text'].strip()
+        lines.append(f"[{start_str} -> {end_str}] {text}")
+    return "\n".join(lines)
 
-def index_video(video_path: str, language: str = None) -> Tuple[str, List[Dict[str, Any]]]:
+def index_video(video_path: str, language: str = None, owner_email: str = "") -> Tuple[str, List[Dict[str, Any]]]:
     """Runs the full pipeline to extract, transcribe, chunk semantically, and index a video file."""
     abs_path = os.path.abspath(video_path)
     if not os.path.exists(abs_path):
         raise FileNotFoundError(f"Video file not found: {abs_path}")
         
     file_name = os.path.basename(abs_path)
-    video_id = generate_video_id(abs_path)
+    video_id = generate_video_id(abs_path, owner_email=owner_email)
     
     print(f"[Indexer] Processing video: {file_name} (ID: {video_id})")
     
-    # 1. Initialize database (creates tables or runs alterations if missing)
+    # 1. Initialize database collections
     db.init_db()
     
     # 2. Try to get video duration using ffprobe
@@ -309,11 +291,8 @@ def index_video(video_path: str, language: str = None) -> Tuple[str, List[Dict[s
         # 5. Extract timed segments
         segments = extract_segments(transcription_result)
         
-        # Save detailed dialogue transcript to a .txt file in the transcripts folder in the project workspace
-        transcript_filename = f"{video_id}_{os.path.splitext(file_name)[0]}_transcript.txt"
-        transcript_path = os.path.join(get_transcripts_dir(), transcript_filename)
-        print(f"[Indexer] Saving dialogue transcript to: {transcript_path}")
-        write_transcript_txt(segments, transcript_path)
+        # Build detailed dialogue transcript in-memory
+        raw_transcript = build_transcript_string(segments)
         
         # Fallback for duration if ffprobe failed
         if duration is None:
@@ -326,10 +305,18 @@ def index_video(video_path: str, language: str = None) -> Tuple[str, List[Dict[s
         blocks = chunk_segments(segments)
         
         # 7. Write to database
-        db.insert_video(video_id, abs_path, file_name, duration)
+        db.insert_video(
+            video_id=video_id,
+            file_path=abs_path,
+            file_name=file_name,
+            duration=duration,
+            owner_email=owner_email,
+            upload_status="indexed",
+            raw_transcript=raw_transcript
+        )
         db.insert_semantic_blocks(video_id, blocks)
         
-        print(f"[Indexer] Successfully indexed {len(blocks)} blocks for video {file_name}!")
+        print(f"[Indexer] Successfully indexed {len(blocks)} blocks for video {file_name} in MongoDB!")
         return video_id, blocks
         
     finally:
@@ -341,111 +328,100 @@ def index_video(video_path: str, language: str = None) -> Tuple[str, List[Dict[s
             except Exception as e:
                 print(f"[Indexer Warning] Failed to delete temporary audio file: {e}")
 
-def parse_transcript_txt(transcript_path: str) -> List[Dict[str, Any]]:
-    """Step 1: Parses dialogue transcript back to segments structure to reconstruct blocks."""
+def parse_transcript_str(raw_transcript: str) -> List[Dict[str, Any]]:
+    """Parses dialogue transcript string back to segments structure to reconstruct blocks."""
     segments = []
-    with open(transcript_path, 'r', encoding='utf-8') as f:
-        for line in f:
-            line = line.strip()
-            if not line.startswith("[") or " -> " not in line:
+    for line in raw_transcript.splitlines():
+        line = line.strip()
+        if not line.startswith("[") or " -> " not in line:
+            continue
+        try:
+            bracket_end = line.find("]")
+            if bracket_end == -1:
                 continue
-            try:
-                bracket_end = line.find("]")
-                if bracket_end == -1:
-                    continue
-                time_part = line[1:bracket_end]
-                text_part = line[bracket_end+1:].strip()
+            time_part = line[1:bracket_end]
+            text_part = line[bracket_end+1:].strip()
+            
+            start_str, end_str = time_part.split(" -> ")
+            
+            def parse_time_str(t_str: str) -> float:
+                parts = list(map(int, t_str.split(":")))
+                if len(parts) == 3: # HH:MM:SS
+                    return parts[0] * 3600 + parts[1] * 60 + parts[2]
+                elif len(parts) == 2: # MM:SS
+                    return parts[0] * 60 + parts[1]
+                return 0.0
                 
-                start_str, end_str = time_part.split(" -> ")
-                
-                def parse_time_str(t_str: str) -> float:
-                    parts = list(map(int, t_str.split(":")))
-                    if len(parts) == 3: # HH:MM:SS
-                        return parts[0] * 3600 + parts[1] * 60 + parts[2]
-                    elif len(parts) == 2: # MM:SS
-                        return parts[0] * 60 + parts[1]
-                    return 0.0
-                    
-                segments.append({
-                    "start": parse_time_str(start_str),
-                    "end": parse_time_str(end_str),
-                    "text": text_part
-                })
-            except Exception:
-                continue
+            segments.append({
+                "start": parse_time_str(start_str),
+                "end": parse_time_str(end_str),
+                "text": text_part
+            })
+        except Exception:
+            continue
     return segments
 
-def analyse_video(video_id_or_path: str) -> str:
-    """Command 2: Queries Gemini on the saved transcript, updates DB blocks, and writes analysed timeline file."""
+def analyse_video(video_id_or_path: str, owner_email: str = "") -> str:
+    """Command 2: Queries Gemini on the saved transcript and updates DB blocks."""
     # 1. Fetch video details from DB
-    video = db.get_video(video_id_or_path)
+    video = db.get_video(video_id_or_path, owner_email)
     if not video:
-        video = db.get_video_by_path(video_id_or_path)
+        video = db.get_video_by_path(video_id_or_path, owner_email)
         
     if not video:
         raise ValueError(f"Video ID or path '{video_id_or_path}' not found. Please index it first.")
         
     video_id = video['id']
-    file_name = video['file_name']
     duration = video['duration']
+    raw_transcript = video.get('raw_transcript', "")
     
-    # 2. Locate transcript file
-    transcript_filename = f"{video_id}_{os.path.splitext(file_name)[0]}_transcript.txt"
-    transcript_path = os.path.join(get_transcripts_dir(), transcript_filename)
-    if not os.path.exists(transcript_path):
-        # Fallback to scanning folder for any match starting with ID
-        found = False
-        for f_name in os.listdir(get_transcripts_dir()):
-            if f_name.startswith(video_id):
-                transcript_path = os.path.join(get_transcripts_dir(), f_name)
-                found = True
-                break
-        if not found:
-            raise FileNotFoundError(f"Saved transcript file not found for video ID: {video_id}")
+    if not raw_transcript:
+        # Fallback: Rebuild raw transcript string from existing blocks if rawTranscript field is empty
+        blocks = db.get_video_blocks(video_id)
+        if blocks:
+            segments = []
+            for b in blocks:
+                segments.append({
+                    "start": b["start_time"],
+                    "end": b["end_time"],
+                    "text": b["text"]
+                })
+            raw_transcript = build_transcript_string(segments)
+        else:
+            raise ValueError(f"No raw transcript or blocks found in database for video ID: {video_id}")
             
-    print(f"[Analyse] Found saved transcript: {os.path.basename(transcript_path)}")
+    print(f"[Analyse] Loaded raw transcript from database for video ID: {video_id}")
     
     # 3. Parse segments back
-    segments = parse_transcript_txt(transcript_path)
+    segments = parse_transcript_str(raw_transcript)
     if not segments:
-        raise ValueError(f"No valid dialogue segments could be parsed from transcript at {transcript_path}")
+        raise ValueError("No valid dialogue segments could be parsed from transcript")
         
-    # 4. Call Gemini on transcript file contents
-    blocks = chunk_semantically_with_gemini(transcript_path, segments, duration)
+    # 4. Call Gemini on transcript contents
+    blocks = chunk_semantically_with_gemini(raw_transcript, segments, duration)
     
-    # Check if Gemini actually succeeded (Gemini chunking has topic titles, fallback has generic 'Section X')
+    # Check if Gemini actually succeeded
     is_fallback = all(b.get('topic_title', '').startswith('Section ') for b in blocks)
     if is_fallback and os.getenv("GEMINI_API_KEY", "").strip() in ("", '""', "your_gemini_api_key_here"):
          print("[Analyse Warning] Gemini analysis ran in fallback mode because API key is not set.")
     
-    # 5. Write semantic blocks to SQLite (updating database blocks)
+    # 5. Write semantic blocks to MongoDB
     db.insert_semantic_blocks(video_id, blocks)
     
-    # 6. Save newly analysed chapters transcript file
-    analysed_filename = f"{video_id}_{os.path.splitext(file_name)[0]}_analysed.txt"
-    analysed_path = os.path.join(get_analysed_dir(), analysed_filename)
-    
-    with open(analysed_path, 'w', encoding='utf-8') as f:
-        f.write(f"VIDEO: {file_name}\n")
-        f.write(f"VIDEO ID: {video_id}\n")
-        f.write(f"DURATION: {format_timestamp(duration)}\n")
-        f.write("=" * 65 + "\n")
-        f.write("KEY MOMENTS TIMELINE:\n")
-        f.write("-" * 65 + "\n")
-        for idx, block in enumerate(blocks, start=1):
-            start_str = format_timestamp(block['start_time'])
-            chapter_id = f"{video_id}-{idx}"
-            f.write(f" {f'[{start_str}]':<9} | {chapter_id:<20} | {block['topic_title']}\n")
-        f.write("=" * 65 + "\n\n")
-        
-        f.write("DETAILED TOPIC-WISE TRANSCRIPT:\n")
-        f.write("=" * 65 + "\n\n")
-        for idx, block in enumerate(blocks, start=1):
-            start_str = format_timestamp(block['start_time'])
-            end_str = format_timestamp(block['end_time'])
-            chapter_id = f"{video_id}-{idx}"
-            f.write(f"=== {f'[{start_str} -> {end_str}]':<17} [ID: {chapter_id}] {block['topic_title']} ===\n")
-            f.write(f"{block['text']}\n\n")
-            
-    print(f"[Analyse] Successfully saved analysed transcript index to: {analysed_path}")
-    return analysed_path
+    print(f"[Analyse] Successfully updated analysed transcript index in MongoDB for video ID: {video_id}")
+    return "MongoDB Database"
+
+def write_transcript_txt(segments: List[Dict[str, Any]], output_path: str):
+    """Writes transcription segments to a text file with start and end times."""
+    with open(output_path, 'w', encoding='utf-8') as f:
+        for seg in segments:
+            start_str = format_timestamp(seg['start'])
+            end_str = format_timestamp(seg['end'])
+            text = seg['text'].strip()
+            f.write(f"[{start_str} -> {end_str}] {text}\n")
+
+def parse_transcript_txt(transcript_path: str) -> List[Dict[str, Any]]:
+    """Parses dialogue transcript file back to segments structure to reconstruct blocks."""
+    with open(transcript_path, 'r', encoding='utf-8') as f:
+        return parse_transcript_str(f.read())
+
