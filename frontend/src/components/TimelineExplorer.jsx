@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { apiUrl } from '../lib/api';
 
 export default function TimelineExplorer({
   selectedVideo,
@@ -28,7 +29,7 @@ export default function TimelineExplorer({
     }
 
     try {
-      const response = await fetch(`/api/search?video_id=${selectedVideo.id}&query=${encodeURIComponent(query)}`);
+      const response = await fetch(apiUrl(`/api/search?video_id=${selectedVideo.id}&query=${encodeURIComponent(query)}`));
       if (!response.ok) throw new Error('Search failed');
       const data = await response.json();
       setSearchResults(data || []);

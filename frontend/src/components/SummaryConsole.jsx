@@ -1,9 +1,30 @@
 import React, { useState, useEffect } from 'react';
+import { apiUrl } from '../lib/api';
 
 export default function SummaryConsole({ selectedChapter, chapters = [], showSuccess }) {
   const [summary, setSummary] = useState(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryCacheStatus, setSummaryCacheStatus] = useState(false);
+
+  const normalizeSummaryText = (text) => {
+    if (!text) return '';
+
+    return text
+      .split('\n')
+      .map((line) => {
+        const trimmed = line.trimStart();
+        const indent = line.slice(0, line.length - trimmed.length);
+        const normalizedBullet = trimmed.startsWith('* ')
+          ? `- ${trimmed.slice(2)}`
+          : trimmed.startsWith('• ')
+            ? `- ${trimmed.slice(2)}`
+            : trimmed;
+
+        return `${indent}${normalizedBullet.replace(/\*/g, '')}`;
+      })
+      .join('\n')
+      .trim();
+  };
 
   useEffect(() => {
     if (selectedChapter) {
@@ -16,20 +37,20 @@ export default function SummaryConsole({ selectedChapter, chapters = [], showSuc
   const fetchSummary = async (chapter) => {
     setSummary(null);
     setSummaryLoading(true);
-    
+
     try {
-      const response = await fetch('/api/summarize', {
+      const response = await fetch(apiUrl('/api/summarize'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ chapter_id: chapter.id })
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Failed to summarize chapter');
-      
-      setSummary(data.summary);
+
+      setSummary(normalizeSummaryText(data.summary));
       setSummaryCacheStatus(data.cached);
     } catch (err) {
-      setSummary(`*Error generating summary:* ${err.message}`);
+      setSummary(`Error generating summary: ${err.message}`);
     } finally {
       setSummaryLoading(false);
     }
@@ -44,34 +65,62 @@ export default function SummaryConsole({ selectedChapter, chapters = [], showSuc
     }
   };
 
-  const renderMarkdown = (text) => {
+  const renderSummary = (text) => {
     if (!text) return null;
+
     const lines = text.split('\n');
     return lines.map((line, idx) => {
-      if (line.startsWith('### ')) {
-        return <h3 key={idx} className="text-md font-bold text-cyan-400 mt-4 mb-2 font-display uppercase tracking-wider">{line.substring(4)}</h3>;
+      if (/^#+\s+/.test(line)) {
+        const heading = line.replace(/^#+\s*/, '');
+        return (
+          <h3 key={idx} className="text-base font-bold text-cyan-300 mt-4 mb-2">
+            {renderInlineBold(heading)}
+          </h3>
+        );
       }
-      if (line.startsWith('## ')) {
-        return <h2 key={idx} className="text-lg font-bold text-indigo-400 mt-5 mb-2 font-display">{line.substring(3)}</h2>;
+
+      if (/^[A-Za-z][A-Za-z0-9\s&/()-]*:\s*$/.test(line.trim())) {
+        return (
+          <p key={idx} className="text-gray-200 mt-3 mb-1 font-semibold">
+            {renderInlineBold(line.replace(/:\s*$/, ':'))}
+          </p>
+        );
       }
-      if (line.startsWith('• ') || line.startsWith('* ') || line.startsWith('- ')) {
-        const content = line.replace(/^[•*\-]\s+/, '');
+
+      if (line.startsWith('- ')) {
+        const content = line.replace(/^-+\s+/, '');
         return (
           <li key={idx} className="ml-4 list-disc text-gray-300 my-1.5 pl-1 leading-relaxed">
-            {parseBold(content)}
+            {renderInlineBold(content)}
           </li>
         );
       }
-      return <p key={idx} className="text-gray-300 my-2 leading-relaxed text-sm">{parseBold(line)}</p>;
+
+      return (
+        <p key={idx} className="text-gray-300 my-2 leading-relaxed text-sm">
+          {renderInlineBold(line)}
+        </p>
+      );
     });
   };
 
-  const parseBold = (text) => {
+  const renderInlineBold = (text) => {
     const parts = text.split(/\*\*([^*]+)\*\*/g);
     return parts.map((part, index) => {
       if (index % 2 === 1) {
-        return <strong key={index} className="text-white font-semibold">{part}</strong>;
+        return <strong key={index} className="font-bold text-white">{part}</strong>;
       }
+
+      const colonMatch = part.match(/^(.+?:)(\s+.*)?$/);
+      if (colonMatch) {
+        return (
+          <span key={index}>
+            <strong className="font-bold text-white">{colonMatch[1]}</strong>
+            {colonMatch[2] || ''}
+          </span>
+        );
+      }
+
       return part;
     });
   };
@@ -87,7 +136,7 @@ export default function SummaryConsole({ selectedChapter, chapters = [], showSuc
         <h3 className="text-sm font-bold font-display text-white mb-1">
           Summary Console
         </h3>
-        <p className="text-gray-500 text-xs max-w-[200px]">
+        <p className="text-gray-500 text-xs max-w-50">
           Click on any chapter moment in the timeline to view or generate its bulleted AI summary.
         </p>
       </div>
@@ -100,21 +149,21 @@ export default function SummaryConsole({ selectedChapter, chapters = [], showSuc
   const sectionName = originalIndex !== -1 ? `section-${originalIndex + 1}` : selectedChapter?.id;
 
   return (
-    <div className="flex-grow flex flex-col min-h-0">
+    <div className="grow flex flex-col min-h-0">
       {/* Console Header */}
       <div className="border-b border-white/5 pb-3 mb-4 flex items-start justify-between">
         <div>
           <h3 className="text-xs font-mono font-semibold text-cyan-400">
             {sectionName}
           </h3>
-          <p className="text-xs text-white font-bold font-display mt-0.5 truncate max-w-[170px]">
+          <p className="text-xs text-white font-bold font-display mt-0.5 truncate max-w-42.5">
             {selectedChapter.topic_title}
           </p>
           <p className="text-[10px] text-gray-400 mt-0.5 font-mono">
             [{selectedChapter.start_time_str} → {selectedChapter.end_time_str}]
           </p>
         </div>
-        
+
         {summary && !summaryLoading && (
           <button
             onClick={copySummaryToClipboard}
@@ -149,11 +198,11 @@ export default function SummaryConsole({ selectedChapter, chapters = [], showSuc
               </span>
             )}
             <div className="prose prose-invert max-w-none">
-              {renderMarkdown(summary)}
+              {renderSummary(summary)}
             </div>
           </div>
         ) : (
-          <div className="flex-grow flex flex-col items-center justify-center py-8">
+          <div className="grow flex flex-col items-center justify-center py-8">
             <p className="text-gray-500 text-xs text-center mb-4">No summary generated yet.</p>
             <button
               onClick={() => fetchSummary(selectedChapter)}

@@ -1,30 +1,24 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import StatusAlerts from './components/StatusAlerts';
 import VideosCatalog from './components/VideosCatalog';
 import VideoIndexer from './components/VideoIndexer';
 import TimelineExplorer from './components/TimelineExplorer';
 import SummaryConsole from './components/SummaryConsole';
-import AuthModal from './components/AuthModal';
-
+import { apiUrl } from './lib/api';
 
 export default function App() {
-  const [sidebarTab, setSidebarTab] = useState('catalog'); // 'catalog' or 'indexer'
+  const [sidebarTab, setSidebarTab] = useState('indexer');
   const [videos, setVideos] = useState([]);
   const [selectedVideo, setSelectedVideo] = useState(null);
   const [chapters, setChapters] = useState([]);
   const [selectedChapter, setSelectedChapter] = useState(null);
 
-  // Loading & status states
   const [indexingLoading, setIndexingLoading] = useState(false);
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
-  const [leftWidth, setLeftWidth] = useState(320); // width of left sidebar in px
-  const [rightWidth, setRightWidth] = useState(350); // width of summary console in px
-
-  // Auth states
-  const [currentUser, setCurrentUser] = useState(null);
-  const [showUserDropdown, setShowUserDropdown] = useState(false);
+  const [leftWidth, setLeftWidth] = useState(320);
+  const [rightWidth, setRightWidth] = useState(350);
 
   const handleLeftMouseDown = (e) => {
     e.preventDefault();
@@ -76,18 +70,23 @@ export default function App() {
     document.body.style.userSelect = 'none';
   };
 
-
-
-  // Fetch videos list only after sign-in
   useEffect(() => {
-    if (currentUser) {
-      fetchVideos();
-    }
-  }, [currentUser]);
+    fetchVideos();
+  }, []);
+
+  const showError = (msg) => {
+    setErrorMsg(msg);
+    if (msg) setSuccessMsg(null);
+  };
+
+  const showSuccess = (msg) => {
+    setSuccessMsg(msg);
+    if (msg) setErrorMsg(null);
+  };
 
   const fetchVideos = async () => {
     try {
-      const response = await fetch('/api/videos');
+      const response = await fetch(apiUrl('/api/videos'));
       if (!response.ok) throw new Error('Failed to fetch videos');
       const data = await response.json();
       setVideos(data);
@@ -103,7 +102,7 @@ export default function App() {
     showError(null);
 
     try {
-      const response = await fetch(`/api/videos/${video.id}`);
+      const response = await fetch(apiUrl(`/api/videos/${video.id}`));
       if (!response.ok) throw new Error('Failed to load video chapters');
       const data = await response.json();
       setChapters(data.chapters || []);
@@ -117,7 +116,7 @@ export default function App() {
     if (!confirm('Are you sure you want to delete this video and all its indexed moments from the database?')) return;
 
     try {
-      const res = await fetch('/api/delete', {
+      const res = await fetch(apiUrl('/api/delete'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ video_id: videoId })
@@ -145,7 +144,7 @@ export default function App() {
     showSuccess('Analyzing boundaries with Gemini... Please wait.');
 
     try {
-      const response = await fetch('/api/analyse', {
+      const response = await fetch(apiUrl('/api/analyse'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ video_id: selectedVideo.id })
@@ -162,46 +161,8 @@ export default function App() {
     }
   };
 
-  const showError = (msg) => {
-    setErrorMsg(msg);
-    if (msg) setSuccessMsg(null);
-  };
-
-  const showSuccess = (msg) => {
-    setSuccessMsg(msg);
-    if (msg) setErrorMsg(null);
-  };
-
-  const handleLogout = () => {
-    setCurrentUser(null);
-    setShowUserDropdown(false);
-    setSelectedVideo(null);
-    setChapters([]);
-    setSelectedChapter(null);
-    setErrorMsg(null);
-    setSuccessMsg(null);
-  };
-
-  if (!currentUser) {
-    return (
-      <div className="flex min-h-screen flex-col bg-gray-950">
-        <AuthModal
-          isOpen={true}
-          canClose={false}
-          initialMode="login"
-          onClose={() => {}}
-          onLoginSuccess={(user) => {
-            setCurrentUser(user);
-            showSuccess(`Welcome back, ${user.name}! Successfully signed in.`);
-          }}
-        />
-      </div>
-    );
-  }
-
   return (
     <div className="flex flex-col min-h-screen">
-      {/* Header */}
       <header className="border-b border-white/5 bg-gray-950/40 backdrop-blur-md px-8 py-3 flex items-center justify-between sticky top-0 z-50 gap-4">
         <div className="flex items-center gap-3 shrink-0">
           <div className="h-9 w-9 rounded-lg bg-linear-to-tr from-indigo-500 to-cyan-400 flex items-center justify-center font-bold text-black text-lg shadow-[0_0_15px_rgba(99,102,241,0.4)]">
@@ -217,16 +178,13 @@ export default function App() {
           </div>
         </div>
 
-        {/* Status Alerts Banners (Centered) */}
         <div className="flex-1 hidden md:flex justify-center px-4 max-w-lg mx-auto">
           <StatusAlerts errorMsg={errorMsg} successMsg={successMsg} />
         </div>
 
-        {/* User, Settings, Auth controls (Right-aligned) */}
-        <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0 relative">
-          {/* Settings Button */}
-          <button 
-            type="button" 
+        <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+          <button
+            type="button"
             className="p-2 text-gray-400 hover:text-white rounded-lg hover:bg-white/5 transition-all cursor-pointer group"
             title="Settings"
           >
@@ -235,88 +193,36 @@ export default function App() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
           </button>
-
-          <div className="relative">
-            {/* User initials circle avatar */}
-            <button
-              onClick={() => setShowUserDropdown(!showUserDropdown)}
-              type="button"
-              className="flex items-center gap-2 p-1.5 px-3 bg-indigo-950/40 border border-indigo-500/20 rounded-xl hover:bg-indigo-950/60 hover:border-indigo-500/40 transition-all cursor-pointer"
-            >
-              <div className="h-6 w-6 rounded-full bg-linear-to-tr from-indigo-500 to-cyan-400 text-black font-bold text-[10px] flex items-center justify-center shadow-[0_0_8px_rgba(99,102,241,0.2)]">
-                {currentUser.name ? currentUser.name.slice(0, 2).toUpperCase() : 'U'}
-              </div>
-              <span className="hidden sm:inline text-xs font-semibold text-gray-300 max-w-20 truncate">
-                {currentUser.name}
-              </span>
-              <svg className={`w-3.5 h-3.5 text-gray-400 transition-transform ${showUserDropdown ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
-
-            {/* Dropdown Menu */}
-            {showUserDropdown && (
-              <>
-                <div
-                  onClick={() => setShowUserDropdown(false)}
-                  className="fixed inset-0 z-40"
-                />
-                <div className="absolute right-0 mt-2 w-48 bg-gray-900 border border-white/10 rounded-xl p-3 shadow-2xl flex flex-col gap-2 z-50 animate-fade-in select-none">
-                  <div className="px-2 py-1 flex flex-col">
-                    <span className="text-[10px] text-gray-500 font-semibold uppercase tracking-wider">Signed in as</span>
-                    <span className="text-xs text-white font-medium truncate">{currentUser.email}</span>
-                  </div>
-                  <span className="h-px bg-white/5 my-0.5"></span>
-                  <button
-                    onClick={() => {
-                      handleLogout();
-                      showSuccess('Logged out successfully.');
-                    }}
-                    type="button"
-                    className="w-full text-left px-2 py-1.5 text-xs text-red-400 hover:bg-red-950/20 hover:text-red-300 rounded-lg transition-colors font-semibold cursor-pointer flex items-center gap-1.5"
-                  >
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                    </svg>
-                    Logout
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
         </div>
       </header>
 
-      {/* Main Container */}
       <div className="flex-1 flex flex-col lg:flex-row gap-6 lg:gap-0 p-6 overflow-hidden h-auto lg:h-[calc(100vh-130px)] w-full">
-
-        {/* Left Sidebar (Catalog & Upload tabs) */}
         <aside className="resizable-left-panel w-full lg:w-auto shrink-0 glass-panel p-5 rounded-2xl flex flex-col min-h-0">
-          {/* Tab Selector */}
           <div className="flex border-b border-white/5 mb-4 shrink-0">
             <button
               onClick={() => setSidebarTab('catalog')}
               type="button"
-              className={`flex-1 text-center font-bold font-display py-2 text-xs tracking-wider border-b-2 transition-all cursor-pointer ${sidebarTab === 'catalog'
+              className={`flex-1 text-center font-bold font-display py-2 text-xs tracking-wider border-b-2 transition-all cursor-pointer ${
+                sidebarTab === 'catalog'
                   ? 'text-indigo-400 border-indigo-500 shadow-[inset_0_-2px_0_0_rgb(99,102,241)]'
                   : 'text-gray-500 border-transparent hover:text-gray-300'
-                }`}
+              }`}
             >
               CATALOG
             </button>
             <button
               onClick={() => setSidebarTab('indexer')}
               type="button"
-              className={`flex-1 text-center font-bold font-display py-2 text-xs tracking-wider border-b-2 transition-all cursor-pointer ${sidebarTab === 'indexer'
+              className={`flex-1 text-center font-bold font-display py-2 text-xs tracking-wider border-b-2 transition-all cursor-pointer ${
+                sidebarTab === 'indexer'
                   ? 'text-indigo-400 border-indigo-500 shadow-[inset_0_-2px_0_0_rgb(99,102,241)]'
                   : 'text-gray-500 border-transparent hover:text-gray-300'
-                }`}
+              }`}
             >
               UPLOAD
             </button>
           </div>
 
-          {/* Conditional Tab Rendering */}
           {sidebarTab === 'catalog' ? (
             <VideosCatalog
               videos={videos}
@@ -330,7 +236,7 @@ export default function App() {
               onIndexStart={() => setIndexingLoading(true)}
               onIndexSuccess={() => {
                 setIndexingLoading(false);
-                setSidebarTab('catalog'); // Swap back to catalog to show new index!
+                setSidebarTab('catalog');
                 fetchVideos();
               }}
               onIndexError={() => setIndexingLoading(false)}
@@ -340,25 +246,19 @@ export default function App() {
           )}
         </aside>
 
-        {/* Left Splitter Divider */}
         <div
           onMouseDown={handleLeftMouseDown}
           className="hidden lg:flex items-center justify-center w-4 cursor-col-resize group select-none relative z-20 hover:scale-x-110 transition-transform"
         >
-          {/* Splitter track visual */}
           <div className="w-px h-full bg-white/5 group-hover:bg-indigo-500/30 group-active:bg-indigo-500/50 rounded transition-colors" />
-          {/* Grab handle grip */}
           <div className="absolute w-1.5 h-8 bg-white/10 group-hover:bg-indigo-400 group-active:bg-indigo-500 rounded-full border border-white/10 shadow-[0_0_10px_rgba(99,102,241,0.2)] flex flex-col items-center justify-center gap-1 transition-all">
-            <span className="w-0.5 h-0.5 rounded-full bg-white/40"></span>
-            <span className="w-0.5 h-0.5 rounded-full bg-white/40"></span>
-            <span className="w-0.5 h-0.5 rounded-full bg-white/40"></span>
+            <span className="w-0.5 h-0.5 rounded-full bg-white/40" />
+            <span className="w-0.5 h-0.5 rounded-full bg-white/40" />
+            <span className="w-0.5 h-0.5 rounded-full bg-white/40" />
           </div>
         </div>
 
-        {/* Workspace containing Center Panel and Right Sidebar */}
         <div className="grow flex-1 flex flex-col lg:flex-row min-h-0 overflow-hidden relative gap-6 lg:gap-0">
-
-          {/* Center Panel (Timeline Explorer) */}
           <main className="grow flex-1 glass-panel p-6 rounded-2xl flex flex-col min-h-0">
             <TimelineExplorer
               selectedVideo={selectedVideo}
@@ -370,22 +270,18 @@ export default function App() {
             />
           </main>
 
-          {/* Interactive Splitter Divider */}
           <div
             onMouseDown={handleMouseDown}
             className="hidden lg:flex items-center justify-center w-4 cursor-col-resize group select-none relative z-20 hover:scale-x-110 transition-transform"
           >
-            {/* Splitter track visual */}
             <div className="w-px h-full bg-white/5 group-hover:bg-indigo-500/30 group-active:bg-indigo-500/50 rounded transition-colors" />
-            {/* Grab handle grip */}
             <div className="absolute w-1.5 h-8 bg-white/10 group-hover:bg-indigo-400 group-active:bg-indigo-500 rounded-full border border-white/10 shadow-[0_0_10px_rgba(99,102,241,0.2)] flex flex-col items-center justify-center gap-1 transition-all">
-              <span className="w-0.5 h-0.5 rounded-full bg-white/40"></span>
-              <span className="w-0.5 h-0.5 rounded-full bg-white/40"></span>
-              <span className="w-0.5 h-0.5 rounded-full bg-white/40"></span>
+              <span className="w-0.5 h-0.5 rounded-full bg-white/40" />
+              <span className="w-0.5 h-0.5 rounded-full bg-white/40" />
+              <span className="w-0.5 h-0.5 rounded-full bg-white/40" />
             </div>
           </div>
 
-          {/* Right Sidebar (Summary Console) */}
           <aside className="resizable-right-panel w-full lg:w-auto shrink-0 glass-panel p-5 rounded-2xl flex flex-col min-h-0">
             <SummaryConsole
               selectedChapter={selectedChapter}
@@ -393,7 +289,6 @@ export default function App() {
             />
           </aside>
 
-          {/* Inline styles to drive the width responsively based on state */}
           <style>{`
             @media (min-width: 1024px) {
               .resizable-left-panel {
@@ -407,9 +302,8 @@ export default function App() {
         </div>
       </div>
 
-      {/* Footer */}
       <footer className="border-t border-white/5 bg-gray-950/20 py-3 px-6 text-center text-[10px] text-gray-500">
-        © 2026 Echochunk Video Chapter Indexer • Powered by Google Gemini and local audio transcribers
+        2026 Echochunk Video Chapter Indexer - Powered by Google Gemini and local audio transcribers
       </footer>
     </div>
   );

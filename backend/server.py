@@ -5,6 +5,7 @@ import os
 import urllib.parse
 import mimetypes
 import sys
+import re
 
 # Add current workspace to path to import src modules
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -14,6 +15,27 @@ from src.indexer import index_video, analyse_video
 from main import format_timestamp
 
 PORT = 8000
+
+
+def normalize_summary_text(text: str) -> str:
+    """Remove markdown emphasis markers from generated summaries."""
+    if not text:
+        return text
+
+    cleaned_lines = []
+    for line in text.splitlines():
+        stripped = line.lstrip()
+        indent = line[:len(line) - len(stripped)]
+
+        if stripped.startswith("* "):
+            stripped = f"- {stripped[2:]}"
+        elif stripped.startswith("• "):
+            stripped = f"- {stripped[2:]}"
+
+        stripped = stripped.replace("**", "").replace("*", "")
+        cleaned_lines.append(f"{indent}{stripped}")
+
+    return "\n".join(cleaned_lines).strip()
 
 class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
     def end_headers(self):
@@ -382,6 +404,7 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
                     # Parse out headers
                     parts = cached_content.split("=" * 65 + "\n\n", 1)
                     summary_text = parts[1] if len(parts) == 2 else cached_content
+                    summary_text = normalize_summary_text(summary_text)
                     self.send_json_response({
                         "summary": summary_text,
                         "chapter_id": resolved_chapter_id,
@@ -445,7 +468,7 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
                     else:
                         raise api_err
 
-                summary_text = response.text.strip()
+                summary_text = normalize_summary_text(response.text.strip())
 
                 # Write to cache
                 file_content = (

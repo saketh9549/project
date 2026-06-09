@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { apiUrl } from '../lib/api';
 
 export default function VideoIndexer({
   indexingLoading,
@@ -49,7 +50,7 @@ export default function VideoIndexer({
     }, 200);
     
     try {
-      const response = await fetch('/api/index', {
+      const response = await fetch(apiUrl('/api/index'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ video_path: path.trim(), language: lang.trim() || undefined })
@@ -117,7 +118,7 @@ export default function VideoIndexer({
     showSuccess(`Uploading '${file.name}' to server uploads folder...`);
 
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", `/api/upload?filename=${encodeURIComponent(file.name)}`, true);
+    xhr.open("POST", apiUrl(`/api/upload?filename=${encodeURIComponent(file.name)}`), true);
     
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable) {
