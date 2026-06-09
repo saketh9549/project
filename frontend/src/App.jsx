@@ -113,7 +113,7 @@ export default function App() {
 
   const fetchVideos = async () => {
     try {
-      const response = await fetch('/api/videos');
+      const response = await fetch(apiUrl('/api/videos'));
       if (!response.ok) throw new Error('Failed to fetch videos');
       const data = await response.json();
       setVideos(data);
@@ -130,10 +130,13 @@ export default function App() {
     showError(null);
 
     try {
-      const response = await fetch(`/api/videos/${video.id}`);
+      const response = await fetch(apiUrl(`/api/videos/${video.id}`));
       if (!response.ok) throw new Error('Failed to load video chapters');
       const data = await response.json();
       setChapters(data.chapters || []);
+      if (data.video) {
+        setSelectedVideo(data.video);
+      }
       if (data.video && data.video.overall_summary) {
         setOverallSummary(data.video.overall_summary);
       }
@@ -147,7 +150,7 @@ export default function App() {
     if (!confirm('Are you sure you want to delete this video and all its indexed moments from the database?')) return;
 
     try {
-      const res = await fetch('/api/delete', {
+      const res = await fetch(apiUrl('/api/delete'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ video_id: videoId })
@@ -175,7 +178,7 @@ export default function App() {
     showSuccess('Analyzing boundaries with Gemini... Please wait.');
 
     try {
-      const response = await fetch('/api/analyse', {
+      const response = await fetch(apiUrl('/api/analyse'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ video_id: selectedVideo.id })
@@ -200,7 +203,7 @@ export default function App() {
     showSuccess('Generating overall summary with Gemini... Please wait.');
 
     try {
-      const response = await fetch('/api/overall-summary', {
+      const response = await fetch(apiUrl('/api/overall-summary'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ video_id: selectedVideo.id })
@@ -440,10 +443,6 @@ export default function App() {
               chapters={chapters}
               selectedChapter={selectedChapter}
               onSelectChapter={setSelectedChapter}
-              handleAnalyseVideo={handleAnalyseVideo}
-              analysisLoading={analysisLoading}
-              handleGenerateOverallSummary={handleGenerateOverallSummary}
-              overallSummaryLoading={overallSummaryLoading}
             />
           </main>
 
@@ -501,7 +500,7 @@ export default function App() {
 
       {/* Footer */}
       <footer className="border-t border-white/5 bg-gray-950/20 py-3 px-6 text-center text-[10px] text-gray-500">
-        © 2026 Echochunk Video Chapter Indexer • Powered by Google Gemini and local audio transcribers
+        © 2026 Summarix Video Chapter Indexer • Powered by Google Gemini and local audio transcribers
       </footer>
     </div>
   );

@@ -305,32 +305,23 @@ class TestGeminiChunkingFallback(unittest.TestCase):
         mock_client.models.generate_content.side_effect = generate_content_side_effect
         
         # Call chunk_semantically_with_gemini
-        import tempfile
-        import os
         from src.indexer import chunk_semantically_with_gemini
         
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, encoding='utf-8') as tmp:
-            tmp.write("[00:00 -> 00:10] Hello world\n")
-            transcript_path = tmp.name
-            
-        try:
-            segments = [{"start": 0.0, "end": 10.0, "text": "Hello world"}]
-            blocks = chunk_semantically_with_gemini(transcript_path, segments, 10.0)
-            
-            # Verify blocks was correctly reconstructed using the fallback model
-            self.assertEqual(len(blocks), 1)
-            self.assertEqual(blocks[0]["topic_title"], "Introduction")
-            self.assertEqual(blocks[0]["text"], "Hello world")
-            
-            # Verify that client.models.generate_content was called twice
-            self.assertEqual(mock_client.models.generate_content.call_count, 2)
-            
-            calls = mock_client.models.generate_content.call_args_list
-            self.assertEqual(calls[0].kwargs["model"], "gemini-1.5-flash")
-            self.assertEqual(calls[1].kwargs["model"], "gemini-3.1-flash-lite")
-        finally:
-            if os.path.exists(transcript_path):
-                os.remove(transcript_path)
+        timeline_str = "[00:00 -> 00:10] Hello world\n"
+        segments = [{"start": 0.0, "end": 10.0, "text": "Hello world"}]
+        blocks = chunk_semantically_with_gemini(timeline_str, segments, 10.0)
+        
+        # Verify blocks was correctly reconstructed using the fallback model
+        self.assertEqual(len(blocks), 1)
+        self.assertEqual(blocks[0]["topic_title"], "Introduction")
+        self.assertEqual(blocks[0]["text"], "Hello world")
+        
+        # Verify that client.models.generate_content was called twice
+        self.assertEqual(mock_client.models.generate_content.call_count, 2)
+        
+        calls = mock_client.models.generate_content.call_args_list
+        self.assertEqual(calls[0].kwargs["model"], "gemini-1.5-flash")
+        self.assertEqual(calls[1].kwargs["model"], "gemini-3.1-flash-lite")
 
     @patch("src.indexer.GEMINI_AVAILABLE", True)
     @patch("os.getenv")
@@ -351,25 +342,16 @@ class TestGeminiChunkingFallback(unittest.TestCase):
         mock_client.models.generate_content.side_effect = Exception("All models failed")
         
         # Call chunk_semantically_with_gemini
-        import tempfile
-        import os
         from src.indexer import chunk_semantically_with_gemini
         
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, encoding='utf-8') as tmp:
-            tmp.write("[00:00 -> 00:10] Hello world\n")
-            transcript_path = tmp.name
-            
-        try:
-            segments = [{"start": 0.0, "end": 10.0, "text": "Hello world"}]
-            blocks = chunk_semantically_with_gemini(transcript_path, segments, 10.0)
-            
-            # Verify it fell back to local chunking (Section 1)
-            self.assertEqual(len(blocks), 1)
-            self.assertEqual(blocks[0]["topic_title"], "Section 1")
-            self.assertEqual(blocks[0]["text"], "Hello world")
-        finally:
-            if os.path.exists(transcript_path):
-                os.remove(transcript_path)
+        timeline_str = "[00:00 -> 00:10] Hello world\n"
+        segments = [{"start": 0.0, "end": 10.0, "text": "Hello world"}]
+        blocks = chunk_semantically_with_gemini(timeline_str, segments, 10.0)
+        
+        # Verify it fell back to local chunking (Section 1)
+        self.assertEqual(len(blocks), 1)
+        self.assertEqual(blocks[0]["topic_title"], "Section 1")
+        self.assertEqual(blocks[0]["text"], "Hello world")
 
 if __name__ == "__main__":
     unittest.main()

@@ -11,10 +11,6 @@ export default function VideoIndexer({
 }) {
   const [videoPath, setVideoPath] = useState('');
   const [language, setLanguage] = useState('');
-  
-  // Upload states
-  const [uploadProgress, setUploadProgress] = useState(null);
-  const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
 
   // Simulated Indexing progress states
@@ -101,120 +97,23 @@ export default function VideoIndexer({
     e.stopPropagation();
     setDragActive(false);
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      uploadFile(e.dataTransfer.files[0]);
+      const file = e.dataTransfer.files[0];
+      const path = file.path || file.name;
+      setVideoPath(path);
+      showSuccess(`Selected: '${file.name}'. Starting indexing...`);
+      runIndexing(path, language);
     }
   };
 
   const handleFileChange = (e) => {
     if (e.target.files && e.target.files[0]) {
-      uploadFile(e.target.files[0]);
+      const file = e.target.files[0];
+      const path = file.path || file.name;
+      setVideoPath(path);
+      showSuccess(`Selected: '${file.name}'. Starting indexing...`);
+      runIndexing(path, language);
     }
   };
-
-  const uploadFile = (file) => {
-    setUploading(true);
-    setUploadProgress(0);
-    showError(null);
-    showSuccess(`Uploading '${file.name}' to server uploads folder...`);
-
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", apiUrl(`/api/upload?filename=${encodeURIComponent(file.name)}`), true);
-    
-    xhr.upload.onprogress = (event) => {
-      if (event.lengthComputable) {
-        const percentComplete = Math.round((event.loaded / event.total) * 100);
-        setUploadProgress(percentComplete);
-      }
-    };
-
-    xhr.onload = () => {
-      setUploading(false);
-      setUploadProgress(null);
-      if (xhr.status === 200) {
-        try {
-          const data = JSON.parse(xhr.responseText);
-          setVideoPath(data.file_path);
-          showSuccess(`Uploaded successfully! Starting indexing...`);
-          // Automatically start indexing!
-          runIndexing(data.file_path, language);
-        } catch (err) {
-          showError("Upload response parsing failed.");
-        }
-      } else {
-        try {
-          const data = JSON.parse(xhr.responseText);
-          showError(`Upload failed: ${data.error || 'Server error'}`);
-        } catch (err) {
-          showError(`Upload failed with status ${xhr.status}`);
-        }
-      }
-    };
-
-    xhr.onerror = () => {
-      setUploading(false);
-      setUploadProgress(null);
-      showError("Upload network error.");
-    };
-
-    xhr.send(file);
-  };
-
-  if (uploading) {
-    return (
-      <div className="flex-grow flex flex-col items-center justify-center p-6 text-center animate-fade-in h-[350px]">
-        {/* Glowing Progress Circle Ring */}
-        <div className="relative h-28 w-28 mb-6 flex items-center justify-center">
-          {/* Pulsing glow background */}
-          <div className="absolute inset-0 rounded-full bg-cyan-500/5 blur-md animate-pulse" />
-          
-          {/* SVG Progress Ring */}
-          <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
-            {/* Track Circle */}
-            <circle
-              cx="50"
-              cy="50"
-              r="40"
-              className="stroke-white/5"
-              strokeWidth="6"
-              fill="transparent"
-            />
-            {/* Indicator Circle */}
-            <circle
-              cx="50"
-              cy="50"
-              r="40"
-              className="stroke-cyan-400 transition-all duration-150 ease-out"
-              strokeWidth="6"
-              fill="transparent"
-              strokeDasharray={251.2}
-              strokeDashoffset={251.2 - (251.2 * (uploadProgress || 0)) / 100}
-              strokeLinecap="round"
-            />
-          </svg>
-          {/* Centered Percentage Text */}
-          <span className="absolute text-xl font-bold font-mono text-white tracking-tighter">
-            {uploadProgress || 0}%
-          </span>
-        </div>
-
-        {/* Progress Text Description */}
-        <h3 className="font-bold text-xs text-white font-display uppercase tracking-wider mb-1">
-          Uploading media file...
-        </h3>
-        <p className="text-[10px] text-gray-500 max-w-[200px] leading-relaxed mx-auto">
-          Transferring your file to the server workspace uploads folder.
-        </p>
-
-        {/* Horizontal glowing loading bar */}
-        <div className="w-full max-w-[180px] bg-gray-900 rounded-full h-1 overflow-hidden mt-6 border border-white/5 mx-auto">
-          <div
-            className="bg-gradient-to-r from-cyan-500 to-indigo-400 h-1 rounded-full transition-all duration-150"
-            style={{ width: `${uploadProgress || 0}%` }}
-          />
-        </div>
-      </div>
-    );
-  }
 
   if (indexingLoading) {
     return (
@@ -294,28 +193,38 @@ export default function VideoIndexer({
           accept="audio/*,video/*"
           onChange={handleFileChange}
           className="hidden"
-          disabled={uploading || indexingLoading}
+          disabled={indexingLoading}
         />
         
         <svg className="w-6 h-6 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
         </svg>
         <div className="text-[11px] text-gray-300">
-          <span className="font-semibold text-indigo-400">Click to upload</span> or drag & drop
+          <span className="font-semibold text-indigo-400">Click to select file</span> or drag & drop
         </div>
-        <div className="text-[9px] text-gray-500 font-mono">Accepts MP4, MP3, WAV, MKV...</div>
+        <div className="text-[9px] text-gray-500 font-mono">Selects local reference path</div>
       </div>
-
-      {/* Selected target file path display status */}
-      {videoPath && (
-        <div className="bg-indigo-950/20 border border-indigo-500/10 rounded-lg p-3 text-xs flex flex-col gap-1 select-text">
-          <span className="font-semibold text-cyan-400">Target File Path:</span>
-          <span className="font-mono break-all text-gray-300">{videoPath}</span>
-        </div>
-      )}
 
       {/* Indexing Action Form */}
       <form onSubmit={handleIndexVideo} className="flex flex-col gap-3">
+        {videoPath && (
+          <div className="bg-indigo-950/20 border border-indigo-500/10 rounded-lg p-2.5 px-3.5 text-xs flex items-center justify-between select-none animate-fade-in mb-1">
+            <div className="flex flex-col gap-0.5 min-w-0">
+              <span className="text-[10px] font-semibold text-cyan-400 uppercase tracking-wider">Selected Video</span>
+              <span className="font-mono text-gray-300 truncate text-xs">
+                {videoPath.split(/[/\\]/).pop()}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setVideoPath('')}
+              className="text-gray-500 hover:text-white transition-colors cursor-pointer text-xs p-1"
+            >
+              Clear
+            </button>
+          </div>
+        )}
+
         <div className="flex flex-col gap-1.5">
           <label className="text-[10px] font-semibold text-gray-400">Language Code (Optional)</label>
           <input
@@ -324,12 +233,12 @@ export default function VideoIndexer({
             value={language}
             onChange={(e) => setLanguage(e.target.value)}
             className="w-full bg-gray-900/60 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500 transition-all placeholder-gray-700"
-            disabled={indexingLoading || uploading}
+            disabled={indexingLoading}
           />
         </div>
         <button
           type="submit"
-          disabled={indexingLoading || uploading || !videoPath.trim()}
+          disabled={indexingLoading || !videoPath.trim()}
           className="w-full mt-2 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 active:scale-[0.98] disabled:opacity-50 disabled:scale-100 disabled:pointer-events-none text-white font-bold text-xs py-2 rounded-lg transition-all shadow-[0_3px_12px_rgba(99,102,241,0.2)] flex items-center justify-center gap-2 cursor-pointer"
         >
           {indexingLoading ? (
@@ -338,7 +247,7 @@ export default function VideoIndexer({
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
-              <span>Indexing Audio...</span>
+              <span>Indexing Video...</span>
             </>
           ) : (
             <span>Index Video</span>
@@ -359,56 +268,56 @@ export default function VideoIndexer({
         </p>
         <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-[10px] font-mono">
           <div 
-            onClick={() => !indexingLoading && !uploading && setLanguage('en')}
+            onClick={() => !indexingLoading && setLanguage('en')}
             className="flex justify-between items-center border-b border-white/5 pb-1 hover:border-indigo-500/30 hover:bg-white/5 px-1 py-0.5 rounded transition-all cursor-pointer group"
           >
             <span className="text-gray-400 group-hover:text-gray-300 transition-colors">English</span>
             <span className="lang-badge">en</span>
           </div>
           <div 
-            onClick={() => !indexingLoading && !uploading && setLanguage('de')}
+            onClick={() => !indexingLoading && setLanguage('de')}
             className="flex justify-between items-center border-b border-white/5 pb-1 hover:border-indigo-500/30 hover:bg-white/5 px-1 py-0.5 rounded transition-all cursor-pointer group"
           >
             <span className="text-gray-400 group-hover:text-gray-300 transition-colors">German</span>
             <span className="lang-badge">de</span>
           </div>
           <div 
-            onClick={() => !indexingLoading && !uploading && setLanguage('es')}
+            onClick={() => !indexingLoading && setLanguage('es')}
             className="flex justify-between items-center border-b border-white/5 pb-1 hover:border-indigo-500/30 hover:bg-white/5 px-1 py-0.5 rounded transition-all cursor-pointer group"
           >
             <span className="text-gray-400 group-hover:text-gray-300 transition-colors">Spanish</span>
             <span className="lang-badge">es</span>
           </div>
           <div 
-            onClick={() => !indexingLoading && !uploading && setLanguage('fr')}
+            onClick={() => !indexingLoading && setLanguage('fr')}
             className="flex justify-between items-center border-b border-white/5 pb-1 hover:border-indigo-500/30 hover:bg-white/5 px-1 py-0.5 rounded transition-all cursor-pointer group"
           >
             <span className="text-gray-400 group-hover:text-gray-300 transition-colors">French</span>
             <span className="lang-badge">fr</span>
           </div>
           <div 
-            onClick={() => !indexingLoading && !uploading && setLanguage('it')}
+            onClick={() => !indexingLoading && setLanguage('it')}
             className="flex justify-between items-center border-b border-white/5 pb-1 hover:border-indigo-500/30 hover:bg-white/5 px-1 py-0.5 rounded transition-all cursor-pointer group"
           >
             <span className="text-gray-400 group-hover:text-gray-300 transition-colors">Italian</span>
             <span className="lang-badge">it</span>
           </div>
           <div 
-            onClick={() => !indexingLoading && !uploading && setLanguage('ja')}
+            onClick={() => !indexingLoading && setLanguage('ja')}
             className="flex justify-between items-center border-b border-white/5 pb-1 hover:border-indigo-500/30 hover:bg-white/5 px-1 py-0.5 rounded transition-all cursor-pointer group"
           >
             <span className="text-gray-400 group-hover:text-gray-300 transition-colors">Japanese</span>
             <span className="lang-badge">ja</span>
           </div>
           <div 
-            onClick={() => !indexingLoading && !uploading && setLanguage('zh')}
+            onClick={() => !indexingLoading && setLanguage('zh')}
             className="flex justify-between items-center border-b border-white/5 pb-1 hover:border-indigo-500/30 hover:bg-white/5 px-1 py-0.5 rounded transition-all cursor-pointer group"
           >
             <span className="text-gray-400 group-hover:text-gray-300 transition-colors">Mandarin</span>
             <span className="lang-badge">zh</span>
           </div>
           <div 
-            onClick={() => !indexingLoading && !uploading && setLanguage('auto')}
+            onClick={() => !indexingLoading && setLanguage('auto')}
             className="flex justify-between items-center border-b border-white/5 pb-1 hover:border-indigo-500/30 hover:bg-white/5 px-1 py-0.5 rounded transition-all cursor-pointer group"
           >
             <span className="text-gray-400 group-hover:text-gray-300 transition-colors">Auto-Detect</span>

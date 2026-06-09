@@ -18,6 +18,42 @@ from main import format_timestamp
 
 PORT = 8000
 
+def resolve_local_file_path(video_path):
+    if not video_path:
+        return None
+    # If the path already exists, return its absolute path
+    if os.path.exists(video_path):
+        return os.path.abspath(video_path)
+        
+    filename = os.path.basename(video_path)
+    
+    # 1. Search common user directories on Windows (Downloads, Documents, Videos)
+    home_dir = os.path.expanduser("~")
+    common_dirs = [
+        os.path.join(home_dir, "Downloads"),
+        os.path.join(home_dir, "Documents"),
+        os.path.join(home_dir, "Videos"),
+    ]
+    for c_dir in common_dirs:
+        if os.path.exists(c_dir):
+            direct_check = os.path.join(c_dir, filename)
+            if os.path.exists(direct_check) and os.path.isfile(direct_check):
+                print(f"[Resolver] Resolved '{video_path}' to '{direct_check}'")
+                return direct_check
+                
+    # 2. Search project workspace
+    backend_dir = os.path.dirname(os.path.abspath(__file__))
+    workspace_dir = os.path.dirname(backend_dir)
+    for root, dirs, files in os.walk(workspace_dir):
+        # Skip standard large/ignored directories
+        dirs[:] = [d for d in dirs if d not in ['.git', 'node_modules', 'dist', 'temp', 'data']]
+        if filename in files:
+            resolved_path = os.path.join(root, filename)
+            print(f"[Resolver] Resolved '{video_path}' to '{resolved_path}'")
+            return resolved_path
+            
+    return None
+
 class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
     def _get_owner_email(self, parsed_url, body=None):
         query_params = urllib.parse.parse_qs(parsed_url.query)
@@ -49,9 +85,105 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
 
         # Route API requests
         if path.startswith("/api/"):
-            self.handle_api_get(path, parsed_url)
+            if path == "/api/stream-local-video":
+                self.handle_stream_local_video(parsed_url)
+            else:
+                self.handle_api_get(path, parsed_url)
         else:
-            self.send_error(404, "Not Found - Backend API Only")
+            self.handle_static_get(path)
+
+    def handle_stream_local_video(self, parsed_url):
+        query_params = urllib.parse.parse_qs(parsed_url.query)
+        video_path = query_params.get("path", [""])[0].strip()
+        
+        if not video_path:
+            self.send_json_response({"error": "path parameter is required"}, 400)
+            return
+            
+        if not os.path.exists(video_path) or not os.path.isfile(video_path):
+            self.send_json_response({"error": f"Local video file not found at path: {video_path}"}, 404)
+            return
+            
+        try:
+            file_size = os.path.getsize(video_path)
+            content_type, _ = mimetypes.guess_type(video_path)
+            if not content_type:
+                content_type = "video/mp4"
+                
+            range_header = self.headers.get("Range")
+            
+            if range_header and range_header.startswith("bytes="):
+                # Parse Range header: e.g., bytes=0-1000, bytes=1000-, bytes=-1000
+                range_val = range_header.split("=")[1].strip()
+                parts = range_val.split("-")
+                start_str = parts[0].strip()
+                end_str = parts[1].strip() if len(parts) > 1 else ""
+                
+                if not start_str and not end_str:
+                    self.send_response(416)
+                    self.send_header("Content-Range", f"bytes */{file_size}")
+                    self.end_headers()
+                    return
+                    
+                if start_str:
+                    start = int(start_str)
+                else:
+                    start = file_size - int(end_str)
+                    
+                if end_str:
+                    end = int(end_str)
+                else:
+                    end = file_size - 1
+                    
+                # Sanitize ranges
+                if start < 0 or start >= file_size or end < start:
+                    self.send_response(416)
+                    self.send_header("Content-Range", f"bytes */{file_size}")
+                    self.end_headers()
+                    return
+                    
+                if end >= file_size:
+                    end = file_size - 1
+                    
+                chunk_length = end - start + 1
+                
+                self.send_response(206)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Content-Range", f"bytes {start}-{end}/{file_size}")
+                self.send_header("Content-Length", str(chunk_length))
+                self.send_header("Accept-Ranges", "bytes")
+                self.end_headers()
+                
+                # Stream the chunk
+                with open(video_path, "rb") as f:
+                    f.seek(start)
+                    remaining = chunk_length
+                    buffer_size = 64 * 1024
+                    while remaining > 0:
+                        chunk_to_read = min(buffer_size, remaining)
+                        data = f.read(chunk_to_read)
+                        if not data:
+                            break
+                        self.wfile.write(data)
+                        remaining -= len(data)
+            else:
+                # Standard full file response
+                self.send_response(200)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Content-Length", str(file_size))
+                self.send_header("Accept-Ranges", "bytes")
+                self.end_headers()
+                
+                with open(video_path, "rb") as f:
+                    buffer_size = 64 * 1024
+                    while True:
+                        data = f.read(buffer_size)
+                        if not data:
+                            break
+                        self.wfile.write(data)
+        except Exception as e:
+            # Handle socket errors / connection resets gracefully
+            print(f"[Streaming Info] Streaming connection reset or failed: {e}")
 
     def do_POST(self):
         parsed_url = urllib.parse.urlparse(self.path)
@@ -233,6 +365,8 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
                         "id": v["id"],
                         "file_name": v["file_name"],
                         "file_path": v["file_path"],
+                        "absolute_local_path": v.get("absolute_local_path", ""),
+                        "timeline_index": v.get("timeline_index", []),
                         "duration": v["duration"],
                         "duration_str": format_timestamp(v["duration"]),
                         "created_at": v["created_at"]
@@ -281,6 +415,8 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
                         "id": video["id"],
                         "file_name": video["file_name"],
                         "file_path": video["file_path"],
+                        "absolute_local_path": video.get("absolute_local_path", ""),
+                        "timeline_index": video.get("timeline_index", []),
                         "duration": video["duration"],
                         "duration_str": format_timestamp(video["duration"]),
                         "overall_summary": video.get("overall_summary", "")
@@ -379,17 +515,26 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
                 self.send_json_response({"error": "owner_email is required"}, 400)
                 return
 
-            if not os.path.exists(video_path):
-                self.send_json_response({"error": f"Local video file not found at path: {video_path}"}, 404)
+            resolved_path = resolve_local_file_path(video_path)
+            if not resolved_path:
+                self.send_json_response({"error": f"Local video file not found at path or in common folders: {video_path}"}, 404)
                 return
 
             try:
-                print(f"[Server API] Indexing video: {video_path} ...")
-                video_id, blocks = index_video(video_path, language=language, owner_email=owner_email)
+                print(f"[Server API] Indexing video: {resolved_path} ...")
+                video_id, blocks = index_video(resolved_path, language=language, owner_email=owner_email)
+                
+                # Automatically run semantic topic boundary analysis using Gemini
+                try:
+                    print(f"[Server API] Automatically analyzing video ID: {video_id} ...")
+                    analyse_video(video_id, owner_email=owner_email)
+                except Exception as ex:
+                    print(f"[Server API Warning] Automatic boundary analysis failed: {ex}")
+                
                 self.send_json_response({
                     "success": True,
                     "video_id": video_id,
-                    "message": f"Successfully indexed {len(blocks)} blocks."
+                    "message": "Successfully indexed video and ran semantic boundary analysis."
                 })
             except Exception as e:
                 self.send_json_response({"error": f"Failed to index video: {e}"}, 500)

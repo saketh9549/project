@@ -46,6 +46,19 @@ def _map_catalog_to_sqlite_style(doc: Dict[str, Any]) -> Dict[str, Any]:
     """Helper to convert MongoDB Catalog document back to SQLite schema keys for compatibility."""
     if not doc:
         return {}
+    
+    # Process timelineIndex array to match serialization expectations if needed
+    raw_timeline = doc.get("timelineIndex", [])
+    timeline_index = []
+    if isinstance(raw_timeline, list):
+        for item in raw_timeline:
+            if isinstance(item, dict):
+                timeline_index.append({
+                    "timestamp": item.get("timestamp", ""),
+                    "title": item.get("title", ""),
+                    "seconds": item.get("seconds", 0)
+                })
+            
     return {
         "id": str(doc["_id"]),
         "file_path": doc.get("filePath", ""),
@@ -55,7 +68,9 @@ def _map_catalog_to_sqlite_style(doc: Dict[str, Any]) -> Dict[str, Any]:
         "created_at": doc.get("createdAt", doc.get("updatedAt", datetime.now())).isoformat() if isinstance(doc.get("createdAt"), datetime) else str(doc.get("createdAt", "")),
         "upload_status": doc.get("uploadStatus", "pending"),
         "raw_transcript": doc.get("rawTranscript", ""),
-        "overall_summary": doc.get("overallSummary", "")
+        "overall_summary": doc.get("overallSummary", ""),
+        "absolute_local_path": doc.get("absoluteLocalPath", ""),
+        "timeline_index": timeline_index
     }
 
 def _map_index_to_sqlite_style(doc: Dict[str, Any]) -> Dict[str, Any]:
@@ -72,7 +87,7 @@ def _map_index_to_sqlite_style(doc: Dict[str, Any]) -> Dict[str, Any]:
         "status": doc.get("status", "raw")
     }
 
-def insert_video(video_id: str, file_path: str, file_name: str, duration: float, owner_email: str = "", upload_status: str = "indexed", raw_transcript: str = "", overall_summary: str = "") -> bool:
+def insert_video(video_id: str, file_path: str, file_name: str, duration: float, owner_email: str = "", upload_status: str = "indexed", raw_transcript: str = "", overall_summary: str = "", absolute_local_path: str = None) -> bool:
     """Inserts or replaces a video (catalog) document."""
     db = get_db()
     try:
@@ -88,10 +103,14 @@ def insert_video(video_id: str, file_path: str, file_name: str, duration: float,
         
         existing = db.catalogs.find_one({"_id": oid})
         
+        if absolute_local_path is None:
+            absolute_local_path = file_path
+            
         update_fields = {
             "fileName": file_name,
             "fileType": file_type,
             "filePath": file_path,
+            "absoluteLocalPath": absolute_local_path,
             "duration": duration,
             "ownerEmail": email,
             "updatedAt": datetime.now()
@@ -140,19 +159,47 @@ def insert_semantic_blocks(video_id: str, blocks: List[Dict[str, Any]]) -> bool:
         db.indices.delete_many({"catalogId": catalog_oid})
         
         docs = []
+        timeline_index = []
         for b in blocks:
+            start_time = float(b['start_time'])
+            end_time = float(b['end_time'])
+            
+            # Format timestamp helper locally to avoid circular import with indexer.py
+            h = int(start_time // 3600)
+            m = int((start_time % 3600) // 60)
+            s = int(start_time % 60)
+            timestamp_str = f"{h:02d}:{m:02d}:{s:02d}" if h > 0 else f"{m:02d}:{s:02d}"
+            
+            topic = b.get('topic_title', 'Section')
+            
             docs.append({
                 "catalogId": catalog_oid,
-                "startTime": float(b['start_time']),
-                "endTime": float(b['end_time']),
-                "topicTitle": b.get('topic_title', 'Section'),
+                "startTime": start_time,
+                "endTime": end_time,
+                "topicTitle": topic,
                 "text": b['text'],
                 "status": b.get('status', 'raw'),
                 "createdAt": datetime.now(),
                 "updatedAt": datetime.now()
             })
+            
+            timeline_index.append({
+                "timestamp": timestamp_str,
+                "title": topic,
+                "seconds": int(start_time)
+            })
+            
         if docs:
             db.indices.insert_many(docs)
+            
+        # Update Catalog's timelineIndex subdocument array
+        db.catalogs.update_one(
+            {"_id": catalog_oid},
+            {"$set": {
+                "timelineIndex": timeline_index,
+                "updatedAt": datetime.now()
+            }}
+        )
         return True
     except Exception as e:
         print(f"[DB Error] Failed to insert semantic blocks: {e}")

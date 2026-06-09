@@ -47,13 +47,24 @@ const catalogSchema = new mongoose.Schema({
   overallSummary: {
     type: String,
     default: ''
-  }
+  },
+  absoluteLocalPath: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+  timelineIndex: [{
+    timestamp: { type: String, trim: true },
+    title: { type: String, trim: true },
+    seconds: { type: Number }
+  }]
 }, {
   timestamps: true
 });
 
 // Single field index for fast owner queries
 catalogSchema.index({ ownerEmail: 1 });
+catalogSchema.index({ 'timelineIndex.seconds': 1 });
 
 const Catalog = mongoose.model('Catalog', catalogSchema);
 module.exports = Catalog;
