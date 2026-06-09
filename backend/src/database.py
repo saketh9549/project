@@ -1,194 +1,395 @@
-import sqlite3
 import os
+import urllib.parse
 from typing import List, Dict, Any, Optional
 from datetime import datetime
-from src.config import get_db_path
+from pymongo import MongoClient
+from bson.objectid import ObjectId
+from bson.errors import InvalidId
+from src.config import get_mongodb_uri
 
-def get_db_connection() -> sqlite3.Connection:
-    """Establishes and returns a database connection with foreign key support enabled."""
-    conn = sqlite3.connect(get_db_path())
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON;")
-    return conn
+_client = None
+
+def get_mongodb_client() -> MongoClient:
+    """Gets or initializes the global MongoClient."""
+    global _client
+    if _client is None:
+        uri = get_mongodb_uri()
+        _client = MongoClient(uri)
+    return _client
+
+def get_db():
+    """Returns the MongoDB database object based on the configured URI."""
+    client = get_mongodb_client()
+    uri = get_mongodb_uri()
+    parsed = urllib.parse.urlparse(uri)
+    db_name = parsed.path.strip('/')
+    if not db_name:
+        db_name = 'test'  # Default to 'test' to match Atlas/Mongoose default behavior
+    return client[db_name]
 
 def init_db():
-    """Initializes the database schema if it doesn't already exist."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    """Initializes the MongoDB collections and creates indexes."""
+    db = get_db()
     
-    # Create videos table
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS videos (
-            id TEXT PRIMARY KEY,
-            file_path TEXT UNIQUE NOT NULL,
-            file_name TEXT NOT NULL,
-            duration REAL NOT NULL,
-            owner_email TEXT NOT NULL DEFAULT '',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
+    # 1. catalogs collection
+    db.catalogs.create_index("filePath", unique=True)
+    db.catalogs.create_index("ownerEmail")
     
-    # Create semantic_blocks table with topic_title
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS semantic_blocks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            video_id TEXT NOT NULL,
-            start_time REAL NOT NULL,
-            end_time REAL NOT NULL,
-            topic_title TEXT NOT NULL DEFAULT 'Section',
-            text TEXT NOT NULL,
-            FOREIGN KEY (video_id) REFERENCES videos (id) ON DELETE CASCADE
-        )
-    """)
+    # 2. indices collection
+    db.indices.create_index([("catalogId", 1), ("startTime", 1)])
     
-    # Check if we need to migrate an existing database to add the topic_title column
-    cursor.execute("PRAGMA table_info(semantic_blocks)")
-    columns = [row[1] for row in cursor.fetchall()]
-    if columns and "topic_title" not in columns:
-        print("[DB Migration] Adding missing topic_title column to semantic_blocks table...")
-        cursor.execute("ALTER TABLE semantic_blocks ADD COLUMN topic_title TEXT NOT NULL DEFAULT 'Section'")
+    # 3. summaries collection
+    db.summaries.create_index([("catalogId", 1), ("indexId", 1)], unique=True)
+    print("[DB] MongoDB collections and indexes initialized successfully.")
 
-    cursor.execute("PRAGMA table_info(videos)")
-    video_columns = [row[1] for row in cursor.fetchall()]
-    if video_columns and "owner_email" not in video_columns:
-        print("[DB Migration] Adding missing owner_email column to videos table...")
-        cursor.execute("ALTER TABLE videos ADD COLUMN owner_email TEXT NOT NULL DEFAULT ''")
+def _map_catalog_to_sqlite_style(doc: Dict[str, Any]) -> Dict[str, Any]:
+    """Helper to convert MongoDB Catalog document back to SQLite schema keys for compatibility."""
+    if not doc:
+        return {}
+    return {
+        "id": str(doc["_id"]),
+        "file_path": doc.get("filePath", ""),
+        "file_name": doc.get("fileName", ""),
+        "duration": doc.get("duration", 0.0),
+        "owner_email": doc.get("ownerEmail", ""),
+        "created_at": doc.get("createdAt", doc.get("updatedAt", datetime.now())).isoformat() if isinstance(doc.get("createdAt"), datetime) else str(doc.get("createdAt", "")),
+        "upload_status": doc.get("uploadStatus", "pending"),
+        "raw_transcript": doc.get("rawTranscript", ""),
+        "overall_summary": doc.get("overallSummary", "")
+    }
 
-    # Create indexes for faster queries
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_blocks_video_id ON semantic_blocks(video_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_blocks_start_time ON semantic_blocks(video_id, start_time)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_videos_owner_email ON videos(owner_email)")
-    
-    conn.commit()
-    conn.close()
+def _map_index_to_sqlite_style(doc: Dict[str, Any]) -> Dict[str, Any]:
+    """Helper to convert MongoDB Index document back to SQLite schema keys for compatibility."""
+    if not doc:
+        return {}
+    return {
+        "id": str(doc["_id"]),
+        "video_id": str(doc.get("catalogId", "")),
+        "start_time": doc.get("startTime", 0.0),
+        "end_time": doc.get("endTime", 0.0),
+        "topic_title": doc.get("topicTitle", "Section"),
+        "text": doc.get("text", ""),
+        "status": doc.get("status", "raw")
+    }
 
-def insert_video(video_id: str, file_path: str, file_name: str, duration: float, owner_email: str = "") -> bool:
-    """Inserts or replaces a video entry. Returns True on success."""
-    conn = get_db_connection()
+def insert_video(video_id: str, file_path: str, file_name: str, duration: float, owner_email: str = "", upload_status: str = "indexed", raw_transcript: str = "", overall_summary: str = "") -> bool:
+    """Inserts or replaces a video (catalog) document."""
+    db = get_db()
     try:
-        with conn:
-            conn.execute("""
-                INSERT OR REPLACE INTO videos (id, file_path, file_name, duration, owner_email, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (video_id, file_path, file_name, duration, owner_email, datetime.now().isoformat()))
+        try:
+            oid = ObjectId(video_id)
+        except InvalidId:
+            oid = video_id
+            
+        ext = os.path.splitext(file_name)[1].lower().strip('.')
+        file_type = "video" if ext in ("mp4", "mkv", "mov") else ("audio" if ext in ("mp3", "wav", "m4a") else "video")
+        
+        email = owner_email.strip().lower() if owner_email else "anonymous@summarix.io"
+        
+        existing = db.catalogs.find_one({"_id": oid})
+        
+        update_fields = {
+            "fileName": file_name,
+            "fileType": file_type,
+            "filePath": file_path,
+            "duration": duration,
+            "ownerEmail": email,
+            "updatedAt": datetime.now()
+        }
+        
+        if raw_transcript:
+            update_fields["rawTranscript"] = raw_transcript
+            
+        if overall_summary:
+            update_fields["overallSummary"] = overall_summary
+            
+        if upload_status:
+            update_fields["uploadStatus"] = upload_status
+            
+        history_entry = f"Indexed video details via Python indexer at {datetime.now().isoformat()}"
+        
+        db.catalogs.update_one(
+            {"_id": oid},
+            {
+                "$set": update_fields,
+                "$setOnInsert": {
+                    "createdAt": datetime.now(),
+                    "history": [history_entry]
+                },
+                "$push": {
+                    "history": history_entry
+                } if existing else {"$each": []}
+            },
+            upsert=True
+        )
         return True
-    except sqlite3.Error as e:
+    except Exception as e:
         print(f"[DB Error] Failed to insert video: {e}")
         return False
-    finally:
-        conn.close()
 
 def insert_semantic_blocks(video_id: str, blocks: List[Dict[str, Any]]) -> bool:
-    """Inserts a batch of semantic blocks for a given video.
-    
-    Blocks must be a list of dictionaries with structure:
-    {
-        'start_time': float,
-        'end_time': float,
-        'topic_title': str,
-        'text': str
-    }
-    """
-    conn = get_db_connection()
+    """Inserts a batch of semantic blocks (indices) for a given video."""
+    db = get_db()
     try:
-        with conn:
-            # First, clean up any existing blocks for this video to prevent duplicates
-            conn.execute("DELETE FROM semantic_blocks WHERE video_id = ?", (video_id,))
+        try:
+            catalog_oid = ObjectId(video_id)
+        except InvalidId:
+            catalog_oid = video_id
             
-            # Batch insert blocks including topic_title
-            conn.executemany("""
-                INSERT INTO semantic_blocks (video_id, start_time, end_time, topic_title, text)
-                VALUES (?, ?, ?, ?, ?)
-            """, [(video_id, b['start_time'], b['end_time'], b.get('topic_title', 'Section'), b['text']) for b in blocks])
+        # First delete existing indices for this catalog to prevent duplicates
+        db.indices.delete_many({"catalogId": catalog_oid})
+        
+        docs = []
+        for b in blocks:
+            docs.append({
+                "catalogId": catalog_oid,
+                "startTime": float(b['start_time']),
+                "endTime": float(b['end_time']),
+                "topicTitle": b.get('topic_title', 'Section'),
+                "text": b['text'],
+                "status": b.get('status', 'raw'),
+                "createdAt": datetime.now(),
+                "updatedAt": datetime.now()
+            })
+        if docs:
+            db.indices.insert_many(docs)
         return True
-    except sqlite3.Error as e:
+    except Exception as e:
         print(f"[DB Error] Failed to insert semantic blocks: {e}")
         return False
-    finally:
-        conn.close()
 
 def get_video(video_id: str, owner_email: str = "") -> Optional[Dict[str, Any]]:
     """Retrieves metadata for a specific video."""
-    conn = get_db_connection()
+    db = get_db()
     try:
+        try:
+            oid = ObjectId(video_id)
+            query = {"_id": oid}
+        except InvalidId:
+            query = {"_id": video_id}
+            
         if owner_email:
-            row = conn.execute("SELECT * FROM videos WHERE id = ? AND owner_email = ?", (video_id, owner_email)).fetchone()
-        else:
-            row = conn.execute("SELECT * FROM videos WHERE id = ?", (video_id,)).fetchone()
-        return dict(row) if row else None
-    finally:
-        conn.close()
+            query["$or"] = [
+                {"ownerEmail": owner_email.strip().lower()},
+                {"ownerEmail": ""},
+                {"ownerEmail": "anonymous@summarix.io"}
+            ]
+        doc = db.catalogs.find_one(query)
+        return _map_catalog_to_sqlite_style(doc) if doc else None
+    except Exception as e:
+        print(f"[DB Error] Failed to get video: {e}")
+        return None
 
 def get_video_by_path(file_path: str, owner_email: str = "") -> Optional[Dict[str, Any]]:
     """Retrieves metadata for a specific video by its path."""
-    conn = get_db_connection()
+    db = get_db()
     try:
+        query = {"filePath": file_path}
         if owner_email:
-            row = conn.execute("SELECT * FROM videos WHERE file_path = ? AND owner_email = ?", (file_path, owner_email)).fetchone()
-        else:
-            row = conn.execute("SELECT * FROM videos WHERE file_path = ?", (file_path,)).fetchone()
-        return dict(row) if row else None
-    finally:
-        conn.close()
+            query["$or"] = [
+                {"ownerEmail": owner_email.strip().lower()},
+                {"ownerEmail": ""},
+                {"ownerEmail": "anonymous@summarix.io"}
+            ]
+        doc = db.catalogs.find_one(query)
+        return _map_catalog_to_sqlite_style(doc) if doc else None
+    except Exception as e:
+        print(f"[DB Error] Failed to get video by path: {e}")
+        return None
 
 def list_videos(owner_email: str = "") -> List[Dict[str, Any]]:
     """Lists all indexed videos, ordered by creation time descending."""
-    conn = get_db_connection()
+    db = get_db()
     try:
+        query = {}
         if owner_email:
-            rows = conn.execute("SELECT * FROM videos WHERE owner_email = ? ORDER BY created_at DESC", (owner_email,)).fetchall()
-        else:
-            rows = conn.execute("SELECT * FROM videos ORDER BY created_at DESC").fetchall()
-        return [dict(r) for r in rows]
-    finally:
-        conn.close()
+            query["$or"] = [
+                {"ownerEmail": owner_email.strip().lower()},
+                {"ownerEmail": ""},
+                {"ownerEmail": "anonymous@summarix.io"}
+            ]
+        docs = db.catalogs.find(query).sort("createdAt", -1)
+        return [_map_catalog_to_sqlite_style(d) for d in docs]
+    except Exception as e:
+        print(f"[DB Error] Failed to list videos: {e}")
+        return []
 
 def get_video_blocks(video_id: str) -> List[Dict[str, Any]]:
-    """Retrieves all semantic blocks for a given video, sorted by start time."""
-    conn = get_db_connection()
+    """Retrieves all semantic blocks (indices) for a given video, sorted by start time."""
+    db = get_db()
     try:
-        rows = conn.execute(
-            "SELECT * FROM semantic_blocks WHERE video_id = ? ORDER BY start_time ASC", 
-            (video_id,)
-        ).fetchall()
-        return [dict(r) for r in rows]
-    finally:
-        conn.close()
+        try:
+            catalog_oid = ObjectId(video_id)
+        except InvalidId:
+            catalog_oid = video_id
+            
+        docs = db.indices.find({"catalogId": catalog_oid}).sort("startTime", 1)
+        return [_map_index_to_sqlite_style(d) for d in docs]
+    except Exception as e:
+        print(f"[DB Error] Failed to get video blocks: {e}")
+        return []
 
 def search_blocks(video_id: str, query: str) -> List[Dict[str, Any]]:
-    """Searches for keyword query in the semantic blocks of a specific video."""
-    conn = get_db_connection()
+    """Searches for query in the semantic blocks of a specific video."""
+    db = get_db()
     try:
-        rows = conn.execute("""
-            SELECT * FROM semantic_blocks 
-            WHERE video_id = ? AND text LIKE ? 
-            ORDER BY start_time ASC
-        """, (video_id, f"%{query}%")).fetchall()
-        return [dict(r) for r in rows]
-    finally:
-        conn.close()
+        try:
+            catalog_oid = ObjectId(video_id)
+        except InvalidId:
+            catalog_oid = video_id
+            
+        docs = db.indices.find({
+            "catalogId": catalog_oid,
+            "text": {"$regex": query, "$options": "i"}
+        }).sort("startTime", 1)
+        return [_map_index_to_sqlite_style(d) for d in docs]
+    except Exception as e:
+        print(f"[DB Error] Failed to search blocks: {e}")
+        return []
 
 def delete_video(video_id: str, owner_email: str = "") -> bool:
-    """Deletes a video and cascading blocks from the database."""
-    conn = get_db_connection()
+    """Deletes a video and cascades deletions on indices and summaries."""
+    db = get_db()
     try:
-        with conn:
-            if owner_email:
-                conn.execute("DELETE FROM videos WHERE id = ? AND owner_email = ?", (video_id, owner_email))
-            else:
-                conn.execute("DELETE FROM videos WHERE id = ?", (video_id,))
+        try:
+            oid = ObjectId(video_id)
+            query = {"_id": oid}
+        except InvalidId:
+            query = {"_id": video_id}
+            
+        if owner_email:
+            query["$or"] = [
+                {"ownerEmail": owner_email.strip().lower()},
+                {"ownerEmail": ""},
+                {"ownerEmail": "anonymous@summarix.io"}
+            ]
+            
+        video_doc = db.catalogs.find_one(query)
+        if not video_doc:
+            return False
+            
+        actual_oid = video_doc["_id"]
+        
+        # Cascade delete indices and summaries
+        db.summaries.delete_many({"catalogId": actual_oid})
+        db.indices.delete_many({"catalogId": actual_oid})
+        db.catalogs.delete_one({"_id": actual_oid})
         return True
-    except sqlite3.Error as e:
+    except Exception as e:
         print(f"[DB Error] Failed to delete video: {e}")
         return False
-    finally:
-        conn.close()
 
-def get_semantic_block(block_id: int) -> Optional[Dict[str, Any]]:
+def get_semantic_block(block_id: Any) -> Optional[Dict[str, Any]]:
     """Retrieves a specific semantic block by its unique ID."""
-    conn = get_db_connection()
+    db = get_db()
     try:
-        row = conn.execute("SELECT * FROM semantic_blocks WHERE id = ?", (block_id,)).fetchone()
-        return dict(row) if row else None
-    finally:
-        conn.close()
+        if isinstance(block_id, str):
+            try:
+                oid = ObjectId(block_id)
+            except InvalidId:
+                oid = block_id
+        else:
+            oid = block_id
+            
+        doc = db.indices.find_one({"_id": oid})
+        return _map_index_to_sqlite_style(doc) if doc else None
+    except Exception as e:
+        print(f"[DB Error] Failed to get semantic block: {e}")
+        return None
+
+def get_summary(video_id: str, index_id: str) -> Optional[Dict[str, Any]]:
+    """Fetches a cached summary from the summaries collection."""
+    db = get_db()
+    try:
+        try:
+            catalog_oid = ObjectId(video_id)
+        except InvalidId:
+            catalog_oid = video_id
+            
+        try:
+            index_oid = ObjectId(index_id)
+        except InvalidId:
+            index_oid = index_id
+            
+        doc = db.summaries.find_one({
+            "catalogId": catalog_oid,
+            "indexId": index_oid
+        })
+        if doc:
+            return {
+                "id": str(doc["_id"]),
+                "catalog_id": str(doc["catalogId"]),
+                "index_id": str(doc["indexId"]),
+                "raw_text_chunk": doc.get("rawTextChunk", ""),
+                "summary_text": doc.get("summaryText", ""),
+                "bullet_points": doc.get("bulletPoints", []),
+                "cached_at": doc.get("cachedAt", datetime.now()).isoformat() if isinstance(doc.get("cachedAt"), datetime) else str(doc.get("cachedAt", ""))
+            }
+        return None
+    except Exception as e:
+        print(f"[DB Error] Failed to get summary: {e}")
+        return None
+
+def insert_summary(video_id: str, index_id: str, raw_text_chunk: str, summary_text: str, bullet_points: List[str] = None) -> bool:
+    """Saves a new chapter summary in the summaries collection."""
+    db = get_db()
+    try:
+        try:
+            catalog_oid = ObjectId(video_id)
+        except InvalidId:
+            catalog_oid = video_id
+            
+        try:
+            index_oid = ObjectId(index_id)
+        except InvalidId:
+            index_oid = index_id
+            
+        if bullet_points is None:
+            bullet_points = []
+            
+        db.summaries.update_one(
+            {
+                "catalogId": catalog_oid,
+                "indexId": index_oid
+            },
+            {
+                "$set": {
+                    "rawTextChunk": raw_text_chunk.strip(),
+                    "summaryText": summary_text.strip(),
+                    "bulletPoints": bullet_points,
+                    "cachedAt": datetime.now(),
+                    "updatedAt": datetime.now()
+                },
+                "$setOnInsert": {
+                    "createdAt": datetime.now()
+                }
+            },
+            upsert=True
+        )
+        return True
+    except Exception as e:
+        print(f"[DB Error] Failed to insert summary: {e}")
+        return False
+
+def update_overall_summary(video_id: str, overall_summary: str) -> bool:
+    """Saves aggregated overall summary in the Catalog record."""
+    db = get_db()
+    try:
+        try:
+            catalog_oid = ObjectId(video_id)
+        except InvalidId:
+            catalog_oid = video_id
+            
+        db.catalogs.update_one(
+            {"_id": catalog_oid},
+            {
+                "$set": {
+                    "overallSummary": overall_summary.strip(),
+                    "updatedAt": datetime.now()
+                }
+            }
+        )
+        return True
+    except Exception as e:
+        print(f"[DB Error] Failed to update overall summary: {e}")
+        return False

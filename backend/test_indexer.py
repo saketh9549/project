@@ -128,43 +128,31 @@ class TestIndexerChunking(unittest.TestCase):
 
 class TestDatabaseOperations(unittest.TestCase):
     def setUp(self):
-        # We patch get_db_connection to return our custom TestConnection in-memory database
-        self.conn = sqlite3.connect(":memory:", factory=TestConnection)
-        self.conn.row_factory = sqlite3.Row
-        self.conn.execute("PRAGMA foreign_keys = ON;")
+        from pymongo import MongoClient
+        # Connect using MONGODB_URI or default to local mongodb
+        uri = os.getenv("MONGODB_URI", "mongodb://127.0.0.1:27017/summarix")
+        self.client = MongoClient(uri)
+        self.test_db = self.client["summarix_test"]
         
-        self.patcher = patch("src.database.get_db_connection")
-        self.mock_get_conn = self.patcher.start()
-        self.mock_get_conn.return_value = self.conn
+        self.patcher = patch("src.database.get_db")
+        self.mock_get_db = self.patcher.start()
+        self.mock_get_db.return_value = self.test_db
         
-        # Initialize schema in the test database
-        cursor = self.conn.cursor()
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS videos (
-                id TEXT PRIMARY KEY,
-                file_path TEXT UNIQUE NOT NULL,
-                file_name TEXT NOT NULL,
-                duration REAL NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS semantic_blocks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                video_id TEXT NOT NULL,
-                start_time REAL NOT NULL,
-                end_time REAL NOT NULL,
-                topic_title TEXT NOT NULL DEFAULT 'Section',
-                text TEXT NOT NULL,
-                FOREIGN KEY (video_id) REFERENCES videos (id) ON DELETE CASCADE
-            )
-        """)
-        self.conn.commit()
+        # Clean up collections before each test
+        self.test_db.catalogs.delete_many({})
+        self.test_db.indices.delete_many({})
+        self.test_db.summaries.delete_many({})
+        
+        # Ensure indexes are built
+        db.init_db()
 
     def tearDown(self):
+        # Clean up collections after each test
+        self.test_db.catalogs.delete_many({})
+        self.test_db.indices.delete_many({})
+        self.test_db.summaries.delete_many({})
         self.patcher.stop()
-        # Explicitly close the actual connection object using real_close
-        self.conn.real_close()
+        self.client.close()
 
     def test_insert_and_get_video(self):
         """Should successfully insert and retrieve video metadata."""
@@ -265,7 +253,7 @@ class TestDatabaseOperations(unittest.TestCase):
         self.assertEqual(single_block["text"], "Unique text")
         
         # Retrieval for non-existent ID should return None
-        self.assertIsNone(db.get_semantic_block(99999))
+        self.assertIsNone(db.get_semantic_block("nonexistent_id"))
 
     def test_chapter_id_resolution(self):
         """Should verify we can resolve <video_id>-<index> to a correct block."""

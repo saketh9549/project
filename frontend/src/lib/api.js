@@ -4,21 +4,7 @@ const CURRENT_USER_STORAGE_KEY = 'summarix.currentUser';
 export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || DEFAULT_API_BASE_URL).replace(/\/$/, '');
 
 function getCurrentUserEmail() {
-  if (typeof window === 'undefined') {
-    return '';
-  }
-
-  try {
-    const raw = window.localStorage.getItem(CURRENT_USER_STORAGE_KEY);
-    if (!raw) {
-      return '';
-    }
-
-    const parsed = JSON.parse(raw);
-    return typeof parsed?.email === 'string' ? parsed.email.trim() : '';
-  } catch {
-    return '';
-  }
+  return 'user@summarix.io';
 }
 
 function appendOwnerEmail(path) {

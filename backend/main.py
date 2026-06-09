@@ -147,9 +147,9 @@ def cmd_analyse(args):
     """Handler for the 'analyse' command."""
     from src.indexer import analyse_video
     try:
-        analysed_path = analyse_video(args.video_id)
+        db_target = analyse_video(args.video_id)
         print(f"\nSuccess! Analysis completed.")
-        print(f"Output saved to: {analysed_path}")
+        print(f"Index updated in: {db_target}")
     except Exception as e:
         print(f"\nAnalysis failed: {e}", file=sys.stderr)
         sys.exit(1)
@@ -189,11 +189,10 @@ def cmd_summarize(args):
                 
             block = blocks[chapter_index - 1]
     else:
-        # Format: raw database integer ID
+        # Format: raw database ID
         try:
-            db_id = int(block_id_str)
-            block = db.get_semantic_block(db_id)
-        except ValueError:
+            block = db.get_semantic_block(block_id_str)
+        except Exception:
             pass
             
     if not block:
@@ -222,6 +221,13 @@ def cmd_summarize(args):
     print(f"Time Range: [{start_str} -> {end_str}]")
     print("-" * 65)
     
+    # Check if we have a cached summary in MongoDB first
+    cached = db.get_summary(video_id, block['id'])
+    if cached:
+        print("\nSUMMARY (Cached in MongoDB):")
+        print(cached["summary_text"])
+        return
+        
     transcript_text = block['text'].strip()
     if not transcript_text:
         print("This chapter has no transcript text to summarize.")
@@ -286,26 +292,23 @@ def cmd_summarize(args):
         print("\nSUMMARY:")
         print(summary_text)
         
-        # Save summary to file in the summaries directory
-        from src.config import get_summaries_dir
-        summaries_dir = get_summaries_dir()
-        
-        summary_filename = f"{video_id}_{chapter_id}_summary.txt"
-        summary_filepath = os.path.join(summaries_dir, summary_filename)
-        
-        file_content = (
-            f"VIDEO ID: {video_id}\n"
-            f"CHAPTER ID: {chapter_id}\n"
-            f"TOPIC: {block['topic_title']}\n"
-            f"TIME RANGE: [{start_str} -> {end_str}]\n"
-            f"{'=' * 65}\n\n"
-            f"{summary_text}\n"
+        # Extract bullet points
+        bullet_points = []
+        for line in summary_text.splitlines():
+            line_clean = line.strip()
+            if line_clean.startswith(("-", "*", "•")):
+                bullet_points.append(line_clean.lstrip("-*• ").strip())
+                
+        # Save summary to MongoDB
+        db.insert_summary(
+            video_id=video_id,
+            index_id=block['id'],
+            raw_text_chunk=transcript_text,
+            summary_text=summary_text,
+            bullet_points=bullet_points
         )
         
-        with open(summary_filepath, 'w', encoding='utf-8') as sf:
-            sf.write(file_content)
-            
-        print(f"\n[Summarizer] Summary successfully saved to: {summary_filepath}")
+        print(f"\n[Summarizer] Summary successfully saved to MongoDB database.")
         
     except Exception as e:
         print(f"[Summarizer Error] Failed to generate summary: {e}")

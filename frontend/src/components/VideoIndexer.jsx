@@ -69,7 +69,7 @@ export default function VideoIndexer({
         setVideoPath('');
         setLanguage('');
         setIndexingProgress(0);
-        onIndexSuccess();
+        onIndexSuccess(data.video_id);
       }, 1500);
 
     } catch (err) {
@@ -363,56 +363,56 @@ export default function VideoIndexer({
             className="flex justify-between items-center border-b border-white/5 pb-1 hover:border-indigo-500/30 hover:bg-white/5 px-1 py-0.5 rounded transition-all cursor-pointer group"
           >
             <span className="text-gray-400 group-hover:text-gray-300 transition-colors">English</span>
-            <span className="text-cyan-400 font-bold bg-cyan-950/30 px-1 py-0.5 rounded border border-cyan-500/10">en</span>
+            <span className="lang-badge">en</span>
           </div>
           <div 
             onClick={() => !indexingLoading && !uploading && setLanguage('de')}
             className="flex justify-between items-center border-b border-white/5 pb-1 hover:border-indigo-500/30 hover:bg-white/5 px-1 py-0.5 rounded transition-all cursor-pointer group"
           >
             <span className="text-gray-400 group-hover:text-gray-300 transition-colors">German</span>
-            <span className="text-cyan-400 font-bold bg-cyan-950/30 px-1 py-0.5 rounded border border-cyan-500/10">de</span>
+            <span className="lang-badge">de</span>
           </div>
           <div 
             onClick={() => !indexingLoading && !uploading && setLanguage('es')}
             className="flex justify-between items-center border-b border-white/5 pb-1 hover:border-indigo-500/30 hover:bg-white/5 px-1 py-0.5 rounded transition-all cursor-pointer group"
           >
             <span className="text-gray-400 group-hover:text-gray-300 transition-colors">Spanish</span>
-            <span className="text-cyan-400 font-bold bg-cyan-950/30 px-1 py-0.5 rounded border border-cyan-500/10">es</span>
+            <span className="lang-badge">es</span>
           </div>
           <div 
             onClick={() => !indexingLoading && !uploading && setLanguage('fr')}
             className="flex justify-between items-center border-b border-white/5 pb-1 hover:border-indigo-500/30 hover:bg-white/5 px-1 py-0.5 rounded transition-all cursor-pointer group"
           >
             <span className="text-gray-400 group-hover:text-gray-300 transition-colors">French</span>
-            <span className="text-cyan-400 font-bold bg-cyan-950/30 px-1 py-0.5 rounded border border-cyan-500/10">fr</span>
+            <span className="lang-badge">fr</span>
           </div>
           <div 
             onClick={() => !indexingLoading && !uploading && setLanguage('it')}
             className="flex justify-between items-center border-b border-white/5 pb-1 hover:border-indigo-500/30 hover:bg-white/5 px-1 py-0.5 rounded transition-all cursor-pointer group"
           >
             <span className="text-gray-400 group-hover:text-gray-300 transition-colors">Italian</span>
-            <span className="text-cyan-400 font-bold bg-cyan-950/30 px-1 py-0.5 rounded border border-cyan-500/10">it</span>
+            <span className="lang-badge">it</span>
           </div>
           <div 
             onClick={() => !indexingLoading && !uploading && setLanguage('ja')}
             className="flex justify-between items-center border-b border-white/5 pb-1 hover:border-indigo-500/30 hover:bg-white/5 px-1 py-0.5 rounded transition-all cursor-pointer group"
           >
             <span className="text-gray-400 group-hover:text-gray-300 transition-colors">Japanese</span>
-            <span className="text-cyan-400 font-bold bg-cyan-950/30 px-1 py-0.5 rounded border border-cyan-500/10">ja</span>
+            <span className="lang-badge">ja</span>
           </div>
           <div 
             onClick={() => !indexingLoading && !uploading && setLanguage('zh')}
             className="flex justify-between items-center border-b border-white/5 pb-1 hover:border-indigo-500/30 hover:bg-white/5 px-1 py-0.5 rounded transition-all cursor-pointer group"
           >
             <span className="text-gray-400 group-hover:text-gray-300 transition-colors">Mandarin</span>
-            <span className="text-cyan-400 font-bold bg-cyan-950/30 px-1 py-0.5 rounded border border-cyan-500/10">zh</span>
+            <span className="lang-badge">zh</span>
           </div>
           <div 
             onClick={() => !indexingLoading && !uploading && setLanguage('auto')}
             className="flex justify-between items-center border-b border-white/5 pb-1 hover:border-indigo-500/30 hover:bg-white/5 px-1 py-0.5 rounded transition-all cursor-pointer group"
           >
             <span className="text-gray-400 group-hover:text-gray-300 transition-colors">Auto-Detect</span>
-            <span className="text-cyan-400 font-bold bg-cyan-950/30 px-1 py-0.5 rounded border border-cyan-500/10">auto</span>
+            <span className="lang-badge">auto</span>
           </div>
         </div>
       </div>

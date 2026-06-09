@@ -1,0 +1,11 @@
+{
+  "name": "summarix-backend",
+  "version": "1.0.0",
+  "description": "MongoDB & Mongoose Data Layer for Summarix",
+  "main": "src/db.js",
+  "type": "commonjs",
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "mongoose": "^8.2.1"
+  }
+}

@@ -6,6 +6,9 @@ import urllib.parse
 import mimetypes
 import sys
 
+# Define FRONTEND_DIR pointing to the Vite build directory
+FRONTEND_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend", "dist")
+
 # Add current workspace to path to import src modules
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -134,7 +137,39 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
         except Exception as e:
             self.send_json_response({"error": f"Upload failed: {e}"}, 500)
 
-    # Static serving disabled for pure API operation
+    def handle_static_get(self, path):
+        # Default to index.html
+        if path == "/" or path == "":
+            path = "/index.html"
+        
+        # Clean path to prevent path traversal vulnerability
+        clean_path = os.path.normpath(path).lstrip("/\\")
+        file_path = os.path.join(FRONTEND_DIR, clean_path)
+
+        # Ensure absolute paths for secure validation on Windows
+        abs_frontend_dir = os.path.abspath(FRONTEND_DIR)
+        abs_file_path = os.path.abspath(file_path)
+
+        # Check if file exists and is within frontend directory
+        if not abs_file_path.startswith(abs_frontend_dir) or not os.path.exists(abs_file_path) or os.path.isdir(abs_file_path):
+            self.send_error(404, "File Not Found")
+            return
+
+        # Guess MIME type
+        content_type, _ = mimetypes.guess_type(file_path)
+        if not content_type:
+            content_type = "application/octet-stream"
+
+        try:
+            with open(file_path, 'rb') as f:
+                content = f.read()
+            self.send_response(200)
+            self.send_header('Content-Type', content_type)
+            self.send_header('Content-Length', len(content))
+            self.end_headers()
+            self.wfile.write(content)
+        except Exception as e:
+            self.send_error(500, f"Internal Server Error: {e}")
 
     def handle_api_get(self, path, parsed_url):
         # Initialize database tables
@@ -247,7 +282,8 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
                         "file_name": video["file_name"],
                         "file_path": video["file_path"],
                         "duration": video["duration"],
-                        "duration_str": format_timestamp(video["duration"])
+                        "duration_str": format_timestamp(video["duration"]),
+                        "overall_summary": video.get("overall_summary", "")
                     },
                     "chapters": chapters
                 }
@@ -406,19 +442,21 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
                         if blocks and 1 <= chapter_index <= len(blocks):
                             block = blocks[chapter_index - 1]
                 else:
-                    # Fallback to database ID
-                    block = db.get_semantic_block(int(chapter_id))
+                    try:
+                        block = db.get_semantic_block(chapter_id)
+                    except ValueError:
+                        block = None
 
                 if not block:
                     self.send_json_response({"error": f"Chapter with ID '{chapter_id}' not found"}, 404)
                     return
 
-                if not db.get_video(block["video_id"], owner_email):
+                video_id = block["video_id"]
+                if not db.get_video(video_id, owner_email):
                     self.send_json_response({"error": f"Chapter with ID '{chapter_id}' not found"}, 404)
                     return
 
-                # Check cache file first
-                video_id = block["video_id"]
+                # Calculate resolved 1-based index chapter_id
                 all_blocks = db.get_video_blocks(video_id)
                 block_index = 1
                 for idx, b in enumerate(all_blocks, start=1):
@@ -427,20 +465,11 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
                         break
                 resolved_chapter_id = f"{video_id}-{block_index}"
 
-                from src.config import get_summaries_dir
-                summaries_dir = get_summaries_dir()
-                summary_filename = f"{video_id}_{resolved_chapter_id}_summary.txt"
-                summary_filepath = os.path.join(summaries_dir, summary_filename)
-
-                # Return cached summary if it exists
-                if os.path.exists(summary_filepath):
-                    with open(summary_filepath, 'r', encoding='utf-8') as sf:
-                        cached_content = sf.read()
-                    # Parse out headers
-                    parts = cached_content.split("=" * 65 + "\n\n", 1)
-                    summary_text = parts[1] if len(parts) == 2 else cached_content
+                # Return cached summary from MongoDB if it exists
+                cached = db.get_summary(video_id, block['id'])
+                if cached:
                     self.send_json_response({
-                        "summary": summary_text,
+                        "summary": cached["summary_text"],
                         "chapter_id": resolved_chapter_id,
                         "cached": True
                     })
@@ -455,7 +484,6 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
                 api_key = os.getenv("GEMINI_API_KEY", "").strip()
                 from src.indexer import GEMINI_AVAILABLE
                 if not GEMINI_AVAILABLE or not api_key or api_key == '""' or "your_gemini_api_key_here" in api_key:
-                    # Return raw transcript text as fallback
                     self.send_json_response({
                         "summary": f"**[Gemini API not configured]**\n\nRaw Transcript:\n{transcript_text}",
                         "chapter_id": resolved_chapter_id,
@@ -470,7 +498,7 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
                 system_instruction = (
                     "You are a professional video content summarizer. "
                     "Your task is to write a concise, bulleted summary of the provided chapter transcript. "
-                    "Highlight key takeaways, action items, and important ideas."
+                    "Highlight key takeaways, use-cases, and explanations."
                 )
                 prompt = (
                     f"Please summarize the following video chapter transcript:\n\n"
@@ -504,17 +532,21 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
 
                 summary_text = response.text.strip()
 
-                # Write to cache
-                file_content = (
-                    f"VIDEO ID: {video_id}\n"
-                    f"CHAPTER ID: {resolved_chapter_id}\n"
-                    f"TOPIC: {block['topic_title']}\n"
-                    f"TIME RANGE: [{format_timestamp(block['start_time'])} -> {format_timestamp(block['end_time'])}]\n"
-                    f"{'=' * 65}\n\n"
-                    f"{summary_text}\n"
+                # Extract bullet points
+                bullet_points = []
+                for line in summary_text.splitlines():
+                    line_clean = line.strip()
+                    if line_clean.startswith(("-", "*", "•")):
+                        bullet_points.append(line_clean.lstrip("-*• ").strip())
+
+                # Write cache to MongoDB
+                db.insert_summary(
+                    video_id=video_id,
+                    index_id=block['id'],
+                    raw_text_chunk=transcript_text,
+                    summary_text=summary_text,
+                    bullet_points=bullet_points
                 )
-                with open(summary_filepath, 'w', encoding='utf-8') as sf:
-                    sf.write(file_content)
 
                 self.send_json_response({
                     "summary": summary_text,
@@ -523,6 +555,106 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
                 })
             except Exception as e:
                 self.send_json_response({"error": f"Summarization failed: {e}"}, 500)
+            return
+
+        # Endpoint: POST /api/overall-summary
+        if path == "/api/overall-summary":
+            video_id = body.get("video_id", "").strip()
+            if not video_id:
+                self.send_json_response({"error": "video_id is required"}, 400)
+                return
+            if not owner_email:
+                self.send_json_response({"error": "owner_email is required"}, 400)
+                return
+
+            try:
+                # 1. Fetch video details
+                video = db.get_video(video_id, owner_email)
+                if not video:
+                    self.send_json_response({"error": "Video not found"}, 404)
+                    return
+
+                if video.get("overall_summary"):
+                    self.send_json_response({
+                        "success": True,
+                        "overall_summary": video["overall_summary"],
+                        "cached": True
+                    })
+                    return
+
+                # 2. Get video blocks
+                blocks = db.get_video_blocks(video_id)
+                if not blocks:
+                    self.send_json_response({"error": "No indexed chapters found for this video"}, 400)
+                    return
+
+                # 3. Build text representing all chapters
+                chapters_text = []
+                for idx, b in enumerate(blocks, start=1):
+                    start_str = format_timestamp(b['start_time'])
+                    chapters_text.append(
+                        f"Chapter {idx}: {b['topic_title']} [{start_str}]\nTranscript: {b['text']}"
+                    )
+                full_chapters_text = "\n\n".join(chapters_text)
+
+                api_key = os.getenv("GEMINI_API_KEY", "").strip()
+                from src.indexer import GEMINI_AVAILABLE
+                if not GEMINI_AVAILABLE or not api_key or api_key == '""' or "your_gemini_api_key_here" in api_key:
+                    self.send_json_response({"error": "Gemini API is not configured. Cannot generate overall summary."}, 400)
+                    return
+
+                from google import genai
+                from google.genai import types
+
+                client = genai.Client(api_key=api_key)
+                system_instruction = (
+                    "You are a professional video content summarizer. "
+                    "Your task is to write a cohesive, comprehensive section-by-section overall summary "
+                    "of the entire video based on the provided chapter transcripts. "
+                    "Provide clear section headers and key takeaways for each part."
+                )
+                prompt = (
+                    f"Please generate a comprehensive overall summary for the following video chapters:\n\n"
+                    f"Video Title: {video['file_name']}\n\n"
+                    f"{full_chapters_text}"
+                )
+                model_name = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite").strip()
+
+                try:
+                    response = client.models.generate_content(
+                        model=model_name,
+                        contents=prompt,
+                        config=types.GenerateContentConfig(
+                            system_instruction=system_instruction,
+                            temperature=0.2
+                        ),
+                    )
+                except Exception as api_err:
+                    if model_name != "gemini-3.1-flash-lite":
+                        model_name = "gemini-3.1-flash-lite"
+                        response = client.models.generate_content(
+                            model=model_name,
+                            contents=prompt,
+                            config=types.GenerateContentConfig(
+                                system_instruction=system_instruction,
+                                temperature=0.2
+                            ),
+                        )
+                    else:
+                        raise api_err
+
+                overall_summary = response.text.strip()
+
+                # Update Catalog in MongoDB
+                db.update_overall_summary(video_id, overall_summary)
+
+                self.send_json_response({
+                    "success": True,
+                    "overall_summary": overall_summary,
+                    "cached": False
+                })
+            except Exception as e:
+                self.send_json_response({"error": f"Overall summary generation failed: {e}"}, 500)
             return
 
         self.send_json_response({"error": "Endpoint not found"}, 404)
@@ -536,14 +668,13 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(response_bytes)
         except Exception as e:
-            # Fallback error response
             print(f"[Server Error] Failed to send JSON response: {e}")
 
 def run_server():
-    # Setup folders
     db.init_db()
+    if not os.path.exists(FRONTEND_DIR):
+        os.makedirs(FRONTEND_DIR)
 
-    # Allow port reuse to prevent address-already-in-use errors
     socketserver.TCPServer.allow_reuse_address = True
     with socketserver.TCPServer(("", PORT), LocalAPIRequestHandler) as httpd:
         print(f"[Server] Video Chapter Indexer API is running on port {PORT}!")
