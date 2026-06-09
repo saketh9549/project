@@ -160,6 +160,145 @@ export default function App() {
     document.body.style.userSelect = 'none';
   };
 
+
+
+  // Fetch videos list on mount
+  useEffect(() => {
+    fetchVideos();
+  }, []);
+
+  // Auto-dismiss success and error notifications after 2 seconds
+  useEffect(() => {
+    if (errorMsg || successMsg) {
+      // Do not auto-dismiss active loading/progress alerts
+      const isProgress = (successMsg && (successMsg.includes('Please wait') || successMsg.includes('Uploading')));
+      if (isProgress) return;
+
+      const timer = setTimeout(() => {
+        setErrorMsg(null);
+        setSuccessMsg(null);
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [errorMsg, successMsg]);
+
+
+  const fetchVideos = async () => {
+    try {
+      const response = await fetch('/api/videos');
+      if (!response.ok) throw new Error('Failed to fetch videos');
+      const data = await response.json();
+      setVideos(data);
+    } catch (err) {
+      showError('Could not load videos catalog: ' + err.message);
+    }
+  };
+
+  const handleSelectVideo = async (video) => {
+    setSelectedVideo(video);
+    setSelectedChapter(null);
+    setOverallSummary(null);
+    showSuccess(null);
+    showError(null);
+
+    try {
+      const response = await fetch(`/api/videos/${video.id}`);
+      if (!response.ok) throw new Error('Failed to load video chapters');
+      const data = await response.json();
+      setChapters(data.chapters || []);
+      if (data.video && data.video.overall_summary) {
+        setOverallSummary(data.video.overall_summary);
+      }
+    } catch (err) {
+      showError('Could not load video chapters: ' + err.message);
+    }
+  };
+
+  const handleDeleteVideo = async (e, videoId) => {
+    e.stopPropagation();
+    if (!confirm('Are you sure you want to delete this video and all its indexed moments from the database?')) return;
+
+    try {
+      const res = await fetch('/api/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ video_id: videoId })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to delete video');
+
+      showSuccess('Video deleted successfully.');
+      if (selectedVideo && selectedVideo.id === videoId) {
+        setSelectedVideo(null);
+        setChapters([]);
+        setSelectedChapter(null);
+      }
+      await fetchVideos();
+    } catch (err) {
+      showError('Deletion failed: ' + err.message);
+    }
+  };
+
+  const handleAnalyseVideo = async () => {
+    if (!selectedVideo) return;
+
+    setAnalysisLoading(true);
+    showError(null);
+    showSuccess('Analyzing boundaries with Gemini... Please wait.');
+
+    try {
+      const response = await fetch('/api/analyse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ video_id: selectedVideo.id })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Failed to analyze video');
+
+      showSuccess('Gemini boundary analysis completed!');
+      await handleSelectVideo(selectedVideo);
+    } catch (err) {
+      showError('Analysis failed: ' + err.message);
+    } finally {
+      setAnalysisLoading(false);
+    }
+  };
+
+  const handleGenerateOverallSummary = async () => {
+    if (!selectedVideo) return;
+
+    setOverallSummaryLoading(true);
+    showError(null);
+    showSuccess('Generating overall summary with Gemini... Please wait.');
+
+    try {
+      const response = await fetch('/api/overall-summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ video_id: selectedVideo.id })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Failed to generate overall summary');
+
+      setOverallSummary(data.overall_summary);
+      showSuccess('Overall summary generated successfully!');
+    } catch (err) {
+      showError('Failed to generate overall summary: ' + err.message);
+    } finally {
+      setOverallSummaryLoading(false);
+    }
+  };
+
+  const showError = (msg) => {
+    setErrorMsg(msg);
+    if (msg) setSuccessMsg(null);
+  };
+
+  const showSuccess = (msg) => {
+    setSuccessMsg(msg);
+    if (msg) setErrorMsg(null);
+  };
+
   return (
     <div className="flex flex-col min-h-screen">
       <header className="border-b border-white/5 bg-gray-950/40 backdrop-blur-md px-8 py-3 flex items-center justify-between sticky top-0 z-50 gap-4">
@@ -201,22 +340,20 @@ export default function App() {
             <button
               onClick={() => setSidebarTab('catalog')}
               type="button"
-              className={`flex-1 text-center font-bold font-display py-2 text-xs tracking-wider border-b-2 transition-all cursor-pointer ${
-                sidebarTab === 'catalog'
+              className={`flex-1 text-center font-bold font-display py-2 text-xs tracking-wider border-b-2 transition-all cursor-pointer ${sidebarTab === 'catalog'
                   ? 'text-indigo-400 border-indigo-500 shadow-[inset_0_-2px_0_0_rgb(99,102,241)]'
                   : 'text-gray-500 border-transparent hover:text-gray-300'
-              }`}
+                }`}
             >
               CATALOG
             </button>
             <button
               onClick={() => setSidebarTab('indexer')}
               type="button"
-              className={`flex-1 text-center font-bold font-display py-2 text-xs tracking-wider border-b-2 transition-all cursor-pointer ${
-                sidebarTab === 'indexer'
+              className={`flex-1 text-center font-bold font-display py-2 text-xs tracking-wider border-b-2 transition-all cursor-pointer ${sidebarTab === 'indexer'
                   ? 'text-indigo-400 border-indigo-500 shadow-[inset_0_-2px_0_0_rgb(99,102,241)]'
                   : 'text-gray-500 border-transparent hover:text-gray-300'
-              }`}
+                }`}
             >
               UPLOAD
             </button>
@@ -266,6 +403,8 @@ export default function App() {
               onSelectChapter={setSelectedChapter}
               handleAnalyseVideo={handleAnalyseVideo}
               analysisLoading={analysisLoading}
+              handleGenerateOverallSummary={handleGenerateOverallSummary}
+              overallSummaryLoading={overallSummaryLoading}
             />
           </main>
 
@@ -302,7 +441,7 @@ export default function App() {
       </div>
 
       <footer className="border-t border-white/5 bg-gray-950/20 py-3 px-6 text-center text-[10px] text-gray-500">
-        2026 Echochunk Video Chapter Indexer - Powered by Google Gemini and local audio transcribers
+        © 2026 Echochunk Video Chapter Indexer • Powered by Google Gemini and local audio transcribers
       </footer>
     </div>
   );

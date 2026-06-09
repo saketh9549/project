@@ -36,13 +36,18 @@ const runTest = async () => {
       fileName: 'test_lecture.mp4',
       fileType: 'video',
       filePath: '/abs/path/to/test_lecture.mp4',
+      absoluteLocalPath: '/abs/path/to/test_lecture.mp4',
+      timelineIndex: [
+        { timestamp: '00:00', title: 'Intro', seconds: 0 },
+        { timestamp: '01:00', title: 'Deep Dive', seconds: 60 }
+      ],
       duration: 120.5,
       uploadStatus: 'uploaded',
       history: ['uploaded via drag-and-drop', 'assigned database slot'],
       ownerEmail: 'test_architect@summarix.io'
     });
     console.log(`[Success] Catalog document created. ID: ${catalog._id}`);
-    console.log(`[Info] File type: ${catalog.fileType}, History length: ${catalog.history.length}`);
+    console.log(`[Info] File type: ${catalog.fileType}, History length: ${catalog.history.length}, Timeline moments: ${catalog.timelineIndex.length}`);
     
     console.log('\n--- Test 2: Creating Valid Index Document ---');
     const index = await Index.create({
