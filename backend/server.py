@@ -5,6 +5,7 @@ import os
 import urllib.parse
 import mimetypes
 import sys
+import re
 
 # Define FRONTEND_DIR pointing to the Vite build directory
 FRONTEND_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend", "dist")
@@ -17,6 +18,27 @@ from src.indexer import index_video, analyse_video
 from main import format_timestamp
 
 PORT = 8000
+
+
+def normalize_summary_text(text: str) -> str:
+    """Remove markdown emphasis markers from generated summaries."""
+    if not text:
+        return text
+
+    cleaned_lines = []
+    for line in text.splitlines():
+        stripped = line.lstrip()
+        indent = line[:len(line) - len(stripped)]
+
+        if stripped.startswith("* "):
+            stripped = f"- {stripped[2:]}"
+        elif stripped.startswith("• "):
+            stripped = f"- {stripped[2:]}"
+
+        stripped = stripped.replace("**", "").replace("*", "")
+        cleaned_lines.append(f"{indent}{stripped}")
+
+    return "\n".join(cleaned_lines).strip()
 
 class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
     def _get_owner_email(self, parsed_url, body=None):
@@ -465,11 +487,21 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
                         break
                 resolved_chapter_id = f"{video_id}-{block_index}"
 
-                # Return cached summary from MongoDB if it exists
-                cached = db.get_summary(video_id, block['id'])
-                if cached:
+                from src.config import get_summaries_dir
+                summaries_dir = get_summaries_dir()
+                summary_filename = f"{video_id}_{resolved_chapter_id}_summary.txt"
+                summary_filepath = os.path.join(summaries_dir, summary_filename)
+
+                # Return cached summary if it exists
+                if os.path.exists(summary_filepath):
+                    with open(summary_filepath, 'r', encoding='utf-8') as sf:
+                        cached_content = sf.read()
+                    # Parse out headers
+                    parts = cached_content.split("=" * 65 + "\n\n", 1)
+                    summary_text = parts[1] if len(parts) == 2 else cached_content
+                    summary_text = normalize_summary_text(summary_text)
                     self.send_json_response({
-                        "summary": cached["summary_text"],
+                        "summary": summary_text,
                         "chapter_id": resolved_chapter_id,
                         "cached": True
                     })
@@ -530,7 +562,7 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
                     else:
                         raise api_err
 
-                summary_text = response.text.strip()
+                summary_text = normalize_summary_text(response.text.strip())
 
                 # Extract bullet points
                 bullet_points = []
