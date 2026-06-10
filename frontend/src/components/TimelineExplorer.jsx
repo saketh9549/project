@@ -133,7 +133,7 @@ export default function TimelineExplorer({
       </div>
 
       {/* Chapters List */}
-      <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-3">
+      <div className="flex-1 overflow-y-auto pr-1">
         {displayedChapters.length === 0 ? (
           <div className="text-center text-gray-500 text-sm py-12">
             {searchQuery.trim()
@@ -141,40 +141,39 @@ export default function TimelineExplorer({
               : "No topic moments found for this video."}
           </div>
         ) : (
-          displayedChapters.map((c, idx) => {
-            const isSelected = selectedChapter && selectedChapter.id === c.id;
-            const originalIndex = chapters.findIndex(item => item.id === c.id);
-            const sectionName = originalIndex !== -1 ? `section-${originalIndex + 1}` : c.id;
-            return (
-              <div
-                key={c.id}
-                onClick={() => {
-                  onSelectChapter(c);
-                  if (videoRef.current) {
-                    const seconds = Math.floor(c.start_time);
-                    videoRef.current.currentTime = seconds;
-                  }
-                }}
-                className={`glass-panel glass-panel-hover p-4 rounded-xl cursor-pointer border text-left transition-all ${isSelected
-                    ? 'border-cyan-500/50 bg-cyan-950/10 shadow-[0_0_15px_rgba(6,182,212,0.1)]'
-                    : 'border-white/5'
-                  }`}
-              >
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <span className="section-badge">
-                    {sectionName}
-                  </span>
-                  <span className="text-xs bg-gray-800/80 border border-white/5 text-gray-300 font-medium px-2 py-0.5 rounded-full font-mono">
+          <div className="glass-panel rounded-xl border border-white/5 overflow-hidden flex flex-col divide-y divide-white/5">
+            {displayedChapters.map((c, idx) => {
+              const isSelected = selectedChapter && selectedChapter.id === c.id;
+              return (
+                <div
+                  key={c.id}
+                  onClick={() => {
+                    onSelectChapter(c);
+                    if (videoRef.current) {
+                      const seconds = Math.floor(c.start_time);
+                      videoRef.current.currentTime = seconds;
+                      videoRef.current.play().catch((err) => {
+                        console.warn("Autoplay block or interruption on seek:", err);
+                      });
+                    }
+                  }}
+                  className={`p-4 cursor-pointer text-left transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-white/5 border-l-3 ${isSelected
+                      ? 'border-cyan-500 bg-cyan-950/10 shadow-[0_0_15px_rgba(6,182,212,0.05)]'
+                      : 'border-transparent'
+                    }`}
+                >
+                  <h4 className={`font-bold text-sm font-display transition-colors ${
+                    isSelected ? 'text-cyan-400' : 'text-white'
+                  }`}>
+                    {c.topic_title}
+                  </h4>
+                  <span className="text-xs bg-gray-800/80 border border-white/5 text-gray-300 font-semibold px-2 py-0.5 rounded-full font-mono shrink-0 select-none">
                     {c.start_time_str} → {c.end_time_str}
                   </span>
                 </div>
-
-                <h4 className="font-bold text-sm text-white mt-2 font-display">
-                  {c.topic_title}
-                </h4>
-              </div>
-            );
-          })
+              );
+            })}
+          </div>
         )}
       </div>
     </div>

@@ -55,6 +55,76 @@ def resolve_local_file_path(video_path):
             
     return None
 
+def generate_overall_summary(video_id: str, owner_email: str) -> str:
+    """Generates the overall summary of a video using Gemini and saves it to the database."""
+    video = db.get_video(video_id, owner_email)
+    if not video:
+        raise ValueError("Video not found")
+        
+    blocks = db.get_video_blocks(video_id)
+    if not blocks:
+        raise ValueError("No indexed chapters found for this video")
+        
+    chapters_text = []
+    for idx, b in enumerate(blocks, start=1):
+        start_str = format_timestamp(b['start_time'])
+        chapters_text.append(
+            f"Chapter {idx}: {b['topic_title']} [{start_str}]\nTranscript: {b['text']}"
+        )
+    full_chapters_text = "\n\n".join(chapters_text)
+    
+    api_key = os.getenv("GEMINI_API_KEY", "").strip()
+    from src.indexer import GEMINI_AVAILABLE
+    if not GEMINI_AVAILABLE or not api_key or api_key == '""' or "your_gemini_api_key_here" in api_key:
+        raise ValueError("Gemini API is not configured")
+        
+    from google import genai
+    from google.genai import types
+    
+    client = genai.Client(api_key=api_key)
+    system_instruction = (
+        "You are a professional video content summarizer. "
+        "Your task is to write a cohesive, comprehensive overall summary "
+        "of the entire video based on the provided chapter transcripts. "
+        "Do NOT write it section-wise, chapter-wise, or with section headers/numbers. "
+        "Instead, synthesize all details into a single unified summary of the entire video, "
+        "while retaining all the key points and core takeaways in that summary."
+    )
+    prompt = (
+        f"Please generate a unified overall summary (not broken down by chapter or section) "
+        f"for the following video, capturing all key points and takeaways in a cohesive narrative:\n\n"
+        f"Video Title: {video['file_name']}\n\n"
+        f"{full_chapters_text}"
+    )
+    model_name = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite").strip()
+    
+    try:
+        response = client.models.generate_content(
+            model=model_name,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=system_instruction,
+                temperature=0.2
+            ),
+        )
+    except Exception as api_err:
+        if model_name != "gemini-3.1-flash-lite":
+            model_name = "gemini-3.1-flash-lite"
+            response = client.models.generate_content(
+                model=model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=system_instruction,
+                    temperature=0.2
+                ),
+            )
+        else:
+            raise api_err
+            
+    overall_summary = response.text.strip()
+    db.update_overall_summary(video_id, overall_summary)
+    return overall_summary
+
 class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
     def _get_owner_email(self, parsed_url, body=None):
         query_params = urllib.parse.parse_qs(parsed_url.query)
@@ -534,10 +604,17 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
                 except Exception as ex:
                     print(f"[Server API Warning] Automatic boundary analysis failed: {ex}")
                 
+                # Automatically generate overall summary using Gemini
+                try:
+                    print(f"[Server API] Automatically generating overall summary for video ID: {video_id} ...")
+                    generate_overall_summary(video_id, owner_email=owner_email)
+                except Exception as ex:
+                    print(f"[Server API Warning] Automatic overall summary generation failed: {ex}")
+
                 self.send_json_response({
                     "success": True,
                     "video_id": video_id,
-                    "message": "Successfully indexed video and ran semantic boundary analysis."
+                    "message": "Successfully indexed video, ran semantic boundary analysis, and generated overall summary."
                 })
             except Exception as e:
                 self.send_json_response({"error": f"Failed to index video: {e}"}, 500)
@@ -714,92 +791,9 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
             if not owner_email:
                 self.send_json_response({"error": "owner_email is required"}, 400)
                 return
-
             try:
-                # 1. Fetch video details
-                video = db.get_video(video_id, owner_email)
-                if not video:
-                    self.send_json_response({"error": "Video not found"}, 404)
-                    return
-
-                # Bypass cache to ensure new generation format is used
-                # if video.get("overall_summary"):
-                #     self.send_json_response({
-                #         "success": True,
-                #         "overall_summary": video["overall_summary"],
-                #         "cached": True
-                #     })
-                #     return
-
-                # 2. Get video blocks
-                blocks = db.get_video_blocks(video_id)
-                if not blocks:
-                    self.send_json_response({"error": "No indexed chapters found for this video"}, 400)
-                    return
-
-                # 3. Build text representing all chapters
-                chapters_text = []
-                for idx, b in enumerate(blocks, start=1):
-                    start_str = format_timestamp(b['start_time'])
-                    chapters_text.append(
-                        f"Chapter {idx}: {b['topic_title']} [{start_str}]\nTranscript: {b['text']}"
-                    )
-                full_chapters_text = "\n\n".join(chapters_text)
-
-                api_key = os.getenv("GEMINI_API_KEY", "").strip()
-                from src.indexer import GEMINI_AVAILABLE
-                if not GEMINI_AVAILABLE or not api_key or api_key == '""' or "your_gemini_api_key_here" in api_key:
-                    self.send_json_response({"error": "Gemini API is not configured. Cannot generate overall summary."}, 400)
-                    return
-
-                from google import genai
-                from google.genai import types
-
-                client = genai.Client(api_key=api_key)
-                system_instruction = (
-                    "You are a professional video content summarizer. "
-                    "Your task is to write a cohesive, comprehensive overall summary "
-                    "of the entire video based on the provided chapter transcripts. "
-                    "Do NOT write it section-wise, chapter-wise, or with section headers/numbers. "
-                    "Instead, synthesize all details into a single unified summary of the entire video, "
-                    "while retaining all the key points and core takeaways in that summary."
-                )
-                prompt = (
-                    f"Please generate a unified overall summary (not broken down by chapter or section) "
-                    f"for the following video, capturing all key points and takeaways in a cohesive narrative:\n\n"
-                    f"Video Title: {video['file_name']}\n\n"
-                    f"{full_chapters_text}"
-                )
-                model_name = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite").strip()
-
-                try:
-                    response = client.models.generate_content(
-                        model=model_name,
-                        contents=prompt,
-                        config=types.GenerateContentConfig(
-                            system_instruction=system_instruction,
-                            temperature=0.2
-                        ),
-                    )
-                except Exception as api_err:
-                    if model_name != "gemini-3.1-flash-lite":
-                        model_name = "gemini-3.1-flash-lite"
-                        response = client.models.generate_content(
-                            model=model_name,
-                            contents=prompt,
-                            config=types.GenerateContentConfig(
-                                system_instruction=system_instruction,
-                                temperature=0.2
-                            ),
-                        )
-                    else:
-                        raise api_err
-
-                overall_summary = response.text.strip()
-
-                # Update Catalog in MongoDB
-                db.update_overall_summary(video_id, overall_summary)
-
+                print(f"[Server API] Generating overall summary for video ID: {video_id} ...")
+                overall_summary = generate_overall_summary(video_id, owner_email=owner_email)
                 self.send_json_response({
                     "success": True,
                     "overall_summary": overall_summary,

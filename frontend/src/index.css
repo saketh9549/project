@@ -314,8 +314,67 @@ html.light button.bg-indigo-600,
 html.light button.bg-indigo-600 *,
 html.light button.bg-indigo-700,
 html.light button.bg-indigo-700 *,
+html.light button.bg-linear-to-r,
+html.light button.bg-linear-to-r *,
 html.light .bg-cyan-500\/5 {
   color: #ffffff !important;
+}
+
+/* Additional light mode custom utility overrides */
+html.light .bg-white\/10 {
+  background-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+html.light .hover\:bg-white\/5:hover {
+  background-color: rgba(0, 0, 0, 0.04) !important;
+}
+
+html.light .hover\:bg-gray-800:hover {
+  background-color: rgba(0, 0, 0, 0.06) !important;
+}
+
+html.light .hover\:bg-indigo-950\/60:hover {
+  background-color: rgba(79, 70, 229, 0.12) !important;
+}
+
+html.light .hover\:bg-cyan-950\/10:hover {
+  background-color: rgba(6, 182, 212, 0.12) !important;
+}
+
+html.light .bg-indigo-950\/45 {
+  background-color: rgba(79, 70, 229, 0.08) !important;
+  border-color: rgba(79, 70, 229, 0.15) !important;
+}
+
+html.light .text-indigo-200 {
+  color: #312e81 !important; /* indigo-900 */
+}
+
+html.light .bg-red-950\/40,
+html.light .bg-red-950\/45 {
+  background-color: #fee2e2 !important; /* red-100 */
+  border-color: #fca5a5 !important; /* red-300 */
+}
+
+html.light .bg-red-950\/20 {
+  background-color: #fef2f2 !important; /* red-50 */
+}
+
+html.light .hover\:bg-red-950\/20:hover {
+  background-color: #fee2e2 !important; /* red-100 */
+}
+
+html.light .text-red-300,
+html.light .text-red-400 {
+  color: #991b1b !important; /* red-800 */
+}
+
+html.light .hover\:text-red-400:hover {
+  color: #ef4444 !important; /* red-500 */
+}
+
+html.light .hover\:text-red-300:hover {
+  color: #b91c1c !important; /* red-700 */
 }
 
 /* Scrollbars in Light Mode */
