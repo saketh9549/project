@@ -5,7 +5,8 @@ export default function TimelineExplorer({
   selectedVideo,
   chapters,
   selectedChapter,
-  onSelectChapter
+  onSelectChapter,
+  onUploadNew
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
@@ -81,7 +82,7 @@ export default function TimelineExplorer({
   return (
     <div className="flex-1 flex flex-col min-h-0">
       {/* Timeline Header Info */}
-      <div className="flex flex-col gap-4 border-b border-white/5 pb-4 mb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-white/5 pb-4 mb-4">
         <div className="min-w-0">
           <h3 className="font-bold text-lg text-white font-display truncate">
             {selectedVideo.file_name}
@@ -92,6 +93,15 @@ export default function TimelineExplorer({
             <span className="font-semibold text-cyan-400">Duration:</span> {selectedVideo.duration_str}
           </p>
         </div>
+        <button
+          onClick={onUploadNew}
+          className="shrink-0 flex items-center gap-1.5 bg-indigo-600/30 border border-indigo-500/30 text-indigo-300 hover:bg-indigo-600/50 hover:text-white active:scale-[0.98] font-semibold text-xs px-3.5 py-2 rounded-xl transition-all cursor-pointer shadow-md"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+          </svg>
+          Upload New
+        </button>
       </div>
 
       {/* Video Player */}

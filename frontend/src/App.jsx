@@ -10,7 +10,6 @@ import { apiUrl } from './lib/api';
 
 export default function App() {
   const AUTH_STORAGE_KEY = 'summarix.currentUser';
-  const [sidebarTab, setSidebarTab] = useState('catalog'); // 'catalog' or 'indexer'
   const [videos, setVideos] = useState([]);
   const [selectedVideo, setSelectedVideo] = useState(null);
   const [chapters, setChapters] = useState([]);
@@ -18,40 +17,15 @@ export default function App() {
 
   // Loading & status states
   const [indexingLoading, setIndexingLoading] = useState(false);
-  const [analysisLoading, setAnalysisLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
-  const [leftWidth, setLeftWidth] = useState(320); // width of left sidebar in px
   const [rightWidth, setRightWidth] = useState(350); // width of summary console in px
   const [overallSummary, setOverallSummary] = useState(null);
   const [overallSummaryLoading, setOverallSummaryLoading] = useState(false);
 
 
 
-  const handleLeftMouseDown = (e) => {
-    e.preventDefault();
-    const startX = e.clientX;
-    const startWidth = leftWidth;
 
-    const handleMouseMove = (moveEvent) => {
-      const deltaX = moveEvent.clientX - startX;
-      const maxW = Math.min(500, window.innerWidth * 0.4);
-      const newWidth = Math.max(260, Math.min(maxW, startWidth + deltaX));
-      setLeftWidth(newWidth);
-    };
-
-    const handleMouseUp = () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    };
-
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-  };
 
   const handleMouseDown = (e) => {
     e.preventDefault();
@@ -160,30 +134,7 @@ export default function App() {
     }
   };
 
-  const handleAnalyseVideo = async () => {
-    if (!selectedVideo) return;
 
-    setAnalysisLoading(true);
-    showError(null);
-    showSuccess('Analyzing boundaries with Gemini... Please wait.');
-
-    try {
-      const response = await fetch(apiUrl('/api/analyse'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ video_id: selectedVideo.id })
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Failed to analyze video');
-
-      showSuccess('Gemini boundary analysis completed!');
-      await handleSelectVideo(selectedVideo);
-    } catch (err) {
-      showError('Analysis failed: ' + err.message);
-    } finally {
-      setAnalysisLoading(false);
-    }
-  };
 
   const handleGenerateOverallSummary = async () => {
     if (!selectedVideo) return;
@@ -271,138 +222,132 @@ export default function App() {
       </header>
 
       {/* Main Container */}
-      <div className="flex-1 flex flex-col lg:flex-row gap-6 lg:gap-0 p-6 overflow-hidden h-auto lg:h-[calc(100vh-130px)] w-full">
-
-        {/* Left Sidebar (Catalog & Upload tabs) */}
-        <aside className="resizable-left-panel w-full lg:w-auto shrink-0 glass-panel p-5 rounded-2xl flex flex-col min-h-0">
-          {/* Tab Selector */}
-          <div className="flex border-b border-white/5 mb-4 shrink-0">
-            <button
-              onClick={() => setSidebarTab('catalog')}
-              type="button"
-              className={`flex-1 text-center font-bold font-display py-2 text-xs tracking-wider border-b-2 transition-all cursor-pointer ${sidebarTab === 'catalog'
-                ? 'text-indigo-400 border-indigo-500 shadow-[inset_0_-2px_0_0_rgb(99,102,241)]'
-                : 'text-gray-500 border-transparent hover:text-gray-300'
-                }`}
-            >
-              CATALOG
-            </button>
-            <button
-              onClick={() => setSidebarTab('indexer')}
-              type="button"
-              className={`flex-1 text-center font-bold font-display py-2 text-xs tracking-wider border-b-2 transition-all cursor-pointer ${sidebarTab === 'indexer'
-                ? 'text-indigo-400 border-indigo-500 shadow-[inset_0_-2px_0_0_rgb(99,102,241)]'
-                : 'text-gray-500 border-transparent hover:text-gray-300'
-                }`}
-            >
-              UPLOAD
-            </button>
-          </div>
-
-          {/* Conditional Tab Rendering */}
-          {sidebarTab === 'catalog' ? (
-            <VideosCatalog
-              videos={videos}
-              selectedVideo={selectedVideo}
-              onSelectVideo={handleSelectVideo}
-              onDeleteVideo={handleDeleteVideo}
-            />
-          ) : (
-            <VideoIndexer
-              indexingLoading={indexingLoading}
-              onIndexStart={() => setIndexingLoading(true)}
-              onIndexSuccess={async (videoId) => {
-                setIndexingLoading(false);
-                setSidebarTab('catalog'); // Swap back to catalog to show new index!
-                await fetchVideos();
-                if (videoId) {
-                  try {
-                    const response = await fetch(apiUrl(`/api/videos/${videoId}`));
-                    if (response.ok) {
-                      const data = await response.json();
-                      if (data.video) {
-                        handleSelectVideo(data.video);
+      <div className="flex-1 flex flex-col p-6 overflow-hidden h-auto lg:h-[calc(100vh-130px)] w-full">
+        {!selectedVideo ? (
+          <div className="flex-1 flex items-center justify-center min-h-0">
+            <div className="w-full max-w-xl glass-panel p-8 rounded-2xl shadow-[0_8px_32px_0_rgba(99,102,241,0.05)] border border-white/5 flex flex-col min-h-0">
+              <h2 className="text-xl font-bold text-center text-white mb-6 font-display flex items-center justify-center gap-2 shrink-0">
+                <svg className="w-6 h-6 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+                Index New Video File
+              </h2>
+              <div className="flex-1 overflow-y-auto pr-1">
+                <VideoIndexer
+                  indexingLoading={indexingLoading}
+                  onIndexStart={() => setIndexingLoading(true)}
+                  onIndexSuccess={async (videoId) => {
+                    setIndexingLoading(false);
+                    await fetchVideos();
+                    try {
+                      const res = await fetch(apiUrl(`/api/videos/${videoId}`));
+                      if (res.ok) {
+                        const data = await res.json();
+                        if (data.video) {
+                          setSelectedVideo(data.video);
+                          setChapters(data.chapters || []);
+                          setOverallSummary(data.video.overall_summary || null);
+                        }
                       }
+                    } catch (err) {
+                      console.error("Failed to select newly indexed video", err);
                     }
-                  } catch (err) {
-                    console.error('Auto-selecting new video failed:', err);
-                  }
-                }
-              }}
-              onIndexError={() => setIndexingLoading(false)}
-              showSuccess={showSuccess}
-              showError={showError}
-            />
-          )}
-        </aside>
-
-        {/* Left Splitter Divider */}
-        <div
-          onMouseDown={handleLeftMouseDown}
-          className="hidden lg:flex items-center justify-center w-4 cursor-col-resize group select-none relative z-20 hover:scale-x-110 transition-transform"
-        >
-          {/* Splitter track visual */}
-          <div className="w-[1px] h-full bg-white/5 group-hover:bg-indigo-500/30 group-active:bg-indigo-500/50 rounded transition-colors" />
-          {/* Grab handle grip */}
-          <div className="absolute w-1.5 h-8 bg-white/10 group-hover:bg-indigo-400 group-active:bg-indigo-500 rounded-full border border-white/10 shadow-[0_0_10px_rgba(99,102,241,0.2)] flex flex-col items-center justify-center gap-1 transition-all">
-            <span className="w-0.5 h-0.5 rounded-full bg-white/40"></span>
-            <span className="w-0.5 h-0.5 rounded-full bg-white/40"></span>
-            <span className="w-0.5 h-0.5 rounded-full bg-white/40"></span>
-          </div>
-        </div>
-
-        {/* Workspace containing Center Panel and Right Sidebar */}
-        <div className="flex-grow flex-1 flex flex-col lg:flex-row min-h-0 overflow-hidden relative gap-6 lg:gap-0">
-
-          {/* Center Panel (Timeline Explorer) */}
-          <main className="flex-grow flex-1 glass-panel p-6 rounded-2xl flex flex-col min-h-0">
-            <TimelineExplorer
-              selectedVideo={selectedVideo}
-              chapters={chapters}
-              selectedChapter={selectedChapter}
-              onSelectChapter={setSelectedChapter}
-            />
-          </main>
-
-          {/* Interactive Splitter Divider */}
-          <div
-            onMouseDown={handleMouseDown}
-            className="hidden lg:flex items-center justify-center w-4 cursor-col-resize group select-none relative z-20 hover:scale-x-110 transition-transform"
-          >
-            {/* Splitter track visual */}
-            <div className="w-[1px] h-full bg-white/5 group-hover:bg-indigo-500/30 group-active:bg-indigo-500/50 rounded transition-colors" />
-            {/* Grab handle grip */}
-            <div className="absolute w-1.5 h-8 bg-white/10 group-hover:bg-indigo-400 group-active:bg-indigo-500 rounded-full border border-white/10 shadow-[0_0_10px_rgba(99,102,241,0.2)] flex flex-col items-center justify-center gap-1 transition-all">
-              <span className="w-0.5 h-0.5 rounded-full bg-white/40"></span>
-              <span className="w-0.5 h-0.5 rounded-full bg-white/40"></span>
-              <span className="w-0.5 h-0.5 rounded-full bg-white/40"></span>
+                  }}
+                  onIndexError={() => setIndexingLoading(false)}
+                  showSuccess={showSuccess}
+                  showError={showError}
+                />
+              </div>
             </div>
           </div>
+        ) : (
+          <div className="flex-grow flex-1 flex flex-col lg:flex-row min-h-0 overflow-hidden relative gap-6 lg:gap-0">
+            {/* Left Sidebar (Videos Catalog) */}
+            <aside className="w-full lg:w-64 shrink-0 glass-panel p-5 rounded-2xl flex flex-col min-h-0">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xs font-bold text-white font-display uppercase tracking-wider flex items-center gap-2">
+                  <svg className="w-4 h-4 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                  </svg>
+                  Videos Catalog
+                </h2>
+                <button
+                  onClick={() => {
+                    setSelectedVideo(null);
+                    setChapters([]);
+                    setSelectedChapter(null);
+                    setOverallSummary(null);
+                  }}
+                  className="text-[9px] bg-indigo-600/30 border border-indigo-500/30 text-indigo-300 hover:bg-indigo-600/50 hover:text-white px-2 py-0.5 rounded-md transition-all cursor-pointer font-semibold"
+                  title="Index New Video"
+                >
+                  + New
+                </button>
+              </div>
+              <VideosCatalog
+                videos={videos}
+                selectedVideo={selectedVideo}
+                onSelectVideo={handleSelectVideo}
+                onDeleteVideo={handleDeleteVideo}
+              />
+            </aside>
 
-          {/* Right Sidebar (Summary Console) */}
-          <aside className="resizable-right-panel w-full lg:w-auto shrink-0 glass-panel p-5 rounded-2xl flex flex-col min-h-0">
-            <SummaryConsole
-              selectedChapter={selectedChapter}
-              chapters={chapters}
-              showSuccess={showSuccess}
-              overallSummary={overallSummary}
-              overallSummaryLoading={overallSummaryLoading}
-              onGenerateOverallSummary={handleGenerateOverallSummary}
-            />
-          </aside>
+            {/* Vertical Divider */}
+            <div className="hidden lg:block w-[1px] bg-white/5 mx-3 self-stretch" />
 
-          {/* Inline styles to drive the width responsively based on state */}
-          <style>{`
-            @media (min-width: 1024px) {
-              .resizable-left-panel {
-                width: ${leftWidth}px !important;
+            {/* Center Panel (Timeline Explorer) */}
+            <main className="flex-grow flex-1 glass-panel p-6 rounded-2xl flex flex-col min-h-0">
+              <TimelineExplorer
+                selectedVideo={selectedVideo}
+                chapters={chapters}
+                selectedChapter={selectedChapter}
+                onSelectChapter={setSelectedChapter}
+                onUploadNew={() => {
+                  setSelectedVideo(null);
+                  setChapters([]);
+                  setSelectedChapter(null);
+                  setOverallSummary(null);
+                }}
+              />
+            </main>
+
+            {/* Interactive Splitter Divider */}
+            <div
+              onMouseDown={handleMouseDown}
+              className="hidden lg:flex items-center justify-center w-4 cursor-col-resize group select-none relative z-20 hover:scale-x-110 transition-transform"
+            >
+              {/* Splitter track visual */}
+              <div className="w-[1px] h-full bg-white/5 group-hover:bg-indigo-500/30 group-active:bg-indigo-500/50 rounded transition-colors" />
+              {/* Grab handle grip */}
+              <div className="absolute w-1.5 h-8 bg-white/10 group-hover:bg-indigo-400 group-active:bg-indigo-500 rounded-full border border-white/10 shadow-[0_0_10px_rgba(99,102,241,0.2)] flex flex-col items-center justify-center gap-1 transition-all">
+                <span className="w-0.5 h-0.5 rounded-full bg-white/40"></span>
+                <span className="w-0.5 h-0.5 rounded-full bg-white/40"></span>
+                <span className="w-0.5 h-0.5 rounded-full bg-white/40"></span>
+              </div>
+            </div>
+
+            {/* Right Sidebar (Summary Console) */}
+            <aside className="resizable-right-panel w-full lg:w-auto shrink-0 glass-panel p-5 rounded-2xl flex flex-col min-h-0">
+              <SummaryConsole
+                selectedChapter={selectedChapter}
+                chapters={chapters}
+                showSuccess={showSuccess}
+                overallSummary={overallSummary}
+                overallSummaryLoading={overallSummaryLoading}
+                onGenerateOverallSummary={handleGenerateOverallSummary}
+              />
+            </aside>
+
+            {/* Inline styles to drive the width responsively based on state */}
+            <style>{`
+              @media (min-width: 1024px) {
+                .resizable-right-panel {
+                  width: ${rightWidth}px !important;
+                }
               }
-              .resizable-right-panel {
-                width: ${rightWidth}px !important;
-              }
-            }
-          `}</style>
-        </div>
+            `}</style>
+          </div>
+        )}
       </div>
 
 
