@@ -816,13 +816,16 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
         except Exception as e:
             print(f"[Server Error] Failed to send JSON response: {e}")
 
+class ThreadingTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+    daemon_threads = True
+
 def run_server():
     db.init_db()
     if not os.path.exists(FRONTEND_DIR):
         os.makedirs(FRONTEND_DIR)
 
-    socketserver.TCPServer.allow_reuse_address = True
-    with socketserver.TCPServer(("", PORT), LocalAPIRequestHandler) as httpd:
+    ThreadingTCPServer.allow_reuse_address = True
+    with ThreadingTCPServer(("", PORT), LocalAPIRequestHandler) as httpd:
         print(f"[Server] Video Chapter Indexer API is running on port {PORT}!")
         print(f"[Server] API endpoints are mounted at http://localhost:{PORT}/api/")
         print("[Server] Press Ctrl+C to terminate the server.")

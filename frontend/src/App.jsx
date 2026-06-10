@@ -19,13 +19,9 @@ export default function App() {
   const [indexingLoading, setIndexingLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
-  const [rightWidth, setRightWidth] = useState(350); // width of summary console in px
+  const [rightWidth, setRightWidth] = useState(500); // initial fallback width
   const [overallSummary, setOverallSummary] = useState(null);
   const [overallSummaryLoading, setOverallSummaryLoading] = useState(false);
-
-
-
-
 
   const handleMouseDown = (e) => {
     e.preventDefault();
@@ -34,7 +30,7 @@ export default function App() {
 
     const handleMouseMove = (moveEvent) => {
       const deltaX = moveEvent.clientX - startX;
-      const maxW = Math.min(650, window.innerWidth * 0.5);
+      const maxW = window.innerWidth - 300; // protect center panel min width (300px)
       const newWidth = Math.max(280, Math.min(maxW, startWidth - deltaX));
       setRightWidth(newWidth);
     };
@@ -54,9 +50,12 @@ export default function App() {
 
 
 
-  // Fetch videos list on mount
+  // Fetch videos list and set initial splitter width on mount
   useEffect(() => {
     fetchVideos();
+    if (typeof window !== 'undefined') {
+      setRightWidth((window.innerWidth - 48) / 2);
+    }
   }, []);
 
   // Auto-dismiss success and error notifications after 2 seconds
