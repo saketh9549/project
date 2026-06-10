@@ -271,7 +271,14 @@ def index_video(video_path: str, language: str = None, owner_email: str = "") ->
         raise FileNotFoundError(f"Video file not found: {abs_path}")
         
     file_name = os.path.basename(abs_path)
-    video_id = generate_video_id(abs_path, owner_email=owner_email)
+    
+    # Check if a video with the same filePath already exists to prevent duplicate key violations
+    existing_video = db.get_video_by_path(abs_path, owner_email)
+    if existing_video:
+        video_id = existing_video["id"]
+        print(f"[Indexer] Reusing existing video ID for duplicate path: {video_id}")
+    else:
+        video_id = generate_video_id(abs_path, owner_email=owner_email)
     
     print(f"[Indexer] Processing video: {file_name} (ID: {video_id})")
     
