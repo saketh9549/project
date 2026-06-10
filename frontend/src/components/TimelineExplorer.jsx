@@ -7,17 +7,17 @@ function ChapterThumbnail({ videoSrc, time }) {
 
   React.useEffect(() => {
     if (!videoSrc || time === undefined) return;
-    
+
     let active = true;
     setLoading(true);
-    
+
     const video = document.createElement('video');
     video.src = videoSrc;
     video.crossOrigin = 'anonymous';
     video.currentTime = time;
     video.muted = true;
     video.playsInline = true;
-    
+
     const timeout = setTimeout(() => {
       if (active) {
         setLoading(false);
@@ -88,14 +88,15 @@ export default function TimelineExplorer({
   selectedVideo,
   chapters,
   selectedChapter,
-  onSelectChapter
+  onSelectChapter,
+  onUploadNew
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
 
   const videoRef = React.useRef(null);
-  
-  const videoSrc = selectedVideo 
+
+  const videoSrc = selectedVideo
     ? apiUrl(`/api/stream-local-video?path=${encodeURIComponent(selectedVideo.absolute_local_path || selectedVideo.file_path || '')}`)
     : '';
 
@@ -164,7 +165,7 @@ export default function TimelineExplorer({
   return (
     <div className="flex-1 flex flex-col min-h-0">
       {/* Timeline Header Info */}
-      <div className="flex flex-col gap-4 border-b border-white/5 pb-4 mb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-white/5 pb-4 mb-4">
         <div className="min-w-0">
           <h3 className="font-bold text-lg text-white font-display truncate">
             {selectedVideo.file_name}
@@ -175,6 +176,15 @@ export default function TimelineExplorer({
             <span className="font-semibold text-cyan-400">Duration:</span> {selectedVideo.duration_str}
           </p>
         </div>
+        <button
+          onClick={onUploadNew}
+          className="shrink-0 flex items-center gap-1.5 bg-indigo-600/30 border border-indigo-500/30 text-indigo-9000 hover:bg-indigo-600/50 hover:text-white active:scale-[0.98] font-semibold text-xs px-3.5 py-2 rounded-xl transition-all cursor-pointer shadow-md"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+          </svg>
+          Upload New
+        </button>
       </div>
 
       {/* Video Player */}
@@ -241,13 +251,12 @@ export default function TimelineExplorer({
                     }
                   }}
                   className={`p-4 cursor-pointer text-left transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-white/5 border-l-3 ${isSelected
-                      ? 'border-cyan-500 bg-cyan-950/10 shadow-[0_0_15px_rgba(6,182,212,0.05)]'
-                      : 'border-transparent'
+                    ? 'border-cyan-500 bg-cyan-950/10 shadow-[0_0_15px_rgba(6,182,212,0.05)]'
+                    : 'border-transparent'
                     }`}
                 >
-                  <h4 className={`font-bold text-sm font-display transition-colors ${
-                    isSelected ? 'text-cyan-400' : 'text-white'
-                  }`}>
+                  <h4 className={`font-bold text-sm font-display transition-colors ${isSelected ? 'text-cyan-400' : 'text-white'
+                    }`}>
                     {c.topic_title}
                   </h4>
                   <span className="text-xs bg-gray-800/80 border border-white/5 text-gray-300 font-semibold px-2 py-0.5 rounded-full font-mono shrink-0 select-none">
@@ -269,13 +278,11 @@ export default function TimelineExplorer({
             </svg>
             Chapters
           </h3>
-          {chapters.length > 5 && (
-            <span className="text-[10px] text-gray-500 font-semibold cursor-default hover:text-indigo-400 transition-colors uppercase tracking-wider">
-              View All ({chapters.length})
-            </span>
-          )}
+          <span className="text-[10px] text-gray-500 font-semibold cursor-default hover:text-indigo-400 transition-colors uppercase tracking-wider">
+            View All ({chapters.length})
+          </span>
         </div>
-        
+
         <div className="flex gap-4 overflow-x-auto pb-3 scrollbar-thin">
           {chapters.map((c, idx) => {
             const isSelected = selectedChapter && selectedChapter.id === c.id;
@@ -292,9 +299,8 @@ export default function TimelineExplorer({
                     });
                   }
                 }}
-                className={`flex-none w-36 group cursor-pointer transition-all ${
-                  isSelected ? 'scale-[0.98]' : ''
-                }`}
+                className={`flex-none w-36 group cursor-pointer transition-all ${isSelected ? 'scale-[0.98]' : ''
+                  }`}
               >
                 <div className="relative overflow-hidden rounded-lg mb-2">
                   <ChapterThumbnail videoSrc={videoSrc} time={c.start_time} />
@@ -302,20 +308,19 @@ export default function TimelineExplorer({
                     <div className="absolute inset-0 bg-cyan-500/10 border-2 border-cyan-500 rounded-lg flex items-center justify-center">
                       <div className="bg-cyan-500 text-black p-1 rounded-full shadow-lg">
                         <svg className="w-3.5 h-3.5 fill-current text-white" viewBox="0 0 24 24">
-                          <path d="M8 5v14l11-7z"/>
+                          <path d="M8 5v14l11-7z" />
                         </svg>
                       </div>
                     </div>
                   )}
                 </div>
-                
+
                 <div className="flex flex-col gap-1 px-1">
                   <span className="text-[10px] font-bold text-cyan-400 font-mono tracking-tighter">
                     {c.start_time_str}
                   </span>
-                  <p className={`text-[11px] font-semibold font-display leading-snug line-clamp-2 transition-colors ${
-                    isSelected ? 'text-cyan-400' : 'text-white'
-                  }`}>
+                  <p className={`text-[11px] font-semibold font-display leading-snug line-clamp-2 transition-colors ${isSelected ? 'text-cyan-400' : 'text-white'
+                    }`}>
                     {c.topic_title}
                   </p>
                 </div>

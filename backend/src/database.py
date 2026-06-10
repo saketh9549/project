@@ -127,18 +127,22 @@ def insert_video(video_id: str, file_path: str, file_name: str, duration: float,
             
         history_entry = f"Indexed video details via Python indexer at {datetime.now().isoformat()}"
         
+        update_doc = {
+            "$set": update_fields,
+            "$setOnInsert": {
+                "createdAt": datetime.now(),
+                "history": [history_entry]
+            }
+        }
+        
+        if existing:
+            update_doc["$push"] = {
+                "history": history_entry
+            }
+            
         db.catalogs.update_one(
             {"_id": oid},
-            {
-                "$set": update_fields,
-                "$setOnInsert": {
-                    "createdAt": datetime.now(),
-                    "history": [history_entry]
-                },
-                "$push": {
-                    "history": history_entry
-                } if existing else {"$each": []}
-            },
+            update_doc,
             upsert=True
         )
         return True
