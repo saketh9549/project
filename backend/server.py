@@ -1,7 +1,8 @@
+import os
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 import http.server
 import socketserver
 import json
-import os
 import urllib.parse
 import mimetypes
 import sys
@@ -100,10 +101,12 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
             self.send_json_response({"error": "path parameter is required"}, 400)
             return
             
-        if not os.path.exists(video_path) or not os.path.isfile(video_path):
+        resolved_path = resolve_local_file_path(video_path)
+        if not resolved_path or not os.path.isfile(resolved_path):
             self.send_json_response({"error": f"Local video file not found at path: {video_path}"}, 404)
             return
             
+        video_path = resolved_path
         try:
             file_size = os.path.getsize(video_path)
             content_type, _ = mimetypes.guess_type(video_path)
@@ -719,13 +722,14 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
                     self.send_json_response({"error": "Video not found"}, 404)
                     return
 
-                if video.get("overall_summary"):
-                    self.send_json_response({
-                        "success": True,
-                        "overall_summary": video["overall_summary"],
-                        "cached": True
-                    })
-                    return
+                # Bypass cache to ensure new generation format is used
+                # if video.get("overall_summary"):
+                #     self.send_json_response({
+                #         "success": True,
+                #         "overall_summary": video["overall_summary"],
+                #         "cached": True
+                #     })
+                #     return
 
                 # 2. Get video blocks
                 blocks = db.get_video_blocks(video_id)
@@ -754,12 +758,15 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
                 client = genai.Client(api_key=api_key)
                 system_instruction = (
                     "You are a professional video content summarizer. "
-                    "Your task is to write a cohesive, comprehensive section-by-section overall summary "
+                    "Your task is to write a cohesive, comprehensive overall summary "
                     "of the entire video based on the provided chapter transcripts. "
-                    "Provide clear section headers and key takeaways for each part."
+                    "Do NOT write it section-wise, chapter-wise, or with section headers/numbers. "
+                    "Instead, synthesize all details into a single unified summary of the entire video, "
+                    "while retaining all the key points and core takeaways in that summary."
                 )
                 prompt = (
-                    f"Please generate a comprehensive overall summary for the following video chapters:\n\n"
+                    f"Please generate a unified overall summary (not broken down by chapter or section) "
+                    f"for the following video, capturing all key points and takeaways in a cohesive narrative:\n\n"
                     f"Video Title: {video['file_name']}\n\n"
                     f"{full_chapters_text}"
                 )

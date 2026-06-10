@@ -12,19 +12,20 @@ export default function VideoIndexer({
   const [videoPath, setVideoPath] = useState('');
   const [language, setLanguage] = useState('');
   const [dragActive, setDragActive] = useState(false);
+  const [selectedFile, setSelectedFile] = useState(null);
 
   // Simulated Indexing progress states
   const [indexingProgress, setIndexingProgress] = useState(0);
   const [indexingStatus, setIndexingStatus] = useState('Initializing...');
 
-  const runIndexing = async (path, lang) => {
-    if (!path.trim()) return;
+  const runIndexing = async (file, lang) => {
+    if (!file) return;
     
     onIndexStart();
     showError(null);
     showSuccess('Indexing video in progress... Please wait. This extracts audio and transcribes it.');
     setIndexingProgress(0);
-    setIndexingStatus('Initializing audio extraction...');
+    setIndexingStatus('Initializing...');
 
     // Start progress simulator
     let currentProgress = 0;
@@ -46,6 +47,30 @@ export default function VideoIndexer({
     }, 200);
     
     try {
+      let path = file.path || '';
+
+      // If we don't have an absolute path (web browser upload), upload first
+      if (!path) {
+        setIndexingStatus('Uploading file to server...');
+        setIndexingProgress(5);
+
+        const uploadUrl = apiUrl(`/api/upload?filename=${encodeURIComponent(file.name)}`);
+        const uploadResponse = await fetch(uploadUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/octet-stream'
+          },
+          body: file
+        });
+
+        const uploadData = await uploadResponse.json();
+        if (!uploadResponse.ok) throw new Error(uploadData.error || 'Failed to upload file');
+
+        path = uploadData.file_path;
+        setIndexingStatus('File uploaded. Starting indexing...');
+        setIndexingProgress(15);
+      }
+
       const response = await fetch(apiUrl('/api/index'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -64,6 +89,7 @@ export default function VideoIndexer({
       setTimeout(() => {
         setVideoPath('');
         setLanguage('');
+        setSelectedFile(null);
         setIndexingProgress(0);
         onIndexSuccess(data.video_id);
       }, 1500);
@@ -78,7 +104,7 @@ export default function VideoIndexer({
 
   const handleIndexVideo = async (e) => {
     if (e) e.preventDefault();
-    runIndexing(videoPath, language);
+    runIndexing(selectedFile, language);
   };
 
   // Drag and drop handlers
@@ -98,20 +124,22 @@ export default function VideoIndexer({
     setDragActive(false);
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const file = e.dataTransfer.files[0];
+      setSelectedFile(file);
       const path = file.path || file.name;
       setVideoPath(path);
       showSuccess(`Selected: '${file.name}'. Starting indexing...`);
-      runIndexing(path, language);
+      runIndexing(file, language);
     }
   };
 
   const handleFileChange = (e) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
+      setSelectedFile(file);
       const path = file.path || file.name;
       setVideoPath(path);
       showSuccess(`Selected: '${file.name}'. Starting indexing...`);
-      runIndexing(path, language);
+      runIndexing(file, language);
     }
   };
 
@@ -217,7 +245,7 @@ export default function VideoIndexer({
             </div>
             <button
               type="button"
-              onClick={() => setVideoPath('')}
+              onClick={() => { setVideoPath(''); setSelectedFile(null); }}
               className="text-gray-500 hover:text-white transition-colors cursor-pointer text-xs p-1"
             >
               Clear

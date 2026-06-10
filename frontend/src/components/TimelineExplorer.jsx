@@ -172,10 +172,6 @@ export default function TimelineExplorer({
                 <h4 className="font-bold text-sm text-white mt-2 font-display">
                   {c.topic_title}
                 </h4>
-
-                <p className="text-gray-400 text-xs mt-1.5 leading-relaxed line-clamp-3">
-                  {highlightText(c.text, searchQuery)}
-                </p>
               </div>
             );
           })

@@ -1,5 +1,6 @@
-import sys
 import os
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+import sys
 import argparse
 from pathlib import Path
 from src.indexer import index_video
