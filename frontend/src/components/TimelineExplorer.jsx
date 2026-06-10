@@ -1,6 +1,89 @@
 import React, { useState, useEffect } from 'react';
 import { apiUrl } from '../lib/api';
 
+function ChapterThumbnail({ videoSrc, time }) {
+  const [thumbnail, setThumbnail] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    if (!videoSrc || time === undefined) return;
+    
+    let active = true;
+    setLoading(true);
+    
+    const video = document.createElement('video');
+    video.src = videoSrc;
+    video.crossOrigin = 'anonymous';
+    video.currentTime = time;
+    video.muted = true;
+    video.playsInline = true;
+    
+    const timeout = setTimeout(() => {
+      if (active) {
+        setLoading(false);
+      }
+    }, 5000);
+
+    video.onseeked = () => {
+      if (!active) return;
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = 160;
+        canvas.height = 90;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+        setThumbnail(dataUrl);
+        setLoading(false);
+      } catch (err) {
+        console.warn("Frame capture failed:", err);
+        setLoading(false);
+      }
+    };
+
+    video.onerror = () => {
+      if (active) setLoading(false);
+    };
+
+    return () => {
+      active = false;
+      clearTimeout(timeout);
+      video.src = '';
+      video.load();
+    };
+  }, [videoSrc, time]);
+
+  if (loading) {
+    return (
+      <div className="w-36 h-20 bg-gray-200/50 dark:bg-gray-800/50 rounded-lg animate-pulse flex items-center justify-center border border-white/5">
+        <svg className="w-5 h-5 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+      </div>
+    );
+  }
+
+  if (!thumbnail) {
+    return (
+      <div className="w-36 h-20 bg-gradient-to-tr from-indigo-500/20 to-cyan-500/20 rounded-lg flex items-center justify-center border border-indigo-500/20 relative">
+        <svg className="w-6 h-6 text-indigo-400/80" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={thumbnail}
+      alt="Chapter Preview"
+      className="w-36 h-20 object-cover rounded-lg border border-white/10 shadow-sm transition-transform duration-300 group-hover:scale-105"
+    />
+  );
+}
+
 export default function TimelineExplorer({
   selectedVideo,
   chapters,
@@ -175,6 +258,69 @@ export default function TimelineExplorer({
             })}
           </div>
         )}
+      </div>
+
+      {/* Horizontal Chapters Timeline */}
+      <div className="mt-6 border-t border-white/5 pt-5 shrink-0 select-none">
+        <div className="flex items-center justify-between mb-3.5">
+          <h3 className="text-xs font-bold font-display uppercase tracking-widest text-indigo-400 flex items-center gap-1.5">
+            <svg className="w-4 h-4 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+            </svg>
+            Chapters
+          </h3>
+          <span className="text-[10px] text-gray-500 font-semibold cursor-default hover:text-indigo-400 transition-colors uppercase tracking-wider">
+            View All ({chapters.length})
+          </span>
+        </div>
+        
+        <div className="flex gap-4 overflow-x-auto pb-3 scrollbar-thin">
+          {chapters.map((c, idx) => {
+            const isSelected = selectedChapter && selectedChapter.id === c.id;
+            return (
+              <div
+                key={c.id}
+                onClick={() => {
+                  onSelectChapter(c);
+                  if (videoRef.current) {
+                    const seconds = Math.floor(c.start_time);
+                    videoRef.current.currentTime = seconds;
+                    videoRef.current.play().catch((err) => {
+                      console.warn("Autoplay block or interruption on seek:", err);
+                    });
+                  }
+                }}
+                className={`flex-none w-36 group cursor-pointer transition-all ${
+                  isSelected ? 'scale-[0.98]' : ''
+                }`}
+              >
+                <div className="relative overflow-hidden rounded-lg mb-2">
+                  <ChapterThumbnail videoSrc={videoSrc} time={c.start_time} />
+                  {isSelected && (
+                    <div className="absolute inset-0 bg-cyan-500/10 border-2 border-cyan-500 rounded-lg flex items-center justify-center">
+                      <div className="bg-cyan-500 text-black p-1 rounded-full shadow-lg">
+                        <svg className="w-3.5 h-3.5 fill-current text-white" viewBox="0 0 24 24">
+                          <path d="M8 5v14l11-7z"/>
+                        </svg>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                
+                <div className="flex flex-col gap-1 px-1">
+                  <span className="text-[10px] font-bold text-cyan-400 font-mono tracking-tighter">
+                    {c.start_time_str}
+                  </span>
+                  <p className={`text-[11px] font-semibold font-display leading-snug line-clamp-2 transition-colors ${
+                    isSelected ? 'text-cyan-400' : 'text-white'
+                  }`}>
+                    {c.topic_title}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
