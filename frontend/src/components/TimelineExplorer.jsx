@@ -194,7 +194,7 @@ export default function TimelineExplorer({
             ref={videoRef}
             src={videoSrc}
             controls
-            className="w-full max-h-[220px] object-contain"
+            className="w-full max-h-[300px] object-contain"
           />
         </div>
       )}

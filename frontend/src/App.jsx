@@ -260,9 +260,9 @@ export default function App() {
             </div>
           </div>
         ) : (
-          <div className="flex-grow flex-1 flex flex-col lg:flex-row min-h-0 overflow-hidden relative gap-6 lg:gap-0">
+          <div className="flex-grow flex-1 flex flex-col lg:flex-row min-w-0 min-h-0 overflow-hidden relative gap-6 lg:gap-0">
             {/* Center Panel (Timeline Explorer) */}
-            <main className="flex-grow flex-1 glass-panel p-6 rounded-2xl flex flex-col min-h-0">
+            <main className="flex-grow flex-1 glass-panel p-6 rounded-2xl flex flex-col min-w-0 min-h-0">
               <TimelineExplorer
                 selectedVideo={selectedVideo}
                 chapters={chapters}
