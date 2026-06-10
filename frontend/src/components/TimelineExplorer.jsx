@@ -269,9 +269,11 @@ export default function TimelineExplorer({
             </svg>
             Chapters
           </h3>
-          <span className="text-[10px] text-gray-500 font-semibold cursor-default hover:text-indigo-400 transition-colors uppercase tracking-wider">
-            View All ({chapters.length})
-          </span>
+          {chapters.length > 5 && (
+            <span className="text-[10px] text-gray-500 font-semibold cursor-default hover:text-indigo-400 transition-colors uppercase tracking-wider">
+              View All ({chapters.length})
+            </span>
+          )}
         </div>
         
         <div className="flex gap-4 overflow-x-auto pb-3 scrollbar-thin">
