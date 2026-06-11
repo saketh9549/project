@@ -166,19 +166,30 @@ export default function TimelineExplorer({
     <div className="flex-1 flex flex-col min-h-0">
       {/* Timeline Header Info */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-white/5 pb-4 mb-4">
-        <div className="min-w-0">
-          <h3 className="font-bold text-lg text-white font-display truncate">
-            {selectedVideo.file_name}
-          </h3>
-          <p className="text-xs text-gray-400 mt-1 flex flex-wrap items-center gap-1.5">
-            <span className="font-semibold text-cyan-400">ID:</span> <span className="font-mono">{selectedVideo.id}</span>
-            <span className="text-gray-600">•</span>
-            <span className="font-semibold text-cyan-400">Duration:</span> {selectedVideo.duration_str}
-          </p>
+        <div className="flex items-center gap-3 min-w-0">
+          <button
+            onClick={onUploadNew}
+            className="p-2 -ml-2 text-gray-400 hover:text-white rounded-lg hover:bg-white/5 transition-all cursor-pointer group shrink-0"
+            title="Go back to Catalog / Upload"
+          >
+            <svg className="w-5 h-5 group-hover:-translate-x-0.5 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+          </button>
+          <div className="min-w-0">
+            <h3 className="font-bold text-lg text-white font-display truncate">
+              {selectedVideo.file_name}
+            </h3>
+            <p className="text-xs text-gray-400 mt-1 flex flex-wrap items-center gap-1.5">
+              <span className="font-semibold text-cyan-400">ID:</span> <span className="font-mono">{selectedVideo.id}</span>
+              <span className="text-gray-600">•</span>
+              <span className="font-semibold text-cyan-400">Duration:</span> {selectedVideo.duration_str}
+            </p>
+          </div>
         </div>
         <button
           onClick={onUploadNew}
-          className="shrink-0 flex items-center gap-1.5 bg-indigo-600/30 border border-indigo-500/30 text-indigo-9000 hover:bg-indigo-600/50 hover:text-white active:scale-[0.98] font-semibold text-xs px-3.5 py-2 rounded-xl transition-all cursor-pointer shadow-md"
+          className="shrink-0 flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white active:scale-[0.98] font-semibold text-xs px-3.5 py-2 rounded-xl transition-all cursor-pointer shadow-md"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
@@ -248,6 +259,7 @@ export default function TimelineExplorer({
                       videoRef.current.play().catch((err) => {
                         console.warn("Autoplay block or interruption on seek:", err);
                       });
+                      videoRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     }
                   }}
                   className={`p-4 cursor-pointer text-left transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-white/5 border-l-3 ${isSelected
@@ -279,7 +291,7 @@ export default function TimelineExplorer({
             Chapters
           </h3>
           <span className="text-[10px] text-gray-500 font-semibold cursor-default hover:text-indigo-400 transition-colors uppercase tracking-wider">
-            View All ({chapters.length})
+
           </span>
         </div>
 
@@ -297,6 +309,7 @@ export default function TimelineExplorer({
                     videoRef.current.play().catch((err) => {
                       console.warn("Autoplay block or interruption on seek:", err);
                     });
+                    videoRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
                   }
                 }}
                 className={`flex-none w-36 group cursor-pointer transition-all ${isSelected ? 'scale-[0.98]' : ''
