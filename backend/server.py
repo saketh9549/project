@@ -427,8 +427,8 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
             print(f"[Server API] Uploading file '{safe_filename}' ({content_length} bytes) to GridFS...")
             
             # Initialize GridFS
-            db = get_db()
-            fs = gridfs.GridFS(db)
+            mongo_db = get_db()
+            fs = gridfs.GridFS(mongo_db)
             
             # Read raw bytes in chunks and stream directly to GridFS
             remaining_bytes = content_length
@@ -716,8 +716,8 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
                     from src.database import get_db
                     from src.config import get_temp_dir
                     
-                    db = get_db()
-                    fs = gridfs.GridFS(db)
+                    mongo_db = get_db()
+                    fs = gridfs.GridFS(mongo_db)
                     
                     # Fetch from GridFS
                     try:
