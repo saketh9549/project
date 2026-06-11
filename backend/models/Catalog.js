@@ -53,6 +53,11 @@ const catalogSchema = new mongoose.Schema({
     trim: true,
     default: ''
   },
+  gridFsFileId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'fs.files',
+    default: null
+  },
   timelineIndex: [{
     timestamp: { type: String, trim: true },
     title: { type: String, trim: true },

@@ -97,7 +97,7 @@ export default function TimelineExplorer({
   const videoRef = React.useRef(null);
 
   const videoSrc = selectedVideo
-    ? apiUrl(`/api/stream-local-video?path=${encodeURIComponent(selectedVideo.absolute_local_path || selectedVideo.file_path || '')}`)
+    ? apiUrl(`/api/stream-local-video?video_id=${encodeURIComponent(selectedVideo.id)}`)
     : '';
 
   // Reset search state when active video changes

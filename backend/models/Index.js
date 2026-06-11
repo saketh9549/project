@@ -36,7 +36,8 @@ const indexSchema = new mongoose.Schema({
     default: 'raw'
   }
 }, {
-  timestamps: true
+  timestamps: true,
+  collection: 'indices'
 });
 
 // Compound index for fast chronological sorting within a specific video catalog

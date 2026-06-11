@@ -48,6 +48,7 @@ export default function VideoIndexer({
     
     try {
       let path = file.path || '';
+      let gridFsId = null;
 
       // If we don't have an absolute path (web browser upload), upload first
       if (!path) {
@@ -66,7 +67,7 @@ export default function VideoIndexer({
         const uploadData = await uploadResponse.json();
         if (!uploadResponse.ok) throw new Error(uploadData.error || 'Failed to upload file');
 
-        path = uploadData.file_path;
+        gridFsId = uploadData.grid_fs_id;
         setIndexingStatus('File uploaded. Starting indexing...');
         setIndexingProgress(15);
       }
@@ -74,7 +75,12 @@ export default function VideoIndexer({
       const response = await fetch(apiUrl('/api/index'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ video_path: path.trim(), language: lang.trim() || undefined })
+        body: JSON.stringify({
+          grid_fs_id: gridFsId || undefined,
+          video_path: path ? path.trim() : undefined,
+          file_name: file.name,
+          language: lang.trim() || undefined
+        })
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Failed to index video');

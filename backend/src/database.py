@@ -24,7 +24,7 @@ def get_db():
     parsed = urllib.parse.urlparse(uri)
     db_name = parsed.path.strip('/')
     if not db_name:
-        db_name = 'test'  # Default to 'test' to match Atlas/Mongoose default behavior
+        db_name = 'summarix_test'  # Default to 'summarix_test' to align database naming
     return client[db_name]
 
 def init_db():
@@ -59,18 +59,25 @@ def _map_catalog_to_sqlite_style(doc: Dict[str, Any]) -> Dict[str, Any]:
                     "seconds": item.get("seconds", 0)
                 })
             
+    created_at_val = doc.get("createdAt")
+    if isinstance(created_at_val, datetime):
+        created_at_str = created_at_val.isoformat()
+    else:
+        created_at_str = str(created_at_val) if created_at_val else ""
+
     return {
         "id": str(doc["_id"]),
-        "file_path": doc.get("filePath", ""),
         "file_name": doc.get("fileName", ""),
+        "file_type": doc.get("fileType", ""),
+        "file_path": doc.get("filePath", ""),
         "duration": doc.get("duration", 0.0),
-        "owner_email": doc.get("ownerEmail", ""),
-        "created_at": doc.get("createdAt", doc.get("updatedAt", datetime.now())).isoformat() if isinstance(doc.get("createdAt"), datetime) else str(doc.get("createdAt", "")),
         "upload_status": doc.get("uploadStatus", "pending"),
         "raw_transcript": doc.get("rawTranscript", ""),
         "overall_summary": doc.get("overallSummary", ""),
         "absolute_local_path": doc.get("absoluteLocalPath", ""),
-        "timeline_index": timeline_index
+        "grid_fs_id": str(doc["gridFsFileId"]) if doc.get("gridFsFileId") else None,
+        "timeline_index": timeline_index,
+        "created_at": created_at_str
     }
 
 def _map_index_to_sqlite_style(doc: Dict[str, Any]) -> Dict[str, Any]:
@@ -87,7 +94,7 @@ def _map_index_to_sqlite_style(doc: Dict[str, Any]) -> Dict[str, Any]:
         "status": doc.get("status", "raw")
     }
 
-def insert_video(video_id: str, file_path: str, file_name: str, duration: float, owner_email: str = "", upload_status: str = "indexed", raw_transcript: str = "", overall_summary: str = "", absolute_local_path: str = None) -> bool:
+def insert_video(video_id: str, file_path: str, file_name: str, duration: float, owner_email: str = "", upload_status: str = "indexed", raw_transcript: str = "", overall_summary: str = "", absolute_local_path: str = None, grid_fs_id: str = None) -> bool:
     """Inserts or replaces a video (catalog) document."""
     db = get_db()
     try:
@@ -103,14 +110,20 @@ def insert_video(video_id: str, file_path: str, file_name: str, duration: float,
         
         existing = db.catalogs.find_one({"_id": oid})
         
-        if absolute_local_path is None:
-            absolute_local_path = file_path
+        if grid_fs_id:
+            grid_fs_oid = ObjectId(grid_fs_id)
+            absolute_local_path = "" # Do not store local path if stored in database
+        else:
+            grid_fs_oid = None
+            if absolute_local_path is None:
+                absolute_local_path = file_path
             
         update_fields = {
             "fileName": file_name,
             "fileType": file_type,
             "filePath": file_path,
             "absoluteLocalPath": absolute_local_path,
+            "gridFsFileId": grid_fs_oid,
             "duration": duration,
             "ownerEmail": email,
             "updatedAt": datetime.now()
@@ -324,6 +337,18 @@ def delete_video(video_id: str, owner_email: str = "") -> bool:
         # Cascade delete indices and summaries
         db.summaries.delete_many({"catalogId": actual_oid})
         db.indices.delete_many({"catalogId": actual_oid})
+        
+        # Drop GridFS file if it exists
+        grid_fs_file_id = video_doc.get("gridFsFileId")
+        if grid_fs_file_id:
+            import gridfs
+            fs = gridfs.GridFS(db)
+            try:
+                fs.delete(grid_fs_file_id)
+                print(f"[DB] GridFS video file {grid_fs_file_id} deleted successfully.")
+            except Exception as ge:
+                print(f"[DB Warning] Failed to delete GridFS video file {grid_fs_file_id}: {ge}")
+
         db.catalogs.delete_one({"_id": actual_oid})
         return True
     except Exception as e:

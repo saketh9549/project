@@ -165,10 +165,119 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
 
     def handle_stream_local_video(self, parsed_url):
         query_params = urllib.parse.parse_qs(parsed_url.query)
+        video_id = query_params.get("video_id", [""])[0].strip()
         video_path = query_params.get("path", [""])[0].strip()
         
+        catalog = None
+        if video_id:
+            catalog = db.get_video(video_id)
+            if not catalog:
+                self.send_json_response({"error": f"Video catalog not found for ID: {video_id}"}, 404)
+                return
+                
+        # If catalog has a GridFS file ID, stream from GridFS
+        if catalog and catalog.get("grid_fs_id"):
+            try:
+                import gridfs
+                from bson.objectid import ObjectId
+                from src.database import get_db
+                
+                db_mongo = get_db()
+                fs = gridfs.GridFS(db_mongo)
+                grid_out = fs.get(ObjectId(catalog["grid_fs_id"]))
+            except Exception as e:
+                self.send_json_response({"error": f"GridFS file not found in database: {e}"}, 404)
+                return
+                
+            try:
+                file_size = grid_out.length
+                content_type = getattr(grid_out, "content_type", None)
+                if not content_type:
+                    content_type, _ = mimetypes.guess_type(grid_out.filename or "")
+                if not content_type:
+                    content_type = "video/mp4"
+                    
+                range_header = self.headers.get("Range")
+                
+                if range_header and range_header.startswith("bytes="):
+                    # Parse Range header: e.g., bytes=0-1000, bytes=1000-, bytes=-1000
+                    range_val = range_header.split("=")[1].strip()
+                    parts = range_val.split("-")
+                    start_str = parts[0].strip()
+                    end_str = parts[1].strip() if len(parts) > 1 else ""
+                    
+                    if not start_str and not end_str:
+                        self.send_response(416)
+                        self.send_header("Content-Range", f"bytes */{file_size}")
+                        self.end_headers()
+                        return
+                        
+                    if start_str:
+                        start = int(start_str)
+                    else:
+                        start = file_size - int(end_str)
+                        
+                    if end_str:
+                        end = int(end_str)
+                    else:
+                        end = file_size - 1
+                        
+                    # Sanitize ranges
+                    if start < 0 or start >= file_size or end < start:
+                        self.send_response(416)
+                        self.send_header("Content-Range", f"bytes */{file_size}")
+                        self.end_headers()
+                        return
+                        
+                    if end >= file_size:
+                        end = file_size - 1
+                        
+                    chunk_length = end - start + 1
+                    
+                    self.send_response(206)
+                    self.send_header("Content-Type", content_type)
+                    self.send_header("Content-Range", f"bytes {start}-{end}/{file_size}")
+                    self.send_header("Content-Length", str(chunk_length))
+                    self.send_header("Accept-Ranges", "bytes")
+                    self.end_headers()
+                    
+                    # Stream the chunk
+                    grid_out.seek(start)
+                    remaining = chunk_length
+                    buffer_size = 64 * 1024
+                    while remaining > 0:
+                        chunk_to_read = min(buffer_size, remaining)
+                        data = grid_out.read(chunk_to_read)
+                        if not data:
+                            break
+                        self.wfile.write(data)
+                        remaining -= len(data)
+                else:
+                    # Standard full file response
+                    self.send_response(200)
+                    self.send_header("Content-Type", content_type)
+                    self.send_header("Content-Length", str(file_size))
+                    self.send_header("Accept-Ranges", "bytes")
+                    self.end_headers()
+                    
+                    # Stream entire file
+                    buffer_size = 64 * 1024
+                    while True:
+                        data = grid_out.read(buffer_size)
+                        if not data:
+                            break
+                        self.wfile.write(data)
+            except Exception as e:
+                # Handle socket errors / connection resets gracefully
+                print(f"[Streaming Info] GridFS streaming connection reset or failed: {e}")
+            return
+            
+        # Otherwise fall back to local disk file streaming
+        if not video_path and catalog:
+            video_path = catalog.get("absolute_local_path") or catalog.get("file_path")
+            
         if not video_path:
-            self.send_json_response({"error": "path parameter is required"}, 400)
+            self.send_json_response({"error": "video_id or path parameter is required"}, 400)
             return
             
         resolved_path = resolve_local_file_path(video_path)
@@ -256,7 +365,7 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
                         self.wfile.write(data)
         except Exception as e:
             # Handle socket errors / connection resets gracefully
-            print(f"[Streaming Info] Streaming connection reset or failed: {e}")
+            print(f"[Streaming Info] Local file streaming connection reset or failed: {e}")
 
     def do_POST(self):
         parsed_url = urllib.parse.urlparse(self.path)
@@ -300,44 +409,57 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
             return
             
         try:
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-            uploads_dir = os.path.join(base_dir, "data", "uploads", self._sanitize_owner_slug(owner_email))
-            os.makedirs(uploads_dir, exist_ok=True)
+            import mimetypes
+            import gridfs
+            from src.database import get_db
             
-            file_path = os.path.join(uploads_dir, safe_filename)
-            
+            # Guess mime type
+            content_type, _ = mimetypes.guess_type(safe_filename)
+            if not content_type:
+                content_type = "video/mp4" # fallback
+                
             # Read content length
             content_length = int(self.headers.get('Content-Length', 0))
             if content_length <= 0:
                 self.send_json_response({"error": "Content-Length must be greater than 0"}, 400)
                 return
             
-            print(f"[Server API] Uploading file '{safe_filename}' ({content_length} bytes) to: {file_path} ...")
+            print(f"[Server API] Uploading file '{safe_filename}' ({content_length} bytes) to GridFS...")
             
-            # Read raw bytes in chunks to prevent memory issues for large files
+            # Initialize GridFS
+            db = get_db()
+            fs = gridfs.GridFS(db)
+            
+            # Read raw bytes in chunks and stream directly to GridFS
             remaining_bytes = content_length
             chunk_size = 64 * 1024 # 64KB chunks
             
-            with open(file_path, 'wb') as f:
+            with fs.new_file(filename=safe_filename, content_type=content_type) as grid_file:
                 while remaining_bytes > 0:
                     read_size = min(chunk_size, remaining_bytes)
                     chunk = self.rfile.read(read_size)
                     if not chunk:
                         break
-                    f.write(chunk)
+                    grid_file.write(chunk)
                     remaining_bytes -= len(chunk)
-                    
+                grid_file_id = grid_file._id
+                
             if remaining_bytes > 0:
+                # If upload was interrupted, delete the partial GridFS file
+                try:
+                    fs.delete(grid_file_id)
+                except Exception:
+                    pass
                 self.send_json_response({"error": "Upload interrupted before completion"}, 500)
                 return
                 
-            print(f"[Server API] Upload completed: {file_path}")
+            print(f"[Server API] GridFS Upload completed. File ID: {grid_file_id}")
             self.send_json_response({
                 "success": True,
-                "file_path": file_path,
+                "grid_fs_id": str(grid_file_id),
                 "file_name": safe_filename,
                 "owner_email": owner_email,
-                "message": "File uploaded successfully."
+                "message": "File uploaded to database successfully."
             })
         except Exception as e:
             self.send_json_response({"error": f"Upload failed: {e}"}, 500)
@@ -574,6 +696,7 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
 
         # Endpoint: POST /api/index
         if path == "/api/index":
+            grid_fs_id = body.get("grid_fs_id", "").strip()
             video_path = body.get("video_path", "").strip()
             language = body.get("language")
             if not language or language.strip() == "":
@@ -581,30 +704,89 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
             else:
                 language = language.strip()
 
-            if not video_path:
-                self.send_json_response({"error": "video_path is required"}, 400)
-                return
             if not owner_email:
                 self.send_json_response({"error": "owner_email is required"}, 400)
                 return
 
-            resolved_path = resolve_local_file_path(video_path)
-            if not resolved_path:
-                self.send_json_response({"error": f"Local video file not found at path or in common folders: {video_path}"}, 404)
-                return
+            # Option A: Index from GridFS
+            if grid_fs_id:
+                try:
+                    import gridfs
+                    from bson.objectid import ObjectId
+                    from src.database import get_db
+                    from src.config import get_temp_dir
+                    
+                    db = get_db()
+                    fs = gridfs.GridFS(db)
+                    
+                    # Fetch from GridFS
+                    try:
+                        grid_out = fs.get(ObjectId(grid_fs_id))
+                    except Exception as e:
+                        self.send_json_response({"error": f"GridFS file not found: {e}"}, 404)
+                        return
+                        
+                    # Write to a temporary file
+                    temp_dir = get_temp_dir()
+                    # Ensure filename is safe
+                    safe_filename = os.path.basename(grid_out.filename)
+                    temp_video_path = os.path.join(temp_dir, f"temp_{grid_fs_id}_{safe_filename}")
+                    
+                    print(f"[Server API] Buffering GridFS file to temp path: {temp_video_path} ...")
+                    with open(temp_video_path, 'wb') as temp_file:
+                        temp_file.write(grid_out.read())
+                        
+                    # Index the temporary file
+                    print(f"[Server API] Indexing GridFS video: {grid_out.filename} ...")
+                    video_id, blocks = index_video(
+                        temp_video_path,
+                        language=language,
+                        owner_email=owner_email,
+                        grid_fs_id=grid_fs_id,
+                        original_filename=grid_out.filename
+                    )
+                    
+                    # Clean up temporary video file immediately
+                    if os.path.exists(temp_video_path):
+                        os.remove(temp_video_path)
+                        print(f"[Server API] Cleaned up temporary video file: {temp_video_path}")
+                        
+                except Exception as e:
+                    # Clean up temp file on error too
+                    if 'temp_video_path' in locals() and os.path.exists(temp_video_path):
+                        try:
+                            os.remove(temp_video_path)
+                        except Exception:
+                            pass
+                    self.send_json_response({"error": f"Failed to index GridFS video: {e}"}, 500)
+                    return
+            
+            # Option B: Index from local path
+            else:
+                if not video_path:
+                    self.send_json_response({"error": "video_path or grid_fs_id is required"}, 400)
+                    return
+                    
+                resolved_path = resolve_local_file_path(video_path)
+                if not resolved_path:
+                    self.send_json_response({"error": f"Local video file not found at path or in common folders: {video_path}"}, 404)
+                    return
+                    
+                try:
+                    print(f"[Server API] Indexing video: {resolved_path} ...")
+                    video_id, blocks = index_video(resolved_path, language=language, owner_email=owner_email)
+                except Exception as e:
+                    self.send_json_response({"error": f"Failed to index video: {e}"}, 500)
+                    return
 
+            # Pipeline common follow-up: Run semantic boundary analysis and overall summary
             try:
-                print(f"[Server API] Indexing video: {resolved_path} ...")
-                video_id, blocks = index_video(resolved_path, language=language, owner_email=owner_email)
-                
-                # Automatically run semantic topic boundary analysis using Gemini
                 try:
                     print(f"[Server API] Automatically analyzing video ID: {video_id} ...")
                     analyse_video(video_id, owner_email=owner_email)
                 except Exception as ex:
                     print(f"[Server API Warning] Automatic boundary analysis failed: {ex}")
                 
-                # Automatically generate overall summary using Gemini
                 try:
                     print(f"[Server API] Automatically generating overall summary for video ID: {video_id} ...")
                     generate_overall_summary(video_id, owner_email=owner_email)
@@ -617,7 +799,7 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
                     "message": "Successfully indexed video, ran semantic boundary analysis, and generated overall summary."
                 })
             except Exception as e:
-                self.send_json_response({"error": f"Failed to index video: {e}"}, 500)
+                self.send_json_response({"error": f"Failed to complete indexing pipeline: {e}"}, 500)
             return
 
         # Endpoint: POST /api/analyse
