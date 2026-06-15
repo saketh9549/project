@@ -178,6 +178,60 @@ class AsyncStreamReader(io.RawIOBase):
         return chunk
 
 
+class RegisterRequest(BaseModel):
+    email: str
+    password: str
+    role: str
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+@app.post("/api/auth/register")
+def register_endpoint(payload: RegisterRequest):
+    db.init_db()
+    email = payload.email.strip()
+    password = payload.password
+    role = payload.role.strip().lower()
+    
+    if not email or not password or not role:
+        raise HTTPException(status_code=400, detail="Email, password, and role are required")
+        
+    if role not in ["admin", "user"]:
+        raise HTTPException(status_code=400, detail="Invalid role specified")
+        
+    user = db.create_user(email, password, role)
+    if not user:
+        raise HTTPException(status_code=400, detail="User with this email already exists")
+        
+    return {
+        "success": True,
+        "email": user["email"],
+        "role": user["role"],
+        "message": "User registered successfully"
+    }
+
+@app.post("/api/auth/login")
+def login_endpoint(payload: LoginRequest):
+    db.init_db()
+    email = payload.email.strip()
+    password = payload.password
+    
+    if not email or not password:
+        raise HTTPException(status_code=400, detail="Email and password are required")
+        
+    user = db.authenticate_user(email, password)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+        
+    return {
+        "success": True,
+        "email": user["email"],
+        "role": user["role"],
+        "message": "Login successful"
+    }
+
+
 @app.get("/api/local-files")
 def get_local_files():
     db.init_db()
@@ -219,10 +273,11 @@ def get_local_files():
 
 
 @app.get("/api/videos")
-def list_videos(owner_email: str = Query(...)):
+def list_videos(owner_email: str = Query(...), role: str = Query("user")):
     db.init_db()
     try:
-        videos = db.list_videos(owner_email)
+        email_filter = "" if role == "admin" else owner_email
+        videos = db.list_videos(email_filter)
         video_list = []
         for v in videos:
             video_list.append({
@@ -241,10 +296,11 @@ def list_videos(owner_email: str = Query(...)):
 
 
 @app.get("/api/videos/{video_id}")
-def get_video(video_id: str, owner_email: str = Query(...)):
+def get_video(video_id: str, owner_email: str = Query(...), role: str = Query("user")):
     db.init_db()
     try:
-        video = db.get_video(video_id, owner_email)
+        email_filter = "" if role == "admin" else owner_email
+        video = db.get_video(video_id, email_filter)
         if not video:
             raise HTTPException(status_code=404, detail="Video not found")
             
@@ -282,10 +338,11 @@ def get_video(video_id: str, owner_email: str = Query(...)):
 
 
 @app.get("/api/search")
-def search_video(video_id: str = Query(...), query: str = Query(...), owner_email: str = Query(...)):
+def search_video(video_id: str = Query(...), query: str = Query(...), owner_email: str = Query(...), role: str = Query("user")):
     db.init_db()
     try:
-        video = db.get_video(video_id, owner_email)
+        email_filter = "" if role == "admin" else owner_email
+        video = db.get_video(video_id, email_filter)
         if not video:
             raise HTTPException(status_code=404, detail="Video not found")
             
@@ -317,11 +374,15 @@ class DeleteRequest(BaseModel):
     video_id: str
     
 @app.post("/api/delete")
-def delete_video_endpoint(payload: DeleteRequest, owner_email: str = Query(...)):
+def delete_video_endpoint(payload: DeleteRequest, owner_email: str = Query(...), role: str = Query("user")):
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden: regular users are not allowed to delete files")
+        
     db.init_db()
     try:
         print(f"[Server API] Deleting video ID: {payload.video_id} ...")
-        if db.delete_video(payload.video_id, owner_email):
+        email_filter = "" if role == "admin" else owner_email
+        if db.delete_video(payload.video_id, email_filter):
             return {"success": True, "message": f"Successfully deleted video '{payload.video_id}'."}
         else:
             raise HTTPException(status_code=500, detail="Failed to delete video from database")
@@ -337,8 +398,12 @@ from fastapi.concurrency import run_in_threadpool
 async def upload_endpoint(
     request: Request,
     filename: str = Query(...),
-    owner_email: str = Query(...)
+    owner_email: str = Query(...),
+    role: str = Query("user")
 ):
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden: regular users are not allowed to upload files")
+        
     safe_filename = os.path.basename(filename)
     if not safe_filename:
         raise HTTPException(status_code=400, detail="Invalid filename")
@@ -387,7 +452,10 @@ class IndexRequest(BaseModel):
     language: Optional[str] = None
     
 @app.post("/api/index")
-async def index_endpoint(payload: IndexRequest, owner_email: str = Query(...)):
+async def index_endpoint(payload: IndexRequest, owner_email: str = Query(...), role: str = Query("user")):
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden: regular users are not allowed to index files")
+        
     db.init_db()
     s3_key = payload.s3_key.strip() if payload.s3_key else ""
     s3_bucket = payload.s3_bucket.strip() if payload.s3_bucket else ""
@@ -515,16 +583,23 @@ class AnalyseRequest(BaseModel):
     video_id: str
     
 @app.post("/api/analyse")
-async def analyse_endpoint(payload: AnalyseRequest, owner_email: str = Query(...)):
+async def analyse_endpoint(payload: AnalyseRequest, owner_email: str = Query(...), role: str = Query("user")):
     db.init_db()
     try:
         print(f"[Server API] Running Gemini analysis for video ID: {payload.video_id} ...")
-        analysed_path = await run_in_threadpool(analyse_video, payload.video_id, owner_email=owner_email)
+        email_filter = "" if role == "admin" else owner_email
+        video = db.get_video(payload.video_id, email_filter)
+        if not video:
+            raise HTTPException(status_code=404, detail="Video not found")
+        actual_owner = video.get("owner_email") or owner_email
+        analysed_path = await run_in_threadpool(analyse_video, payload.video_id, owner_email=actual_owner)
         return {
             "success": True,
             "analysed_path": analysed_path,
             "message": "Gemini topic boundaries analysis completed successfully."
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Analysis failed: {e}")
 
@@ -533,10 +608,11 @@ class SummarizeRequest(BaseModel):
     chapter_id: str
     
 @app.post("/api/summarize")
-async def summarize_endpoint(payload: SummarizeRequest, owner_email: str = Query(...)):
+async def summarize_endpoint(payload: SummarizeRequest, owner_email: str = Query(...), role: str = Query("user")):
     db.init_db()
     chapter_id = payload.chapter_id.strip()
     owner_email = owner_email.strip()
+    email_filter = "" if role == "admin" else owner_email
     
     def do_summarization():
         block = None
@@ -545,7 +621,7 @@ async def summarize_endpoint(payload: SummarizeRequest, owner_email: str = Query
             if len(parts) == 2:
                 v_id, idx_str = parts
                 chapter_index = int(idx_str)
-                if not db.get_video(v_id, owner_email):
+                if not db.get_video(v_id, email_filter):
                     raise HTTPException(status_code=404, detail=f"Chapter with ID '{chapter_id}' not found")
                 blocks = db.get_video_blocks(v_id)
                 if blocks and 1 <= chapter_index <= len(blocks):
@@ -560,7 +636,7 @@ async def summarize_endpoint(payload: SummarizeRequest, owner_email: str = Query
             raise HTTPException(status_code=404, detail=f"Chapter with ID '{chapter_id}' not found")
             
         video_id = block["video_id"]
-        if not db.get_video(video_id, owner_email):
+        if not db.get_video(video_id, email_filter):
             raise HTTPException(status_code=404, detail=f"Chapter with ID '{chapter_id}' not found")
             
         all_blocks = db.get_video_blocks(video_id)
@@ -664,16 +740,23 @@ class OverallSummaryRequest(BaseModel):
     video_id: str
     
 @app.post("/api/overall-summary")
-async def overall_summary_endpoint(payload: OverallSummaryRequest, owner_email: str = Query(...)):
+async def overall_summary_endpoint(payload: OverallSummaryRequest, owner_email: str = Query(...), role: str = Query("user")):
     db.init_db()
     try:
         print(f"[Server API] Generating overall summary for video ID: {payload.video_id} ...")
-        overall_summary = await run_in_threadpool(generate_overall_summary, payload.video_id, owner_email=owner_email)
+        email_filter = "" if role == "admin" else owner_email
+        video = db.get_video(payload.video_id, email_filter)
+        if not video:
+            raise HTTPException(status_code=404, detail="Video not found")
+        actual_owner = video.get("owner_email") or owner_email
+        overall_summary = await run_in_threadpool(generate_overall_summary, payload.video_id, owner_email=actual_owner)
         return {
             "success": True,
             "overall_summary": overall_summary,
             "cached": False
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Overall summary generation failed: {e}")
 
@@ -683,11 +766,13 @@ def stream_video(
     request: Request,
     video_id: str = Query(""),
     path: str = Query(""),
-    owner_email: str = Query("")
+    owner_email: str = Query(""),
+    role: str = Query("user")
 ):
     catalog = None
     if video_id:
-        catalog = db.get_video(video_id)
+        email_filter = "" if role == "admin" else owner_email
+        catalog = db.get_video(video_id, email_filter)
         if not catalog:
             raise HTTPException(status_code=404, detail=f"Video catalog not found for ID: {video_id}")
             

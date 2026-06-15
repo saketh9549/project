@@ -4,11 +4,20 @@ import VideosCatalog from './components/VideosCatalog';
 import VideoIndexer from './components/VideoIndexer';
 import TimelineExplorer from './components/TimelineExplorer';
 import SummaryConsole from './components/SummaryConsole';
+import AuthPage from './components/AuthPage';
 
 import { apiUrl } from './lib/api';
 
 
 export default function App() {
+  const [currentUser, setCurrentUser] = useState(() => {
+    try {
+      const userJson = localStorage.getItem('summarix_user');
+      return userJson ? JSON.parse(userJson) : null;
+    } catch (e) {
+      return null;
+    }
+  });
   const [videos, setVideos] = useState([]);
   const [selectedVideo, setSelectedVideo] = useState(null);
   const [chapters, setChapters] = useState([]);
@@ -38,6 +47,7 @@ export default function App() {
   };
 
   const fetchVideos = async () => {
+    if (!currentUser) return;
     try {
       const response = await fetch(apiUrl('/api/videos'));
       if (!response.ok) throw new Error('Failed to fetch videos');
@@ -75,12 +85,11 @@ export default function App() {
 
 
 
-  // Fetch videos list on mount
+  // Fetch videos list on mount or user changes
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchVideos();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [currentUser]);
 
   // Auto-dismiss success and error notifications after 2 seconds
   useEffect(() => {
@@ -207,6 +216,38 @@ export default function App() {
 
         {/* User, Settings, Auth controls (Right-aligned) */}
         <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0 relative">
+          {currentUser && (
+            <div className="flex items-center gap-2 sm:gap-3 mr-2 bg-white/5 border border-white/5 py-1 px-3 rounded-xl">
+              <div className="flex flex-col items-end hidden sm:flex">
+                <span className="text-xs text-white font-medium truncate max-w-[150px]">
+                  {currentUser.email}
+                </span>
+                <span className={`text-[9px] font-bold uppercase tracking-wider ${
+                  currentUser.role === 'admin' ? 'text-indigo-400' : 'text-cyan-400'
+                }`}>
+                  {currentUser.role}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  localStorage.removeItem('summarix_user');
+                  setCurrentUser(null);
+                  setSelectedVideo(null);
+                  setChapters([]);
+                  setSelectedChapter(null);
+                  setOverallSummary(null);
+                }}
+                className="p-1.5 text-gray-400 hover:text-red-400 rounded-lg hover:bg-red-500/10 transition-all cursor-pointer"
+                title="Log Out"
+              >
+                <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+              </button>
+            </div>
+          )}
+
           {/* Settings Button */}
           <button
             type="button"
@@ -224,10 +265,12 @@ export default function App() {
 
       {/* Main Container */}
       <div className="flex-1 flex flex-col p-6 overflow-hidden h-auto lg:h-[calc(100vh-130px)] w-full">
-        {!selectedVideo ? (
+        {!currentUser ? (
+          <AuthPage onAuthSuccess={(user) => setCurrentUser(user)} />
+        ) : !selectedVideo ? (
           <div className="flex-grow flex-1 flex flex-col lg:flex-row gap-6 max-w-6xl mx-auto w-full min-h-0 items-stretch justify-center my-auto">
             {/* Left Column: Catalog */}
-            <div className="flex-1 max-w-xl w-full glass-panel p-8 rounded-2xl shadow-[0_8px_32px_0_rgba(99,102,241,0.05)] border border-white/5 flex flex-col min-h-0">
+            <div className={`flex-1 ${currentUser.role === 'admin' ? 'max-w-xl' : 'max-w-2xl'} w-full glass-panel p-8 rounded-2xl shadow-[0_8px_32px_0_rgba(99,102,241,0.05)] border border-white/5 flex flex-col min-h-0`}>
               <h2 className="text-xl font-bold text-center text-white mb-6 font-display flex items-center justify-center gap-2 shrink-0">
                 <svg className="w-6 h-6 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
@@ -239,44 +282,47 @@ export default function App() {
                 selectedVideo={selectedVideo}
                 onSelectVideo={handleSelectVideo}
                 onDeleteVideo={handleDeleteVideo}
+                isAdmin={currentUser.role === 'admin'}
               />
             </div>
 
-            {/* Right Column: Indexer */}
-            <div className="flex-1 max-w-xl w-full glass-panel p-8 rounded-2xl shadow-[0_8px_32px_0_rgba(99,102,241,0.05)] border border-white/5 flex flex-col min-h-0">
-              <h2 className="text-xl font-bold text-center text-white mb-6 font-display flex items-center justify-center gap-2 shrink-0">
-                <svg className="w-6 h-6 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                </svg>
-                Index New Video File
-              </h2>
-              <div className="flex-1 overflow-y-auto pr-1">
-                <VideoIndexer
-                  indexingLoading={indexingLoading}
-                  onIndexStart={() => setIndexingLoading(true)}
-                  onIndexSuccess={async (videoId) => {
-                    setIndexingLoading(false);
-                    await fetchVideos();
-                    try {
-                      const res = await fetch(apiUrl(`/api/videos/${videoId}`));
-                      if (res.ok) {
-                        const data = await res.json();
-                        if (data.video) {
-                          setSelectedVideo(data.video);
-                          setChapters(data.chapters || []);
-                          setOverallSummary(data.video.overall_summary || null);
+            {/* Right Column: Indexer (Admin Only) */}
+            {currentUser.role === 'admin' && (
+              <div className="flex-1 max-w-xl w-full glass-panel p-8 rounded-2xl shadow-[0_8px_32px_0_rgba(99,102,241,0.05)] border border-white/5 flex flex-col min-h-0">
+                <h2 className="text-xl font-bold text-center text-white mb-6 font-display flex items-center justify-center gap-2 shrink-0">
+                  <svg className="w-6 h-6 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                  Index New Video File
+                </h2>
+                <div className="flex-grow overflow-y-auto pr-1">
+                  <VideoIndexer
+                    indexingLoading={indexingLoading}
+                    onIndexStart={() => setIndexingLoading(true)}
+                    onIndexSuccess={async (videoId) => {
+                      setIndexingLoading(false);
+                      await fetchVideos();
+                      try {
+                        const res = await fetch(apiUrl(`/api/videos/${videoId}`));
+                        if (res.ok) {
+                          const data = await res.json();
+                          if (data.video) {
+                            setSelectedVideo(data.video);
+                            setChapters(data.chapters || []);
+                            setOverallSummary(data.video.overall_summary || null);
+                          }
                         }
+                      } catch (err) {
+                        console.error("Failed to select newly indexed video", err);
                       }
-                    } catch (err) {
-                      console.error("Failed to select newly indexed video", err);
-                    }
-                  }}
-                  onIndexError={() => setIndexingLoading(false)}
-                  showSuccess={showSuccess}
-                  showError={showError}
-                />
+                    }}
+                    onIndexError={() => setIndexingLoading(false)}
+                    showSuccess={showSuccess}
+                    showError={showError}
+                  />
+                </div>
               </div>
-            </div>
+            )}
           </div>
         ) : (
           <div className="flex-grow flex-1 flex flex-col lg:flex-row min-w-0 min-h-0 overflow-hidden relative gap-6 lg:gap-0">
@@ -288,6 +334,7 @@ export default function App() {
                 chapters={chapters}
                 selectedChapter={selectedChapter}
                 onSelectChapter={setSelectedChapter}
+                isAdmin={currentUser.role === 'admin'}
                 onUploadNew={() => {
                   setSelectedVideo(null);
                   setChapters([]);

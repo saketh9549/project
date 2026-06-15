@@ -95,7 +95,8 @@ export default function TimelineExplorer({
   chapters,
   selectedChapter,
   onSelectChapter,
-  onUploadNew
+  onUploadNew,
+  isAdmin
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
@@ -185,15 +186,24 @@ export default function TimelineExplorer({
             </p>
           </div>
         </div>
-        <button
-          onClick={onUploadNew}
-          className="shrink-0 flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white active:scale-[0.98] font-semibold text-xs px-3.5 py-2 rounded-xl transition-all cursor-pointer shadow-md"
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-          </svg>
-          Upload New
-        </button>
+        {isAdmin ? (
+          <button
+            onClick={onUploadNew}
+            className="shrink-0 flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white active:scale-[0.98] font-semibold text-xs px-3.5 py-2 rounded-xl transition-all cursor-pointer shadow-md"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+            </svg>
+            Upload New
+          </button>
+        ) : (
+          <button
+            onClick={onUploadNew}
+            className="shrink-0 flex items-center gap-1.5 bg-gray-800 hover:bg-gray-700 text-white active:scale-[0.98] font-semibold text-xs px-3.5 py-2 rounded-xl transition-all cursor-pointer border border-white/5 shadow-md"
+          >
+            Catalog
+          </button>
+        )}
       </div>
 
       {/* Video Player */}

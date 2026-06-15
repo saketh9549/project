@@ -1,5 +1,7 @@
 import os
 import urllib.parse
+import hashlib
+import secrets
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from pymongo import MongoClient
@@ -40,6 +42,9 @@ def init_db():
     
     # 3. summaries collection
     db.summaries.create_index([("catalogId", 1), ("indexId", 1)], unique=True)
+    
+    # 4. users collection
+    db.users.create_index("email", unique=True)
     print("[DB] MongoDB collections and indexes initialized successfully.")
 
 def _map_catalog_to_sqlite_style(doc: Dict[str, Any]) -> Dict[str, Any]:
@@ -78,6 +83,7 @@ def _map_catalog_to_sqlite_style(doc: Dict[str, Any]) -> Dict[str, Any]:
         "grid_fs_id": str(doc["gridFsFileId"]) if doc.get("gridFsFileId") else None,
         "s3_key": doc.get("s3Key", ""),
         "s3_bucket": doc.get("s3Bucket", ""),
+        "owner_email": doc.get("ownerEmail", ""),
         "timeline_index": timeline_index,
         "created_at": created_at_str
     }
@@ -487,3 +493,76 @@ def update_overall_summary(video_id: str, overall_summary: str) -> bool:
     except Exception as e:
         print(f"[DB Error] Failed to update overall summary: {e}")
         return False
+
+
+def hash_password(password: str) -> str:
+    """Hashes the password securely using PBKDF2-SHA256."""
+    salt = secrets.token_hex(16)
+    pwd_hash = hashlib.pbkdf2_hmac(
+        'sha256',
+        password.encode('utf-8'),
+        salt.encode('utf-8'),
+        100000
+    ).hex()
+    return f"{salt}:{pwd_hash}"
+
+def verify_password(password: str, hashed_password_string: str) -> bool:
+    """Verifies a password against its stored hash."""
+    if not hashed_password_string or ":" not in hashed_password_string:
+        return False
+    salt, pwd_hash = hashed_password_string.split(":", 1)
+    test_hash = hashlib.pbkdf2_hmac(
+        'sha256',
+        password.encode('utf-8'),
+        salt.encode('utf-8'),
+        100000
+    ).hex()
+    return pwd_hash == test_hash
+
+def create_user(email: str, password_raw: str, role: str) -> Optional[Dict[str, Any]]:
+    """Creates a new user record in the database."""
+    db = get_db()
+    try:
+        email_clean = email.strip().lower()
+        role_clean = role.strip().lower()
+        if role_clean not in ["admin", "user"]:
+            role_clean = "user"
+            
+        # Check if user already exists
+        if db.users.find_one({"email": email_clean}):
+            return None
+            
+        hashed = hash_password(password_raw)
+        user_doc = {
+            "email": email_clean,
+            "passwordHash": hashed,
+            "role": role_clean,
+            "createdAt": datetime.now()
+        }
+        db.users.insert_one(user_doc)
+        return {
+            "email": email_clean,
+            "role": role_clean
+        }
+    except Exception as e:
+        print(f"[DB Error] Failed to create user: {e}")
+        return None
+
+def authenticate_user(email: str, password_raw: str) -> Optional[Dict[str, Any]]:
+    """Authenticates a user by email and password, returning their profile if successful."""
+    db = get_db()
+    try:
+        email_clean = email.strip().lower()
+        user = db.users.find_one({"email": email_clean})
+        if not user:
+            return None
+            
+        if verify_password(password_raw, user["passwordHash"]):
+            return {
+                "email": user["email"],
+                "role": user["role"]
+            }
+        return None
+    except Exception as e:
+        print(f"[DB Error] Failed to authenticate user: {e}")
+        return None
