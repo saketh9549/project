@@ -276,8 +276,7 @@ def get_local_files():
 def list_videos(owner_email: str = Query(...), role: str = Query("user")):
     db.init_db()
     try:
-        email_filter = "" if role == "admin" else owner_email
-        videos = db.list_videos(email_filter)
+        videos = db.list_videos(owner_email, role)
         video_list = []
         for v in videos:
             video_list.append({
@@ -299,8 +298,7 @@ def list_videos(owner_email: str = Query(...), role: str = Query("user")):
 def get_video(video_id: str, owner_email: str = Query(...), role: str = Query("user")):
     db.init_db()
     try:
-        email_filter = "" if role == "admin" else owner_email
-        video = db.get_video(video_id, email_filter)
+        video = db.get_video(video_id, owner_email, role)
         if not video:
             raise HTTPException(status_code=404, detail="Video not found")
             
@@ -341,8 +339,7 @@ def get_video(video_id: str, owner_email: str = Query(...), role: str = Query("u
 def search_video(video_id: str = Query(...), query: str = Query(...), owner_email: str = Query(...), role: str = Query("user")):
     db.init_db()
     try:
-        email_filter = "" if role == "admin" else owner_email
-        video = db.get_video(video_id, email_filter)
+        video = db.get_video(video_id, owner_email, role)
         if not video:
             raise HTTPException(status_code=404, detail="Video not found")
             
@@ -381,8 +378,7 @@ def delete_video_endpoint(payload: DeleteRequest, owner_email: str = Query(...),
     db.init_db()
     try:
         print(f"[Server API] Deleting video ID: {payload.video_id} ...")
-        email_filter = "" if role == "admin" else owner_email
-        if db.delete_video(payload.video_id, email_filter):
+        if db.delete_video(payload.video_id, owner_email, role):
             return {"success": True, "message": f"Successfully deleted video '{payload.video_id}'."}
         else:
             raise HTTPException(status_code=500, detail="Failed to delete video from database")
@@ -587,8 +583,7 @@ async def analyse_endpoint(payload: AnalyseRequest, owner_email: str = Query(...
     db.init_db()
     try:
         print(f"[Server API] Running Gemini analysis for video ID: {payload.video_id} ...")
-        email_filter = "" if role == "admin" else owner_email
-        video = db.get_video(payload.video_id, email_filter)
+        video = db.get_video(payload.video_id, owner_email, role)
         if not video:
             raise HTTPException(status_code=404, detail="Video not found")
         actual_owner = video.get("owner_email") or owner_email
@@ -612,7 +607,6 @@ async def summarize_endpoint(payload: SummarizeRequest, owner_email: str = Query
     db.init_db()
     chapter_id = payload.chapter_id.strip()
     owner_email = owner_email.strip()
-    email_filter = "" if role == "admin" else owner_email
     
     def do_summarization():
         block = None
@@ -621,7 +615,7 @@ async def summarize_endpoint(payload: SummarizeRequest, owner_email: str = Query
             if len(parts) == 2:
                 v_id, idx_str = parts
                 chapter_index = int(idx_str)
-                if not db.get_video(v_id, email_filter):
+                if not db.get_video(v_id, owner_email, role):
                     raise HTTPException(status_code=404, detail=f"Chapter with ID '{chapter_id}' not found")
                 blocks = db.get_video_blocks(v_id)
                 if blocks and 1 <= chapter_index <= len(blocks):
@@ -636,7 +630,7 @@ async def summarize_endpoint(payload: SummarizeRequest, owner_email: str = Query
             raise HTTPException(status_code=404, detail=f"Chapter with ID '{chapter_id}' not found")
             
         video_id = block["video_id"]
-        if not db.get_video(video_id, email_filter):
+        if not db.get_video(video_id, owner_email, role):
             raise HTTPException(status_code=404, detail=f"Chapter with ID '{chapter_id}' not found")
             
         all_blocks = db.get_video_blocks(video_id)
@@ -744,8 +738,7 @@ async def overall_summary_endpoint(payload: OverallSummaryRequest, owner_email: 
     db.init_db()
     try:
         print(f"[Server API] Generating overall summary for video ID: {payload.video_id} ...")
-        email_filter = "" if role == "admin" else owner_email
-        video = db.get_video(payload.video_id, email_filter)
+        video = db.get_video(payload.video_id, owner_email, role)
         if not video:
             raise HTTPException(status_code=404, detail="Video not found")
         actual_owner = video.get("owner_email") or owner_email
@@ -771,8 +764,7 @@ def stream_video(
 ):
     catalog = None
     if video_id:
-        email_filter = "" if role == "admin" else owner_email
-        catalog = db.get_video(video_id, email_filter)
+        catalog = db.get_video(video_id, owner_email, role)
         if not catalog:
             raise HTTPException(status_code=404, detail=f"Video catalog not found for ID: {video_id}")
             

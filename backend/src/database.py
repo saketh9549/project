@@ -237,7 +237,28 @@ def insert_semantic_blocks(video_id: str, blocks: List[Dict[str, Any]]) -> bool:
         print(f"[DB Error] Failed to insert semantic blocks: {e}")
         return False
 
-def get_video(video_id: str, owner_email: str = "") -> Optional[Dict[str, Any]]:
+def _build_owner_filter(owner_email: str, role: str = "user") -> Dict[str, Any]:
+    """Helper to construct MongoDB $or filter for user/admin scoping."""
+    if not owner_email:
+        return {}
+    
+    clean_email = owner_email.strip().lower()
+    if role == "admin":
+        return {"$or": [
+            {"ownerEmail": clean_email},
+            {"ownerEmail": ""},
+            {"ownerEmail": "anonymous@summarix.io"}
+        ]}
+    else:
+        admin_emails = get_admin_emails()
+        return {"$or": [
+            {"ownerEmail": clean_email},
+            {"ownerEmail": ""},
+            {"ownerEmail": "anonymous@summarix.io"},
+            {"ownerEmail": {"$in": admin_emails}}
+        ]}
+
+def get_video(video_id: str, owner_email: str = "", role: str = "user") -> Optional[Dict[str, Any]]:
     """Retrieves metadata for a specific video."""
     db = get_db()
     try:
@@ -248,45 +269,33 @@ def get_video(video_id: str, owner_email: str = "") -> Optional[Dict[str, Any]]:
             query = {"_id": video_id}
             
         if owner_email:
-            query["$or"] = [
-                {"ownerEmail": owner_email.strip().lower()},
-                {"ownerEmail": ""},
-                {"ownerEmail": "anonymous@summarix.io"}
-            ]
+            query.update(_build_owner_filter(owner_email, role))
         doc = db.catalogs.find_one(query)
         return _map_catalog_to_sqlite_style(doc) if doc else None
     except Exception as e:
         print(f"[DB Error] Failed to get video: {e}")
         return None
 
-def get_video_by_path(file_path: str, owner_email: str = "") -> Optional[Dict[str, Any]]:
+def get_video_by_path(file_path: str, owner_email: str = "", role: str = "user") -> Optional[Dict[str, Any]]:
     """Retrieves metadata for a specific video by its path."""
     db = get_db()
     try:
         query = {"filePath": file_path}
         if owner_email:
-            query["$or"] = [
-                {"ownerEmail": owner_email.strip().lower()},
-                {"ownerEmail": ""},
-                {"ownerEmail": "anonymous@summarix.io"}
-            ]
+            query.update(_build_owner_filter(owner_email, role))
         doc = db.catalogs.find_one(query)
         return _map_catalog_to_sqlite_style(doc) if doc else None
     except Exception as e:
         print(f"[DB Error] Failed to get video by path: {e}")
         return None
 
-def list_videos(owner_email: str = "") -> List[Dict[str, Any]]:
+def list_videos(owner_email: str = "", role: str = "user") -> List[Dict[str, Any]]:
     """Lists all indexed videos, ordered by creation time descending."""
     db = get_db()
     try:
         query = {}
         if owner_email:
-            query["$or"] = [
-                {"ownerEmail": owner_email.strip().lower()},
-                {"ownerEmail": ""},
-                {"ownerEmail": "anonymous@summarix.io"}
-            ]
+            query.update(_build_owner_filter(owner_email, role))
         docs = db.catalogs.find(query).sort("createdAt", -1)
         return [_map_catalog_to_sqlite_style(d) for d in docs]
     except Exception as e:
@@ -326,7 +335,7 @@ def search_blocks(video_id: str, query: str) -> List[Dict[str, Any]]:
         print(f"[DB Error] Failed to search blocks: {e}")
         return []
 
-def delete_video(video_id: str, owner_email: str = "") -> bool:
+def delete_video(video_id: str, owner_email: str = "", role: str = "user") -> bool:
     """Deletes a video and cascades deletions on indices and summaries."""
     db = get_db()
     try:
@@ -337,11 +346,7 @@ def delete_video(video_id: str, owner_email: str = "") -> bool:
             query = {"_id": video_id}
             
         if owner_email:
-            query["$or"] = [
-                {"ownerEmail": owner_email.strip().lower()},
-                {"ownerEmail": ""},
-                {"ownerEmail": "anonymous@summarix.io"}
-            ]
+            query.update(_build_owner_filter(owner_email, role))
             
         video_doc = db.catalogs.find_one(query)
         if not video_doc:
@@ -566,3 +571,14 @@ def authenticate_user(email: str, password_raw: str) -> Optional[Dict[str, Any]]
     except Exception as e:
         print(f"[DB Error] Failed to authenticate user: {e}")
         return None
+
+def get_admin_emails() -> List[str]:
+    """Retrieves emails of all users with the role 'admin'."""
+    db = get_db()
+    try:
+        admins = db.users.find({"role": "admin"}, {"email": 1})
+        return [admin["email"] for admin in admins]
+    except Exception as e:
+        print(f"[DB Error] Failed to get admin emails: {e}")
+        return []
+
