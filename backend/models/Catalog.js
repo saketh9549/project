@@ -58,6 +58,16 @@ const catalogSchema = new mongoose.Schema({
     ref: 'fs.files',
     default: null
   },
+  s3Key: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+  s3Bucket: {
+    type: String,
+    trim: true,
+    default: ''
+  },
   timelineIndex: [{
     timestamp: { type: String, trim: true },
     title: { type: String, trim: true },

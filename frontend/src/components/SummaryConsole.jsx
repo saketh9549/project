@@ -1,9 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import { apiUrl } from '../lib/api';
-
 export default function SummaryConsole({
-  selectedChapter,
-  chapters = [],
   showSuccess,
   overallSummary,
   overallSummaryLoading,
@@ -132,7 +127,7 @@ export default function SummaryConsole({
         );
       }
       if (line.startsWith('• ') || line.startsWith('* ') || line.startsWith('- ')) {
-        const content = line.replace(/^[•*\-]\s+/, '');
+        const content = line.replace(/^[•*-]\s+/, '');
         return (
           <li key={idx} className="ml-4 list-disc text-gray-300 my-1.5 pl-1 leading-relaxed text-xs">
             {parseInline(content)}

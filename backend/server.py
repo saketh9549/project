@@ -1,11 +1,16 @@
 import os
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
-import http.server
-import socketserver
 import json
 import urllib.parse
 import mimetypes
 import sys
+import asyncio
+import io
+from fastapi import FastAPI, Request, Query, HTTPException, Response
+from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import Optional, List
 
 # Define FRONTEND_DIR pointing to the Vite build directory
 FRONTEND_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend", "dist")
@@ -99,14 +104,14 @@ def generate_overall_summary(video_id: str, owner_email: str) -> str:
     model_name = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite").strip()
     
     try:
-        response = client.models.generate_content(
-            model=model_name,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=system_instruction,
-                temperature=0.2
-            ),
-        )
+         response = client.models.generate_content(
+             model=model_name,
+             contents=prompt,
+             config=types.GenerateContentConfig(
+                 system_instruction=system_instruction,
+                 temperature=0.2
+             ),
+         )
     except Exception as api_err:
         if model_name != "gemini-3.1-flash-lite":
             model_name = "gemini-3.1-flash-lite"
@@ -125,123 +130,684 @@ def generate_overall_summary(video_id: str, owner_email: str) -> str:
     db.update_overall_summary(video_id, overall_summary)
     return overall_summary
 
-class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
-    def _get_owner_email(self, parsed_url, body=None):
-        query_params = urllib.parse.parse_qs(parsed_url.query)
-        owner_email = query_params.get("owner_email", [""])[0].strip()
-        if not owner_email and isinstance(body, dict):
-            owner_email = str(body.get("owner_email", "")).strip()
-        return owner_email
 
-    def _sanitize_owner_slug(self, owner_email: str) -> str:
-        slug = owner_email.strip().lower()
-        slug = slug.replace("@", "_at_")
-        slug = "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in slug)
-        return slug or "anonymous"
+# FastAPI initialization
+app = FastAPI(title="Summarix API", docs_url="/api/docs", redoc_url="/api/redoc")
 
-    def end_headers(self):
-        # Enable CORS for local testing
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
-        super().end_headers()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-    def do_OPTIONS(self):
-        self.send_response(200)
-        self.end_headers()
+class AsyncStreamReader(io.RawIOBase):
+    def __init__(self, request: Request, loop):
+        self.request = request
+        self.loop = loop
+        self.generator = request.stream()
+        self.buffer = b""
 
-    def do_GET(self):
-        parsed_url = urllib.parse.urlparse(self.path)
-        path = parsed_url.path
+    def readable(self):
+        return True
 
-        # Route API requests
-        if path.startswith("/api/"):
-            if path == "/api/stream-local-video":
-                self.handle_stream_local_video(parsed_url)
-            else:
-                self.handle_api_get(path, parsed_url)
-        else:
-            self.handle_static_get(path)
-
-    def handle_stream_local_video(self, parsed_url):
-        query_params = urllib.parse.parse_qs(parsed_url.query)
-        video_id = query_params.get("video_id", [""])[0].strip()
-        video_path = query_params.get("path", [""])[0].strip()
-        
-        catalog = None
-        if video_id:
-            catalog = db.get_video(video_id)
-            if not catalog:
-                self.send_json_response({"error": f"Video catalog not found for ID: {video_id}"}, 404)
-                return
-                
-        # If catalog has a GridFS file ID, stream from GridFS
-        if catalog and catalog.get("grid_fs_id"):
+    def read(self, size=-1):
+        if size < 0:
+            size = 64 * 1024
+            
+        while len(self.buffer) < size:
             try:
-                import gridfs
-                from bson.objectid import ObjectId
-                from src.database import get_db
-                
-                db_mongo = get_db()
-                fs = gridfs.GridFS(db_mongo)
-                grid_out = fs.get(ObjectId(catalog["grid_fs_id"]))
+                coro = anext(self.generator)
+                chunk = asyncio.run_coroutine_threadsafe(coro, self.loop).result()
+                if not chunk:
+                    break
+                self.buffer += chunk
+            except StopAsyncIteration:
+                break
             except Exception as e:
-                self.send_json_response({"error": f"GridFS file not found in database: {e}"}, 404)
-                return
+                print(f"[Upload Error] Error in stream reader: {e}")
+                break
+                
+        if not self.buffer:
+            return b""
+            
+        read_amt = min(size, len(self.buffer))
+        chunk = self.buffer[:read_amt]
+        self.buffer = self.buffer[read_amt:]
+        return chunk
+
+
+@app.get("/api/local-files")
+def get_local_files():
+    db.init_db()
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        media_files = []
+        allowed_exts = ('.mp3', '.mp4', '.wav', '.mkv', '.mov', '.m4a')
+        ignored_dirs = {'.git', 'node_modules', 'frontend', 'temp', 'transcripts', 'analysed', 'summaries', 'data'}
+        
+        for root, dirs, files in os.walk(base_dir):
+            dirs[:] = [d for d in dirs if d not in ignored_dirs]
+            rel_path = os.path.relpath(root, base_dir)
+            depth = 0 if rel_path == '.' else len(rel_path.split(os.sep))
+            if depth > 3:
+                dirs[:] = []
+                continue
+            for file in files:
+                if file.lower().endswith(allowed_exts):
+                    full_path = os.path.join(root, file)
+                    media_files.append({
+                        "name": file,
+                        "path": full_path,
+                        "rel_path": os.path.relpath(full_path, base_dir)
+                    })
+        
+        uploads_dir = os.path.join(base_dir, "data", "uploads")
+        if os.path.exists(uploads_dir):
+            for file in os.listdir(uploads_dir):
+                if file.lower().endswith(allowed_exts):
+                    full_path = os.path.join(uploads_dir, file)
+                    media_files.append({
+                        "name": file,
+                        "path": full_path,
+                        "rel_path": os.path.relpath(full_path, base_dir)
+                    })
+        return media_files
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list local files: {e}")
+
+
+@app.get("/api/videos")
+def list_videos(owner_email: str = Query(...)):
+    db.init_db()
+    try:
+        videos = db.list_videos(owner_email)
+        video_list = []
+        for v in videos:
+            video_list.append({
+                "id": v["id"],
+                "file_name": v["file_name"],
+                "file_path": v["file_path"],
+                "absolute_local_path": v.get("absolute_local_path", ""),
+                "timeline_index": v.get("timeline_index", []),
+                "duration": v["duration"],
+                "duration_str": format_timestamp(v["duration"]),
+                "created_at": v["created_at"]
+            })
+        return video_list
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list videos: {e}")
+
+
+@app.get("/api/videos/{video_id}")
+def get_video(video_id: str, owner_email: str = Query(...)):
+    db.init_db()
+    try:
+        video = db.get_video(video_id, owner_email)
+        if not video:
+            raise HTTPException(status_code=404, detail="Video not found")
+            
+        blocks = db.get_video_blocks(video_id)
+        chapters = []
+        for idx, b in enumerate(blocks, start=1):
+            chapters.append({
+                "id": f"{video_id}-{idx}",
+                "db_id": b["id"],
+                "start_time": b["start_time"],
+                "start_time_str": format_timestamp(b["start_time"]),
+                "end_time": b["end_time"],
+                "end_time_str": format_timestamp(b["end_time"]),
+                "topic_title": b.get("topic_title", "Section"),
+                "text": b["text"]
+            })
+            
+        return {
+            "video": {
+                "id": video["id"],
+                "file_name": video["file_name"],
+                "file_path": video["file_path"],
+                "absolute_local_path": video.get("absolute_local_path", ""),
+                "timeline_index": video.get("timeline_index", []),
+                "duration": video["duration"],
+                "duration_str": format_timestamp(video["duration"]),
+                "overall_summary": video.get("overall_summary", "")
+            },
+            "chapters": chapters
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch video: {e}")
+
+
+@app.get("/api/search")
+def search_video(video_id: str = Query(...), query: str = Query(...), owner_email: str = Query(...)):
+    db.init_db()
+    try:
+        video = db.get_video(video_id, owner_email)
+        if not video:
+            raise HTTPException(status_code=404, detail="Video not found")
+            
+        results = db.search_blocks(video_id, query)
+        all_blocks = db.get_video_blocks(video_id)
+        block_id_to_idx = {b["id"]: idx for idx, b in enumerate(all_blocks, start=1)}
+        
+        formatted_results = []
+        for r in results:
+            idx = block_id_to_idx.get(r["id"], 1)
+            formatted_results.append({
+                "id": f"{video_id}-{idx}",
+                "db_id": r["id"],
+                "start_time": r["start_time"],
+                "start_time_str": format_timestamp(r["start_time"]),
+                "end_time": r["end_time"],
+                "end_time_str": format_timestamp(r["end_time"]),
+                "topic_title": r.get("topic_title", "Section"),
+                "text": r["text"]
+            })
+        return formatted_results
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Search failed: {e}")
+
+
+class DeleteRequest(BaseModel):
+    video_id: str
+    
+@app.post("/api/delete")
+def delete_video_endpoint(payload: DeleteRequest, owner_email: str = Query(...)):
+    db.init_db()
+    try:
+        print(f"[Server API] Deleting video ID: {payload.video_id} ...")
+        if db.delete_video(payload.video_id, owner_email):
+            return {"success": True, "message": f"Successfully deleted video '{payload.video_id}'."}
+        else:
+            raise HTTPException(status_code=500, detail="Failed to delete video from database")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Deletion failed: {e}")
+
+
+from fastapi.concurrency import run_in_threadpool
+
+@app.post("/api/upload")
+async def upload_endpoint(
+    request: Request,
+    filename: str = Query(...),
+    owner_email: str = Query(...)
+):
+    safe_filename = os.path.basename(filename)
+    if not safe_filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+        
+    try:
+        from src.s3 import upload_file_stream_to_s3
+        
+        content_type, _ = mimetypes.guess_type(safe_filename)
+        if not content_type:
+            content_type = "video/mp4"
+            
+        s3_key = f"videos/{owner_email}/{safe_filename}"
+        s3_bucket = os.getenv("AWS_S3_BUCKET")
+        if not s3_bucket:
+            raise HTTPException(status_code=500, detail="S3 bucket configuration is missing on server")
+            
+        print(f"[Server API] Uploading file '{safe_filename}' to S3 Key '{s3_key}'...")
+        
+        loop = asyncio.get_running_loop()
+        reader = AsyncStreamReader(request, loop)
+        
+        success = await run_in_threadpool(upload_file_stream_to_s3, reader, s3_key, content_type)
+        if not success:
+            raise HTTPException(status_code=500, detail="Upload failed or was interrupted")
+            
+        print(f"[Server API] S3 Upload completed. Key: {s3_key}")
+        return {
+            "success": True,
+            "s3_key": s3_key,
+            "s3_bucket": s3_bucket,
+            "file_name": safe_filename,
+            "owner_email": owner_email,
+            "message": "File uploaded to AWS S3 successfully."
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload failed: {e}")
+
+
+class IndexRequest(BaseModel):
+    s3_key: Optional[str] = ""
+    s3_bucket: Optional[str] = ""
+    grid_fs_id: Optional[str] = ""
+    video_path: Optional[str] = ""
+    language: Optional[str] = None
+    
+@app.post("/api/index")
+async def index_endpoint(payload: IndexRequest, owner_email: str = Query(...)):
+    db.init_db()
+    s3_key = payload.s3_key.strip() if payload.s3_key else ""
+    s3_bucket = payload.s3_bucket.strip() if payload.s3_bucket else ""
+    grid_fs_id = payload.grid_fs_id.strip() if payload.grid_fs_id else ""
+    video_path = payload.video_path.strip() if payload.video_path else ""
+    language = payload.language.strip() if (payload.language and payload.language.strip()) else None
+    owner_email = owner_email.strip()
+    
+    def run_pipeline():
+        # Option A: AWS S3
+        if s3_key:
+            from src.s3 import get_s3_client
+            from src.config import get_temp_dir
+            import uuid
+            
+            s3_client = get_s3_client()
+            bucket = s3_bucket if s3_bucket else os.getenv("AWS_S3_BUCKET")
+            if not bucket:
+                raise HTTPException(status_code=500, detail="S3 bucket configuration is missing")
+                
+            temp_dir = get_temp_dir()
+            safe_filename = os.path.basename(s3_key)
+            unique_id = str(uuid.uuid4())[:8]
+            temp_video_path = os.path.join(temp_dir, f"temp_{unique_id}_{safe_filename}")
+            
+            print(f"[Server API] Buffering S3 file '{s3_key}' to temp path: {temp_video_path} ...")
+            try:
+                s3_client.download_file(bucket, s3_key, temp_video_path)
+            except Exception as e:
+                raise HTTPException(status_code=404, detail=f"S3 file not found or download failed: {e}")
                 
             try:
-                file_size = grid_out.length
-                content_type = getattr(grid_out, "content_type", None)
-                if not content_type:
-                    content_type, _ = mimetypes.guess_type(grid_out.filename or "")
-                if not content_type:
-                    content_type = "video/mp4"
+                print(f"[Server API] Indexing S3 video: {s3_key} ...")
+                video_id, blocks = index_video(
+                    temp_video_path,
+                    language=language,
+                    owner_email=owner_email,
+                    original_filename=safe_filename,
+                    s3_key=s3_key,
+                    s3_bucket=bucket
+                )
+            finally:
+                if os.path.exists(temp_video_path):
+                    os.remove(temp_video_path)
+                    print(f"[Server API] Cleaned up temporary video file: {temp_video_path}")
                     
-                range_header = self.headers.get("Range")
+        # Option B: GridFS
+        elif grid_fs_id:
+            import gridfs
+            from bson.objectid import ObjectId
+            from src.database import get_db
+            from src.config import get_temp_dir
+            
+            mongo_db = get_db()
+            fs = gridfs.GridFS(mongo_db)
+            
+            try:
+                grid_out = fs.get(ObjectId(grid_fs_id))
+            except Exception as e:
+                raise HTTPException(status_code=404, detail=f"GridFS file not found: {e}")
                 
-                if range_header and range_header.startswith("bytes="):
-                    # Parse Range header: e.g., bytes=0-1000, bytes=1000-, bytes=-1000
-                    range_val = range_header.split("=")[1].strip()
-                    parts = range_val.split("-")
-                    start_str = parts[0].strip()
-                    end_str = parts[1].strip() if len(parts) > 1 else ""
+            temp_dir = get_temp_dir()
+            safe_filename = os.path.basename(grid_out.filename)
+            temp_video_path = os.path.join(temp_dir, f"temp_{grid_fs_id}_{safe_filename}")
+            
+            print(f"[Server API] Buffering GridFS file to temp path: {temp_video_path} ...")
+            with open(temp_video_path, 'wb') as temp_file:
+                temp_file.write(grid_out.read())
+                
+            try:
+                print(f"[Server API] Indexing GridFS video: {grid_out.filename} ...")
+                video_id, blocks = index_video(
+                    temp_video_path,
+                    language=language,
+                    owner_email=owner_email,
+                    grid_fs_id=grid_fs_id,
+                    original_filename=grid_out.filename
+                )
+            finally:
+                if os.path.exists(temp_video_path):
+                    os.remove(temp_video_path)
+                    print(f"[Server API] Cleaned up temporary video file: {temp_video_path}")
                     
-                    if not start_str and not end_str:
-                        self.send_response(416)
-                        self.send_header("Content-Range", f"bytes */{file_size}")
-                        self.end_headers()
-                        return
-                        
-                    if start_str:
-                        start = int(start_str)
-                    else:
-                        start = file_size - int(end_str)
-                        
-                    if end_str:
-                        end = int(end_str)
-                    else:
-                        end = file_size - 1
-                        
-                    # Sanitize ranges
-                    if start < 0 or start >= file_size or end < start:
-                        self.send_response(416)
-                        self.send_header("Content-Range", f"bytes */{file_size}")
-                        self.end_headers()
-                        return
-                        
-                    if end >= file_size:
-                        end = file_size - 1
-                        
-                    chunk_length = end - start + 1
+        # Option C: Local path
+        else:
+            if not video_path:
+                raise HTTPException(status_code=400, detail="video_path, s3_key, or grid_fs_id is required")
+                
+            resolved_path = resolve_local_file_path(video_path)
+            if not resolved_path:
+                raise HTTPException(status_code=404, detail=f"Local video file not found at path: {video_path}")
+                
+            print(f"[Server API] Indexing video: {resolved_path} ...")
+            video_id, blocks = index_video(resolved_path, language=language, owner_email=owner_email)
+            
+        # Common post-index steps
+        try:
+            print(f"[Server API] Automatically analyzing video ID: {video_id} ...")
+            analyse_video(video_id, owner_email=owner_email)
+        except Exception as ex:
+            print(f"[Server API Warning] Automatic boundary analysis failed: {ex}")
+            
+        try:
+            print(f"[Server API] Automatically generating overall summary for video ID: {video_id} ...")
+            generate_overall_summary(video_id, owner_email=owner_email)
+        except Exception as ex:
+            print(f"[Server API Warning] Automatic overall summary generation failed: {ex}")
+            
+        return video_id
+        
+    try:
+        video_id = await run_in_threadpool(run_pipeline)
+        return {
+            "success": True,
+            "video_id": video_id,
+            "message": "Successfully indexed video, ran semantic boundary analysis, and generated overall summary."
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to complete indexing pipeline: {e}")
+
+
+class AnalyseRequest(BaseModel):
+    video_id: str
+    
+@app.post("/api/analyse")
+async def analyse_endpoint(payload: AnalyseRequest, owner_email: str = Query(...)):
+    db.init_db()
+    try:
+        print(f"[Server API] Running Gemini analysis for video ID: {payload.video_id} ...")
+        analysed_path = await run_in_threadpool(analyse_video, payload.video_id, owner_email=owner_email)
+        return {
+            "success": True,
+            "analysed_path": analysed_path,
+            "message": "Gemini topic boundaries analysis completed successfully."
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {e}")
+
+
+class SummarizeRequest(BaseModel):
+    chapter_id: str
+    
+@app.post("/api/summarize")
+async def summarize_endpoint(payload: SummarizeRequest, owner_email: str = Query(...)):
+    db.init_db()
+    chapter_id = payload.chapter_id.strip()
+    owner_email = owner_email.strip()
+    
+    def do_summarization():
+        block = None
+        if "-" in chapter_id:
+            parts = chapter_id.rsplit("-", 1)
+            if len(parts) == 2:
+                v_id, idx_str = parts
+                chapter_index = int(idx_str)
+                if not db.get_video(v_id, owner_email):
+                    raise HTTPException(status_code=404, detail=f"Chapter with ID '{chapter_id}' not found")
+                blocks = db.get_video_blocks(v_id)
+                if blocks and 1 <= chapter_index <= len(blocks):
+                    block = blocks[chapter_index - 1]
+        else:
+            try:
+                block = db.get_semantic_block(chapter_id)
+            except ValueError:
+                block = None
+                
+        if not block:
+            raise HTTPException(status_code=404, detail=f"Chapter with ID '{chapter_id}' not found")
+            
+        video_id = block["video_id"]
+        if not db.get_video(video_id, owner_email):
+            raise HTTPException(status_code=404, detail=f"Chapter with ID '{chapter_id}' not found")
+            
+        all_blocks = db.get_video_blocks(video_id)
+        block_index = 1
+        for idx, b in enumerate(all_blocks, start=1):
+            if b['id'] == block['id']:
+                block_index = idx
+                break
+        resolved_chapter_id = f"{video_id}-{block_index}"
+        
+        cached = db.get_summary(video_id, block['id'])
+        if cached:
+            return {
+                "summary": cached["summary_text"],
+                "chapter_id": resolved_chapter_id,
+                "cached": True
+            }
+            
+        transcript_text = block["text"].strip()
+        if not transcript_text:
+            raise HTTPException(status_code=400, detail="Chapter has no transcript text")
+            
+        api_key = os.getenv("GEMINI_API_KEY", "").strip()
+        from src.indexer import GEMINI_AVAILABLE
+        if not GEMINI_AVAILABLE or not api_key or api_key == '""' or "your_gemini_api_key_here" in api_key:
+            return {
+                "summary": f"**[Gemini API not configured]**\n\nRaw Transcript:\n{transcript_text}",
+                "chapter_id": resolved_chapter_id,
+                "cached": False
+            }
+            
+        from google import genai
+        from google.genai import types
+        
+        client = genai.Client(api_key=api_key)
+        system_instruction = (
+            "You are a professional video content summarizer. "
+            "Your task is to write a concise, bulleted summary of the provided chapter transcript. "
+            "Highlight key takeaways, use-cases, and explanations."
+        )
+        prompt = (
+            f"Please summarize the following video chapter transcript:\n\n"
+            f"Topic: {block['topic_title']}\n"
+            f"Transcript:\n{transcript_text}"
+        )
+        model_name = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite").strip()
+        
+        try:
+            response = client.models.generate_content(
+                model=model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=system_instruction,
+                    temperature=0.2
+                ),
+            )
+        except Exception as api_err:
+            if model_name != "gemini-3.1-flash-lite":
+                model_name = "gemini-3.1-flash-lite"
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        system_instruction=system_instruction,
+                        temperature=0.2
+                    ),
+                )
+            else:
+                raise api_err
+                
+        summary_text = response.text.strip()
+        bullet_points = []
+        for line in summary_text.splitlines():
+            line_clean = line.strip()
+            if line_clean.startswith(("-", "*", "•")):
+                bullet_points.append(line_clean.lstrip("-*• ").strip())
+                
+        db.insert_summary(
+            video_id=video_id,
+            index_id=block['id'],
+            raw_text_chunk=transcript_text,
+            summary_text=summary_text,
+            bullet_points=bullet_points
+        )
+        return {
+            "summary": summary_text,
+            "chapter_id": resolved_chapter_id,
+            "cached": False
+        }
+        
+    try:
+        res = await run_in_threadpool(do_summarization)
+        return res
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Summarization failed: {e}")
+
+
+class OverallSummaryRequest(BaseModel):
+    video_id: str
+    
+@app.post("/api/overall-summary")
+async def overall_summary_endpoint(payload: OverallSummaryRequest, owner_email: str = Query(...)):
+    db.init_db()
+    try:
+        print(f"[Server API] Generating overall summary for video ID: {payload.video_id} ...")
+        overall_summary = await run_in_threadpool(generate_overall_summary, payload.video_id, owner_email=owner_email)
+        return {
+            "success": True,
+            "overall_summary": overall_summary,
+            "cached": False
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Overall summary generation failed: {e}")
+
+
+@app.get("/api/stream-local-video")
+def stream_video(
+    request: Request,
+    video_id: str = Query(""),
+    path: str = Query(""),
+    owner_email: str = Query("")
+):
+    catalog = None
+    if video_id:
+        catalog = db.get_video(video_id)
+        if not catalog:
+            raise HTTPException(status_code=404, detail=f"Video catalog not found for ID: {video_id}")
+            
+    # S3 Storage Proxy
+    if catalog and catalog.get("s3_key"):
+        try:
+            from src.s3 import get_s3_client
+            s3_client = get_s3_client()
+            bucket = catalog.get("s3_bucket") or os.getenv("AWS_S3_BUCKET")
+            key = catalog.get("s3_key")
+            
+            head_resp = s3_client.head_object(Bucket=bucket, Key=key)
+            file_size = head_resp['ContentLength']
+            content_type = head_resp.get('ContentType', 'video/mp4')
+            
+            range_header = request.headers.get("range")
+            
+            if range_header and range_header.startswith("bytes="):
+                range_val = range_header.split("=")[1].strip()
+                parts = range_val.split("-")
+                start_str = parts[0].strip()
+                end_str = parts[1].strip() if len(parts) > 1 else ""
+                
+                if not start_str and not end_str:
+                    return Response(status_code=416, headers={"Content-Range": f"bytes */{file_size}"})
                     
-                    self.send_response(206)
-                    self.send_header("Content-Type", content_type)
-                    self.send_header("Content-Range", f"bytes {start}-{end}/{file_size}")
-                    self.send_header("Content-Length", str(chunk_length))
-                    self.send_header("Accept-Ranges", "bytes")
-                    self.end_headers()
+                start = int(start_str) if start_str else file_size - int(end_str)
+                end = int(end_str) if end_str else file_size - 1
+                
+                if start < 0 or start >= file_size or end < start:
+                    return Response(status_code=416, headers={"Content-Range": f"bytes */{file_size}"})
                     
-                    # Stream the chunk
+                if end >= file_size:
+                    end = file_size - 1
+                    
+                chunk_length = end - start + 1
+                s3_range = f"bytes={start}-{end}"
+                get_resp = s3_client.get_object(Bucket=bucket, Key=key, Range=s3_range)
+                
+                body_stream = get_resp['Body']
+                
+                def s3_chunk_generator():
+                    chunk_size = 64 * 1024
+                    bytes_sent = 0
+                    try:
+                        while bytes_sent < chunk_length:
+                            read_amt = min(chunk_size, chunk_length - bytes_sent)
+                            chunk = body_stream.read(read_amt)
+                            if not chunk:
+                                break
+                            yield chunk
+                            bytes_sent += len(chunk)
+                    finally:
+                        body_stream.close()
+                        
+                headers = {
+                    "Content-Range": f"bytes {start}-{end}/{file_size}",
+                    "Content-Length": str(chunk_length),
+                    "Accept-Ranges": "bytes"
+                }
+                return StreamingResponse(s3_chunk_generator(), status_code=206, media_type=content_type, headers=headers)
+            else:
+                get_resp = s3_client.get_object(Bucket=bucket, Key=key)
+                body_stream = get_resp['Body']
+                
+                def s3_full_generator():
+                    chunk_size = 64 * 1024
+                    try:
+                        while True:
+                            chunk = body_stream.read(chunk_size)
+                            if not chunk:
+                                break
+                            yield chunk
+                    finally:
+                        body_stream.close()
+                        
+                headers = {
+                    "Content-Length": str(file_size),
+                    "Accept-Ranges": "bytes"
+                }
+                return StreamingResponse(s3_full_generator(), status_code=200, media_type=content_type, headers=headers)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to stream from S3: {e}")
+            
+    # GridFS Storage Proxy
+    if catalog and catalog.get("grid_fs_id"):
+        try:
+            import gridfs
+            from bson.objectid import ObjectId
+            from src.database import get_db
+            
+            db_mongo = get_db()
+            fs = gridfs.GridFS(db_mongo)
+            grid_out = fs.get(ObjectId(catalog["grid_fs_id"]))
+            
+            file_size = grid_out.length
+            content_type = grid_out._file.get("contentType") or grid_out._file.get("content_type") or "video/mp4"
+            
+            range_header = request.headers.get("range")
+            if range_header and range_header.startswith("bytes="):
+                range_val = range_header.split("=")[1].strip()
+                parts = range_val.split("-")
+                start_str = parts[0].strip()
+                end_str = parts[1].strip() if len(parts) > 1 else ""
+                
+                if not start_str and not end_str:
+                    return Response(status_code=416, headers={"Content-Range": f"bytes */{file_size}"})
+                    
+                start = int(start_str) if start_str else file_size - int(end_str)
+                end = int(end_str) if end_str else file_size - 1
+                
+                if start < 0 or start >= file_size or end < start:
+                    return Response(status_code=416, headers={"Content-Range": f"bytes */{file_size}"})
+                    
+                if end >= file_size:
+                    end = file_size - 1
+                    
+                chunk_length = end - start + 1
+                
+                def gridfs_chunk_generator():
                     grid_out.seek(start)
                     remaining = chunk_length
                     buffer_size = 64 * 1024
@@ -250,93 +816,72 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
                         data = grid_out.read(chunk_to_read)
                         if not data:
                             break
-                        self.wfile.write(data)
+                        yield data
                         remaining -= len(data)
-                else:
-                    # Standard full file response
-                    self.send_response(200)
-                    self.send_header("Content-Type", content_type)
-                    self.send_header("Content-Length", str(file_size))
-                    self.send_header("Accept-Ranges", "bytes")
-                    self.end_headers()
-                    
-                    # Stream entire file
+                        
+                headers = {
+                    "Content-Range": f"bytes {start}-{end}/{file_size}",
+                    "Content-Length": str(chunk_length),
+                    "Accept-Ranges": "bytes"
+                }
+                return StreamingResponse(gridfs_chunk_generator(), status_code=206, media_type=content_type, headers=headers)
+            else:
+                def gridfs_full_generator():
                     buffer_size = 64 * 1024
                     while True:
                         data = grid_out.read(buffer_size)
                         if not data:
                             break
-                        self.wfile.write(data)
-            except Exception as e:
-                # Handle socket errors / connection resets gracefully
-                print(f"[Streaming Info] GridFS streaming connection reset or failed: {e}")
-            return
+                        yield data
+                        
+                headers = {
+                    "Content-Length": str(file_size),
+                    "Accept-Ranges": "bytes"
+                }
+                return StreamingResponse(gridfs_full_generator(), status_code=200, media_type=content_type, headers=headers)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"GridFS file streaming failed: {e}")
+
+    # Local Disk Fallback
+    if not video_path and catalog:
+        video_path = catalog.get("absolute_local_path") or catalog.get("file_path")
+        
+    if not video_path:
+        raise HTTPException(status_code=400, detail="video_id or path parameter is required")
+        
+    resolved_path = resolve_local_file_path(video_path)
+    if not resolved_path or not os.path.isfile(resolved_path):
+        raise HTTPException(status_code=404, detail=f"Local video file not found at path: {video_path}")
+        
+    video_path = resolved_path
+    try:
+        file_size = os.path.getsize(video_path)
+        content_type, _ = mimetypes.guess_type(video_path)
+        if not content_type:
+            content_type = "video/mp4"
             
-        # Otherwise fall back to local disk file streaming
-        if not video_path and catalog:
-            video_path = catalog.get("absolute_local_path") or catalog.get("file_path")
+        range_header = request.headers.get("range")
+        if range_header and range_header.startswith("bytes="):
+            range_val = range_header.split("=")[1].strip()
+            parts = range_val.split("-")
+            start_str = parts[0].strip()
+            end_str = parts[1].strip() if len(parts) > 1 else ""
             
-        if not video_path:
-            self.send_json_response({"error": "video_id or path parameter is required"}, 400)
-            return
-            
-        resolved_path = resolve_local_file_path(video_path)
-        if not resolved_path or not os.path.isfile(resolved_path):
-            self.send_json_response({"error": f"Local video file not found at path: {video_path}"}, 404)
-            return
-            
-        video_path = resolved_path
-        try:
-            file_size = os.path.getsize(video_path)
-            content_type, _ = mimetypes.guess_type(video_path)
-            if not content_type:
-                content_type = "video/mp4"
+            if not start_str and not end_str:
+                return Response(status_code=416, headers={"Content-Range": f"bytes */{file_size}"})
                 
-            range_header = self.headers.get("Range")
+            start = int(start_str) if start_str else file_size - int(end_str)
+            end = int(end_str) if end_str else file_size - 1
             
-            if range_header and range_header.startswith("bytes="):
-                # Parse Range header: e.g., bytes=0-1000, bytes=1000-, bytes=-1000
-                range_val = range_header.split("=")[1].strip()
-                parts = range_val.split("-")
-                start_str = parts[0].strip()
-                end_str = parts[1].strip() if len(parts) > 1 else ""
+            if start < 0 or start >= file_size or end < start:
+                return Response(status_code=416, headers={"Content-Range": f"bytes */{file_size}"})
                 
-                if not start_str and not end_str:
-                    self.send_response(416)
-                    self.send_header("Content-Range", f"bytes */{file_size}")
-                    self.end_headers()
-                    return
-                    
-                if start_str:
-                    start = int(start_str)
-                else:
-                    start = file_size - int(end_str)
-                    
-                if end_str:
-                    end = int(end_str)
-                else:
-                    end = file_size - 1
-                    
-                # Sanitize ranges
-                if start < 0 or start >= file_size or end < start:
-                    self.send_response(416)
-                    self.send_header("Content-Range", f"bytes */{file_size}")
-                    self.end_headers()
-                    return
-                    
-                if end >= file_size:
-                    end = file_size - 1
-                    
-                chunk_length = end - start + 1
+            if end >= file_size:
+                end = file_size - 1
                 
-                self.send_response(206)
-                self.send_header("Content-Type", content_type)
-                self.send_header("Content-Range", f"bytes {start}-{end}/{file_size}")
-                self.send_header("Content-Length", str(chunk_length))
-                self.send_header("Accept-Ranges", "bytes")
-                self.end_headers()
-                
-                # Stream the chunk
+            chunk_length = end - start + 1
+            
+            def local_chunk_generator():
                 with open(video_path, "rb") as f:
                     f.seek(start)
                     remaining = chunk_length
@@ -346,675 +891,35 @@ class LocalAPIRequestHandler(http.server.BaseHTTPRequestHandler):
                         data = f.read(chunk_to_read)
                         if not data:
                             break
-                        self.wfile.write(data)
+                        yield data
                         remaining -= len(data)
-            else:
-                # Standard full file response
-                self.send_response(200)
-                self.send_header("Content-Type", content_type)
-                self.send_header("Content-Length", str(file_size))
-                self.send_header("Accept-Ranges", "bytes")
-                self.end_headers()
-                
+                        
+            headers = {
+                "Content-Range": f"bytes {start}-{end}/{file_size}",
+                "Content-Length": str(chunk_length),
+                "Accept-Ranges": "bytes"
+            }
+            return StreamingResponse(local_chunk_generator(), status_code=206, media_type=content_type, headers=headers)
+        else:
+            def local_full_generator():
                 with open(video_path, "rb") as f:
                     buffer_size = 64 * 1024
                     while True:
                         data = f.read(buffer_size)
                         if not data:
                             break
-                        self.wfile.write(data)
-        except Exception as e:
-            # Handle socket errors / connection resets gracefully
-            print(f"[Streaming Info] Local file streaming connection reset or failed: {e}")
-
-    def do_POST(self):
-        parsed_url = urllib.parse.urlparse(self.path)
-        path = parsed_url.path
-
-        if path.startswith("/api/"):
-            # Intercept raw file uploads before JSON parsing
-            if path == "/api/upload":
-                self.handle_raw_upload(parsed_url)
-                return
-
-            # Read content length
-            content_length = int(self.headers.get('Content-Length', 0))
-            post_data = self.rfile.read(content_length) if content_length > 0 else b""
-            
-            try:
-                body = json.loads(post_data.decode('utf-8')) if post_data else {}
-            except json.JSONDecodeError:
-                self.send_json_response({"error": "Invalid JSON request body"}, 400)
-                return
-
-            self.handle_api_post(path, body, parsed_url)
-        else:
-            self.send_error(405, "Method Not Allowed")
-
-    def handle_raw_upload(self, parsed_url):
-        query_params = urllib.parse.parse_qs(parsed_url.query)
-        filename = query_params.get("filename", [""])[0].strip()
-        owner_email = self._get_owner_email(parsed_url)
-        
-        if not filename:
-            self.send_json_response({"error": "filename parameter is required in query string"}, 400)
-            return
-        if not owner_email:
-            self.send_json_response({"error": "owner_email parameter is required"}, 400)
-            return
-            
-        safe_filename = os.path.basename(filename)
-        if not safe_filename:
-            self.send_json_response({"error": "Invalid filename"}, 400)
-            return
-            
-        try:
-            import mimetypes
-            import gridfs
-            from src.database import get_db
-            
-            # Guess mime type
-            content_type, _ = mimetypes.guess_type(safe_filename)
-            if not content_type:
-                content_type = "video/mp4" # fallback
-                
-            # Read content length
-            content_length = int(self.headers.get('Content-Length', 0))
-            if content_length <= 0:
-                self.send_json_response({"error": "Content-Length must be greater than 0"}, 400)
-                return
-            
-            print(f"[Server API] Uploading file '{safe_filename}' ({content_length} bytes) to GridFS...")
-            
-            # Initialize GridFS
-            mongo_db = get_db()
-            fs = gridfs.GridFS(mongo_db)
-            
-            # Read raw bytes in chunks and stream directly to GridFS
-            remaining_bytes = content_length
-            chunk_size = 64 * 1024 # 64KB chunks
-            
-            with fs.new_file(filename=safe_filename, content_type=content_type) as grid_file:
-                while remaining_bytes > 0:
-                    read_size = min(chunk_size, remaining_bytes)
-                    chunk = self.rfile.read(read_size)
-                    if not chunk:
-                        break
-                    grid_file.write(chunk)
-                    remaining_bytes -= len(chunk)
-                grid_file_id = grid_file._id
-                
-            if remaining_bytes > 0:
-                # If upload was interrupted, delete the partial GridFS file
-                try:
-                    fs.delete(grid_file_id)
-                except Exception:
-                    pass
-                self.send_json_response({"error": "Upload interrupted before completion"}, 500)
-                return
-                
-            print(f"[Server API] GridFS Upload completed. File ID: {grid_file_id}")
-            self.send_json_response({
-                "success": True,
-                "grid_fs_id": str(grid_file_id),
-                "file_name": safe_filename,
-                "owner_email": owner_email,
-                "message": "File uploaded to database successfully."
-            })
-        except Exception as e:
-            self.send_json_response({"error": f"Upload failed: {e}"}, 500)
-
-    def handle_static_get(self, path):
-        # Default to index.html
-        if path == "/" or path == "":
-            path = "/index.html"
-        
-        # Clean path to prevent path traversal vulnerability
-        clean_path = os.path.normpath(path).lstrip("/\\")
-        file_path = os.path.join(FRONTEND_DIR, clean_path)
-
-        # Ensure absolute paths for secure validation on Windows
-        abs_frontend_dir = os.path.abspath(FRONTEND_DIR)
-        abs_file_path = os.path.abspath(file_path)
-
-        # Check if file exists and is within frontend directory
-        if not abs_file_path.startswith(abs_frontend_dir) or not os.path.exists(abs_file_path) or os.path.isdir(abs_file_path):
-            self.send_error(404, "File Not Found")
-            return
-
-        # Guess MIME type
-        content_type, _ = mimetypes.guess_type(file_path)
-        if not content_type:
-            content_type = "application/octet-stream"
-
-        try:
-            with open(file_path, 'rb') as f:
-                content = f.read()
-            self.send_response(200)
-            self.send_header('Content-Type', content_type)
-            self.send_header('Content-Length', len(content))
-            self.end_headers()
-            self.wfile.write(content)
-        except Exception as e:
-            self.send_error(500, f"Internal Server Error: {e}")
-
-    def handle_api_get(self, path, parsed_url):
-        # Initialize database tables
-        db.init_db()
-
-        # Endpoint: GET /api/local-files
-        if path == "/api/local-files":
-            try:
-                base_dir = os.path.dirname(os.path.abspath(__file__))
-                media_files = []
-                allowed_exts = ('.mp3', '.mp4', '.wav', '.mkv', '.mov', '.m4a')
-                ignored_dirs = {'.git', 'node_modules', 'frontend', 'temp', 'transcripts', 'analysed', 'summaries', 'data'}
-                
-                # 1. Scan root directory up to 3 levels deep
-                for root, dirs, files in os.walk(base_dir):
-                    dirs[:] = [d for d in dirs if d not in ignored_dirs]
-                    
-                    rel_path = os.path.relpath(root, base_dir)
-                    depth = 0 if rel_path == '.' else len(rel_path.split(os.sep))
-                    if depth > 3:
-                        dirs[:] = []
-                        continue
+                        yield data
                         
-                    for file in files:
-                        if file.lower().endswith(allowed_exts):
-                            full_path = os.path.join(root, file)
-                            media_files.append({
-                                "name": file,
-                                "path": full_path,
-                                "rel_path": os.path.relpath(full_path, base_dir)
-                            })
-                
-                # 2. Also scan data/uploads directory specifically
-                uploads_dir = os.path.join(base_dir, "data", "uploads")
-                if os.path.exists(uploads_dir):
-                    for file in os.listdir(uploads_dir):
-                        if file.lower().endswith(allowed_exts):
-                            full_path = os.path.join(uploads_dir, file)
-                            media_files.append({
-                                "name": file,
-                                "path": full_path,
-                                "rel_path": os.path.relpath(full_path, base_dir)
-                            })
-                            
-                self.send_json_response(media_files)
-            except Exception as e:
-                self.send_json_response({"error": f"Failed to list local files: {e}"}, 500)
-            return
+            headers = {
+                "Content-Length": str(file_size),
+                "Accept-Ranges": "bytes"
+            }
+            return StreamingResponse(local_full_generator(), status_code=200, media_type=content_type, headers=headers)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Local streaming failed: {e}")
 
-        # Endpoint: GET /api/videos
-        if path == "/api/videos":
-            owner_email = self._get_owner_email(parsed_url)
-            if not owner_email:
-                self.send_json_response({"error": "owner_email parameter is required"}, 400)
-                return
-            try:
-                videos = db.list_videos(owner_email)
-                video_list = []
-                for v in videos:
-                    video_list.append({
-                        "id": v["id"],
-                        "file_name": v["file_name"],
-                        "file_path": v["file_path"],
-                        "absolute_local_path": v.get("absolute_local_path", ""),
-                        "timeline_index": v.get("timeline_index", []),
-                        "duration": v["duration"],
-                        "duration_str": format_timestamp(v["duration"]),
-                        "created_at": v["created_at"]
-                    })
-                self.send_json_response(video_list)
-            except Exception as e:
-                self.send_json_response({"error": f"Failed to list videos: {e}"}, 500)
-            return
-
-        # Endpoint: GET /api/videos/<video_id>
-        if path.startswith("/api/videos/"):
-            video_id = path[len("/api/videos/"):]
-            if not video_id:
-                self.send_json_response({"error": "Video ID required"}, 400)
-                return
-
-            owner_email = self._get_owner_email(parsed_url)
-            if not owner_email:
-                self.send_json_response({"error": "owner_email parameter is required"}, 400)
-                return
-
-            try:
-                video = db.get_video(video_id, owner_email)
-                if not video:
-                    self.send_json_response({"error": "Video not found"}, 404)
-                    return
-
-                blocks = db.get_video_blocks(video_id)
-                
-                # Format chapters list
-                chapters = []
-                for idx, b in enumerate(blocks, start=1):
-                    chapters.append({
-                        "id": f"{video_id}-{idx}",
-                        "db_id": b["id"],
-                        "start_time": b["start_time"],
-                        "start_time_str": format_timestamp(b["start_time"]),
-                        "end_time": b["end_time"],
-                        "end_time_str": format_timestamp(b["end_time"]),
-                        "topic_title": b.get("topic_title", "Section"),
-                        "text": b["text"]
-                    })
-
-                response_data = {
-                    "video": {
-                        "id": video["id"],
-                        "file_name": video["file_name"],
-                        "file_path": video["file_path"],
-                        "absolute_local_path": video.get("absolute_local_path", ""),
-                        "timeline_index": video.get("timeline_index", []),
-                        "duration": video["duration"],
-                        "duration_str": format_timestamp(video["duration"]),
-                        "overall_summary": video.get("overall_summary", "")
-                    },
-                    "chapters": chapters
-                }
-                self.send_json_response(response_data)
-            except Exception as e:
-                self.send_json_response({"error": f"Failed to fetch video: {e}"}, 500)
-            return
-
-        # Endpoint: GET /api/search
-        if path == "/api/search":
-            query_params = urllib.parse.parse_qs(parsed_url.query)
-            video_id = query_params.get("video_id", [""])[0]
-            query = query_params.get("query", [""])[0]
-            owner_email = self._get_owner_email(parsed_url)
-
-            if not video_id or not query:
-                self.send_json_response({"error": "video_id and query params are required"}, 400)
-                return
-            if not owner_email:
-                self.send_json_response({"error": "owner_email parameter is required"}, 400)
-                return
-
-            try:
-                video = db.get_video(video_id, owner_email)
-                if not video:
-                    self.send_json_response({"error": "Video not found"}, 404)
-                    return
-
-                results = db.search_blocks(video_id, query)
-                formatted_results = []
-                
-                # Fetch all blocks to find chronological 1-based index
-                all_blocks = db.get_video_blocks(video_id)
-                block_id_to_idx = {b["id"]: idx for idx, b in enumerate(all_blocks, start=1)}
-
-                for r in results:
-                    idx = block_id_to_idx.get(r["id"], 1)
-                    formatted_results.append({
-                        "id": f"{video_id}-{idx}",
-                        "db_id": r["id"],
-                        "start_time": r["start_time"],
-                        "start_time_str": format_timestamp(r["start_time"]),
-                        "end_time": r["end_time"],
-                        "end_time_str": format_timestamp(r["end_time"]),
-                        "topic_title": r.get("topic_title", "Section"),
-                        "text": r["text"]
-                    })
-                self.send_json_response(formatted_results)
-            except Exception as e:
-                self.send_json_response({"error": f"Search failed: {e}"}, 500)
-            return
-
-        self.send_json_response({"error": "Endpoint not found"}, 404)
-
-    def handle_api_post(self, path, body, parsed_url=None):
-        owner_email = self._get_owner_email(parsed_url, body) if parsed_url else str(body.get("owner_email", "")).strip()
-
-        # Endpoint: POST /api/delete
-        if path == "/api/delete":
-            video_id = body.get("video_id", "").strip()
-            if not video_id:
-                self.send_json_response({"error": "video_id is required"}, 400)
-                return
-            if not owner_email:
-                self.send_json_response({"error": "owner_email is required"}, 400)
-                return
-            try:
-                print(f"[Server API] Deleting video ID: {video_id} ...")
-                if db.delete_video(video_id, owner_email):
-                    self.send_json_response({
-                        "success": True,
-                        "message": f"Successfully deleted video '{video_id}'."
-                    })
-                else:
-                    self.send_json_response({"error": "Failed to delete video from database"}, 500)
-            except Exception as e:
-                self.send_json_response({"error": f"Deletion failed: {e}"}, 500)
-            return
-
-        # Endpoint: POST /api/index
-        if path == "/api/index":
-            grid_fs_id = body.get("grid_fs_id", "").strip()
-            video_path = body.get("video_path", "").strip()
-            language = body.get("language")
-            if not language or language.strip() == "":
-                language = None
-            else:
-                language = language.strip()
-
-            if not owner_email:
-                self.send_json_response({"error": "owner_email is required"}, 400)
-                return
-
-            # Option A: Index from GridFS
-            if grid_fs_id:
-                try:
-                    import gridfs
-                    from bson.objectid import ObjectId
-                    from src.database import get_db
-                    from src.config import get_temp_dir
-                    
-                    mongo_db = get_db()
-                    fs = gridfs.GridFS(mongo_db)
-                    
-                    # Fetch from GridFS
-                    try:
-                        grid_out = fs.get(ObjectId(grid_fs_id))
-                    except Exception as e:
-                        self.send_json_response({"error": f"GridFS file not found: {e}"}, 404)
-                        return
-                        
-                    # Write to a temporary file
-                    temp_dir = get_temp_dir()
-                    # Ensure filename is safe
-                    safe_filename = os.path.basename(grid_out.filename)
-                    temp_video_path = os.path.join(temp_dir, f"temp_{grid_fs_id}_{safe_filename}")
-                    
-                    print(f"[Server API] Buffering GridFS file to temp path: {temp_video_path} ...")
-                    with open(temp_video_path, 'wb') as temp_file:
-                        temp_file.write(grid_out.read())
-                        
-                    # Index the temporary file
-                    print(f"[Server API] Indexing GridFS video: {grid_out.filename} ...")
-                    video_id, blocks = index_video(
-                        temp_video_path,
-                        language=language,
-                        owner_email=owner_email,
-                        grid_fs_id=grid_fs_id,
-                        original_filename=grid_out.filename
-                    )
-                    
-                    # Clean up temporary video file immediately
-                    if os.path.exists(temp_video_path):
-                        os.remove(temp_video_path)
-                        print(f"[Server API] Cleaned up temporary video file: {temp_video_path}")
-                        
-                except Exception as e:
-                    # Clean up temp file on error too
-                    if 'temp_video_path' in locals() and os.path.exists(temp_video_path):
-                        try:
-                            os.remove(temp_video_path)
-                        except Exception:
-                            pass
-                    self.send_json_response({"error": f"Failed to index GridFS video: {e}"}, 500)
-                    return
-            
-            # Option B: Index from local path
-            else:
-                if not video_path:
-                    self.send_json_response({"error": "video_path or grid_fs_id is required"}, 400)
-                    return
-                    
-                resolved_path = resolve_local_file_path(video_path)
-                if not resolved_path:
-                    self.send_json_response({"error": f"Local video file not found at path or in common folders: {video_path}"}, 404)
-                    return
-                    
-                try:
-                    print(f"[Server API] Indexing video: {resolved_path} ...")
-                    video_id, blocks = index_video(resolved_path, language=language, owner_email=owner_email)
-                except Exception as e:
-                    self.send_json_response({"error": f"Failed to index video: {e}"}, 500)
-                    return
-
-            # Pipeline common follow-up: Run semantic boundary analysis and overall summary
-            try:
-                try:
-                    print(f"[Server API] Automatically analyzing video ID: {video_id} ...")
-                    analyse_video(video_id, owner_email=owner_email)
-                except Exception as ex:
-                    print(f"[Server API Warning] Automatic boundary analysis failed: {ex}")
-                
-                try:
-                    print(f"[Server API] Automatically generating overall summary for video ID: {video_id} ...")
-                    generate_overall_summary(video_id, owner_email=owner_email)
-                except Exception as ex:
-                    print(f"[Server API Warning] Automatic overall summary generation failed: {ex}")
-
-                self.send_json_response({
-                    "success": True,
-                    "video_id": video_id,
-                    "message": "Successfully indexed video, ran semantic boundary analysis, and generated overall summary."
-                })
-            except Exception as e:
-                self.send_json_response({"error": f"Failed to complete indexing pipeline: {e}"}, 500)
-            return
-
-        # Endpoint: POST /api/analyse
-        if path == "/api/analyse":
-            video_id = body.get("video_id", "").strip()
-            if not video_id:
-                self.send_json_response({"error": "video_id is required"}, 400)
-                return
-            if not owner_email:
-                self.send_json_response({"error": "owner_email is required"}, 400)
-                return
-
-            try:
-                print(f"[Server API] Running Gemini analysis for video ID: {video_id} ...")
-                analysed_path = analyse_video(video_id, owner_email=owner_email)
-                self.send_json_response({
-                    "success": True,
-                    "analysed_path": analysed_path,
-                    "message": "Gemini topic boundaries analysis completed successfully."
-                })
-            except Exception as e:
-                self.send_json_response({"error": f"Analysis failed: {e}"}, 500)
-            return
-
-        # Endpoint: POST /api/summarize
-        if path == "/api/summarize":
-            chapter_id = body.get("chapter_id", "").strip()
-            if not chapter_id:
-                self.send_json_response({"error": "chapter_id is required"}, 400)
-                return
-            if not owner_email:
-                self.send_json_response({"error": "owner_email is required"}, 400)
-                return
-
-            try:
-                # Resolve block
-                block = None
-                if "-" in chapter_id:
-                    parts = chapter_id.rsplit("-", 1)
-                    if len(parts) == 2:
-                        video_id, idx_str = parts
-                        chapter_index = int(idx_str)
-                        if not db.get_video(video_id, owner_email):
-                            self.send_json_response({"error": f"Chapter with ID '{chapter_id}' not found"}, 404)
-                            return
-                        blocks = db.get_video_blocks(video_id)
-                        if blocks and 1 <= chapter_index <= len(blocks):
-                            block = blocks[chapter_index - 1]
-                else:
-                    try:
-                        block = db.get_semantic_block(chapter_id)
-                    except ValueError:
-                        block = None
-
-                if not block:
-                    self.send_json_response({"error": f"Chapter with ID '{chapter_id}' not found"}, 404)
-                    return
-
-                video_id = block["video_id"]
-                if not db.get_video(video_id, owner_email):
-                    self.send_json_response({"error": f"Chapter with ID '{chapter_id}' not found"}, 404)
-                    return
-
-                # Calculate resolved 1-based index chapter_id
-                all_blocks = db.get_video_blocks(video_id)
-                block_index = 1
-                for idx, b in enumerate(all_blocks, start=1):
-                    if b['id'] == block['id']:
-                        block_index = idx
-                        break
-                resolved_chapter_id = f"{video_id}-{block_index}"
-
-                # Return cached summary from MongoDB if it exists
-                cached = db.get_summary(video_id, block['id'])
-                if cached:
-                    self.send_json_response({
-                        "summary": cached["summary_text"],
-                        "chapter_id": resolved_chapter_id,
-                        "cached": True
-                    })
-                    return
-
-                # Otherwise call Gemini API to generate
-                transcript_text = block["text"].strip()
-                if not transcript_text:
-                    self.send_json_response({"error": "Chapter has no transcript text"}, 400)
-                    return
-
-                api_key = os.getenv("GEMINI_API_KEY", "").strip()
-                from src.indexer import GEMINI_AVAILABLE
-                if not GEMINI_AVAILABLE or not api_key or api_key == '""' or "your_gemini_api_key_here" in api_key:
-                    self.send_json_response({
-                        "summary": f"**[Gemini API not configured]**\n\nRaw Transcript:\n{transcript_text}",
-                        "chapter_id": resolved_chapter_id,
-                        "cached": False
-                    })
-                    return
-
-                from google import genai
-                from google.genai import types
-
-                client = genai.Client(api_key=api_key)
-                system_instruction = (
-                    "You are a professional video content summarizer. "
-                    "Your task is to write a concise, bulleted summary of the provided chapter transcript. "
-                    "Highlight key takeaways, use-cases, and explanations."
-                )
-                prompt = (
-                    f"Please summarize the following video chapter transcript:\n\n"
-                    f"Topic: {block['topic_title']}\n"
-                    f"Transcript:\n{transcript_text}"
-                )
-                model_name = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite").strip()
-
-                try:
-                    response = client.models.generate_content(
-                        model=model_name,
-                        contents=prompt,
-                        config=types.GenerateContentConfig(
-                            system_instruction=system_instruction,
-                            temperature=0.2
-                        ),
-                    )
-                except Exception as api_err:
-                    if model_name != "gemini-3.1-flash-lite":
-                        model_name = "gemini-3.1-flash-lite"
-                        response = client.models.generate_content(
-                            model=model_name,
-                            contents=prompt,
-                            config=types.GenerateContentConfig(
-                                system_instruction=system_instruction,
-                                temperature=0.2
-                            ),
-                        )
-                    else:
-                        raise api_err
-
-                summary_text = response.text.strip()
-
-                # Extract bullet points
-                bullet_points = []
-                for line in summary_text.splitlines():
-                    line_clean = line.strip()
-                    if line_clean.startswith(("-", "*", "•")):
-                        bullet_points.append(line_clean.lstrip("-*• ").strip())
-
-                # Write cache to MongoDB
-                db.insert_summary(
-                    video_id=video_id,
-                    index_id=block['id'],
-                    raw_text_chunk=transcript_text,
-                    summary_text=summary_text,
-                    bullet_points=bullet_points
-                )
-
-                self.send_json_response({
-                    "summary": summary_text,
-                    "chapter_id": resolved_chapter_id,
-                    "cached": False
-                })
-            except Exception as e:
-                self.send_json_response({"error": f"Summarization failed: {e}"}, 500)
-            return
-
-        # Endpoint: POST /api/overall-summary
-        if path == "/api/overall-summary":
-            video_id = body.get("video_id", "").strip()
-            if not video_id:
-                self.send_json_response({"error": "video_id is required"}, 400)
-                return
-            if not owner_email:
-                self.send_json_response({"error": "owner_email is required"}, 400)
-                return
-            try:
-                print(f"[Server API] Generating overall summary for video ID: {video_id} ...")
-                overall_summary = generate_overall_summary(video_id, owner_email=owner_email)
-                self.send_json_response({
-                    "success": True,
-                    "overall_summary": overall_summary,
-                    "cached": False
-                })
-            except Exception as e:
-                self.send_json_response({"error": f"Overall summary generation failed: {e}"}, 500)
-            return
-
-        self.send_json_response({"error": "Endpoint not found"}, 404)
-
-    def send_json_response(self, data, status_code=200):
-        try:
-            response_bytes = json.dumps(data).encode('utf-8')
-            self.send_response(status_code)
-            self.send_header('Content-Type', 'application/json')
-            self.send_header('Content-Length', len(response_bytes))
-            self.end_headers()
-            self.wfile.write(response_bytes)
-        except Exception as e:
-            print(f"[Server Error] Failed to send JSON response: {e}")
-
-class ThreadingTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
-    daemon_threads = True
-
-def run_server():
-    db.init_db()
-    if not os.path.exists(FRONTEND_DIR):
-        os.makedirs(FRONTEND_DIR)
-
-    ThreadingTCPServer.allow_reuse_address = True
-    with ThreadingTCPServer(("", PORT), LocalAPIRequestHandler) as httpd:
-        print(f"[Server] Video Chapter Indexer API is running on port {PORT}!")
-        print(f"[Server] API endpoints are mounted at http://localhost:{PORT}/api/")
-        print("[Server] Press Ctrl+C to terminate the server.")
-        try:
-            httpd.serve_forever()
-        except KeyboardInterrupt:
-            print("\n[Server] Shutting down...")
 
 if __name__ == "__main__":
-    run_server()
+    import uvicorn
+    print(f"[Server] Starting FastAPI + Uvicorn server on port {PORT}...")
+    uvicorn.run("server:app", host="0.0.0.0", port=PORT, reload=False)

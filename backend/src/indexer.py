@@ -264,7 +264,7 @@ def build_transcript_string(segments: List[Dict[str, Any]]) -> str:
         lines.append(f"[{start_str} -> {end_str}] {text}")
     return "\n".join(lines)
 
-def index_video(video_path: str, language: str = None, owner_email: str = "", grid_fs_id: str = None, original_filename: str = None) -> Tuple[str, List[Dict[str, Any]]]:
+def index_video(video_path: str, language: str = None, owner_email: str = "", grid_fs_id: str = None, original_filename: str = None, s3_key: str = None, s3_bucket: str = None) -> Tuple[str, List[Dict[str, Any]]]:
     """Runs the full pipeline to extract, transcribe, chunk semantically, and index a video file."""
     abs_path = os.path.abspath(video_path)
     if not os.path.exists(abs_path):
@@ -275,7 +275,12 @@ def index_video(video_path: str, language: str = None, owner_email: str = "", gr
     else:
         file_name = os.path.basename(abs_path)
         
-    lookup_path = file_name if grid_fs_id else abs_path
+    if grid_fs_id:
+        lookup_path = file_name
+    elif s3_key:
+        lookup_path = s3_key
+    else:
+        lookup_path = abs_path
     
     # Check if a video with the same filePath already exists to prevent duplicate key violations
     existing_video = db.get_video_by_path(lookup_path, owner_email)
@@ -285,6 +290,9 @@ def index_video(video_path: str, language: str = None, owner_email: str = "", gr
     else:
         if grid_fs_id:
             fingerprint = f"{owner_email.strip().lower()}_gridfs_{grid_fs_id}"
+            video_id = hashlib.sha256(fingerprint.encode('utf-8')).hexdigest()[:24]
+        elif s3_key:
+            fingerprint = f"{owner_email.strip().lower()}_s3_{s3_key}"
             video_id = hashlib.sha256(fingerprint.encode('utf-8')).hexdigest()[:24]
         else:
             video_id = generate_video_id(abs_path, owner_email=owner_email)
@@ -323,14 +331,16 @@ def index_video(video_path: str, language: str = None, owner_email: str = "", gr
         # 7. Write to database
         db.insert_video(
             video_id=video_id,
-            file_path=abs_path if not grid_fs_id else file_name,
+            file_path=abs_path if (not grid_fs_id and not s3_key) else (s3_key if s3_key else file_name),
             file_name=file_name,
             duration=duration,
             owner_email=owner_email,
             upload_status="indexed",
             raw_transcript=raw_transcript,
-            absolute_local_path="" if grid_fs_id else abs_path,
-            grid_fs_id=grid_fs_id
+            absolute_local_path="" if (grid_fs_id or s3_key) else abs_path,
+            grid_fs_id=grid_fs_id,
+            s3_key=s3_key,
+            s3_bucket=s3_bucket
         )
         db.insert_semantic_blocks(video_id, blocks)
         

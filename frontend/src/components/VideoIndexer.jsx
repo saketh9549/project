@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { apiUrl } from '../lib/api';
 
 export default function VideoIndexer({
@@ -49,6 +49,8 @@ export default function VideoIndexer({
     try {
       let path = file.path || '';
       let gridFsId = null;
+      let s3Key = null;
+      let s3Bucket = null;
 
       // If we don't have an absolute path (web browser upload), upload first
       if (!path) {
@@ -68,6 +70,8 @@ export default function VideoIndexer({
         if (!uploadResponse.ok) throw new Error(uploadData.error || 'Failed to upload file');
 
         gridFsId = uploadData.grid_fs_id;
+        s3Key = uploadData.s3_key;
+        s3Bucket = uploadData.s3_bucket;
         setIndexingStatus('File uploaded. Starting indexing...');
         setIndexingProgress(15);
       }
@@ -77,6 +81,8 @@ export default function VideoIndexer({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           grid_fs_id: gridFsId || undefined,
+          s3_key: s3Key || undefined,
+          s3_bucket: s3Bucket || undefined,
           video_path: path ? path.trim() : undefined,
           file_name: file.name,
           language: lang.trim() || undefined

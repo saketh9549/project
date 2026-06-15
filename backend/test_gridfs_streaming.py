@@ -1,16 +1,21 @@
 import os
 import unittest
-import requests
 import gridfs
 from bson.objectid import ObjectId
+from fastapi.testclient import TestClient
 
 # Set local MongoDB URI for testing if not already specified
 if "MONGODB_URI" not in os.environ:
     os.environ["MONGODB_URI"] = "mongodb://127.0.0.1:27017/summarix_test"
 
 import src.database as db
+from server import app
 
 class TestGridFSStreaming(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.client = TestClient(app)
+
     def setUp(self):
         self.db = db.get_db()
         # Clean up catalog and indices before test
@@ -78,37 +83,37 @@ class TestGridFSStreaming(unittest.TestCase):
             grid_fs_id=str(grid_file_id)
         )
         
-        # 3. Make range requests to local running server
-        url = f"http://localhost:8000/api/stream-local-video?video_id={video_id}"
+        # 3. Make range requests using TestClient
+        url = f"/api/stream-local-video?video_id={video_id}"
         
         # First request: standard full file response (no Range header)
-        response = requests.get(url)
+        response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.headers.get("Content-Type"), "video/mp4")
-        self.assertEqual(int(response.headers.get("Content-Length")), len(mock_data))
+        self.assertEqual(response.headers.get("content-type"), "video/mp4")
+        self.assertEqual(int(response.headers.get("content-length")), len(mock_data))
         self.assertEqual(response.content, mock_data)
         
         # Second request: Range bytes=100-500
         headers = {"Range": "bytes=100-500"}
-        response = requests.get(url, headers=headers)
+        response = self.client.get(url, headers=headers)
         self.assertEqual(response.status_code, 206)
-        self.assertEqual(response.headers.get("Content-Type"), "video/mp4")
-        self.assertEqual(response.headers.get("Content-Range"), "bytes 100-500/10000")
-        self.assertEqual(int(response.headers.get("Content-Length")), 401)
+        self.assertEqual(response.headers.get("content-type"), "video/mp4")
+        self.assertEqual(response.headers.get("content-range"), "bytes 100-500/10000")
+        self.assertEqual(int(response.headers.get("content-length")), 401)
         self.assertEqual(response.content, mock_data[100:501])
         
         # Third request: Range bytes=9000-
         headers = {"Range": "bytes=9000-"}
-        response = requests.get(url, headers=headers)
+        response = self.client.get(url, headers=headers)
         self.assertEqual(response.status_code, 206)
-        self.assertEqual(response.headers.get("Content-Type"), "video/mp4")
-        self.assertEqual(response.headers.get("Content-Range"), "bytes 9000-9999/10000")
-        self.assertEqual(int(response.headers.get("Content-Length")), 1000)
+        self.assertEqual(response.headers.get("content-type"), "video/mp4")
+        self.assertEqual(response.headers.get("content-range"), "bytes 9000-9999/10000")
+        self.assertEqual(int(response.headers.get("content-length")), 1000)
         self.assertEqual(response.content, mock_data[9000:])
         
         # Fourth request: invalid range
         headers = {"Range": "bytes=12000-15000"}
-        response = requests.get(url, headers=headers)
+        response = self.client.get(url, headers=headers)
         self.assertEqual(response.status_code, 416)
 
         # Cleanup

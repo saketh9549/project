@@ -1,5 +1,3 @@
-import React from 'react';
-
 export default function VideosCatalog({ videos, selectedVideo, onSelectVideo, onDeleteVideo }) {
   return (
     <div className="flex-1 flex flex-col min-h-0">
@@ -32,8 +30,6 @@ export default function VideosCatalog({ videos, selectedVideo, onSelectVideo, on
                       </svg>
                       {v.duration_str}
                     </span>
-                    <span className="text-gray-600">|</span>
-                    <span className="text-gray-500 font-mono text-[9px] truncate max-w-[80px]">{v.id}</span>
                   </div>
                 </div>
                 <button

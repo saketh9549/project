@@ -1,5 +1,3 @@
-import React from 'react';
-
 export default function StatusAlerts({ errorMsg, successMsg, onClear }) {
   if (!errorMsg && !successMsg) return null;
 

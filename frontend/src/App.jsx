@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import StatusAlerts from './components/StatusAlerts';
 import VideosCatalog from './components/VideosCatalog';
 import VideoIndexer from './components/VideoIndexer';
@@ -9,7 +9,6 @@ import { apiUrl } from './lib/api';
 
 
 export default function App() {
-  const AUTH_STORAGE_KEY = 'summarix.currentUser';
   const [videos, setVideos] = useState([]);
   const [selectedVideo, setSelectedVideo] = useState(null);
   const [chapters, setChapters] = useState([]);
@@ -19,9 +18,35 @@ export default function App() {
   const [indexingLoading, setIndexingLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
-  const [rightWidth, setRightWidth] = useState(500); // initial fallback width
+  const [rightWidth, setRightWidth] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return (window.innerWidth - 48) / 2;
+    }
+    return 500;
+  });
   const [overallSummary, setOverallSummary] = useState(null);
   const [overallSummaryLoading, setOverallSummaryLoading] = useState(false);
+
+  const showError = (msg) => {
+    setErrorMsg(msg);
+    if (msg) setSuccessMsg(null);
+  };
+
+  const showSuccess = (msg) => {
+    setSuccessMsg(msg);
+    if (msg) setErrorMsg(null);
+  };
+
+  const fetchVideos = async () => {
+    try {
+      const response = await fetch(apiUrl('/api/videos'));
+      if (!response.ok) throw new Error('Failed to fetch videos');
+      const data = await response.json();
+      setVideos(data);
+    } catch (err) {
+      showError('Could not load videos catalog: ' + err.message);
+    }
+  };
 
   const handleMouseDown = (e) => {
     e.preventDefault();
@@ -50,12 +75,11 @@ export default function App() {
 
 
 
-  // Fetch videos list and set initial splitter width on mount
+  // Fetch videos list on mount
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchVideos();
-    if (typeof window !== 'undefined') {
-      setRightWidth((window.innerWidth - 48) / 2);
-    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Auto-dismiss success and error notifications after 2 seconds
@@ -72,18 +96,6 @@ export default function App() {
       return () => clearTimeout(timer);
     }
   }, [errorMsg, successMsg]);
-
-
-  const fetchVideos = async () => {
-    try {
-      const response = await fetch(apiUrl('/api/videos'));
-      if (!response.ok) throw new Error('Failed to fetch videos');
-      const data = await response.json();
-      setVideos(data);
-    } catch (err) {
-      showError('Could not load videos catalog: ' + err.message);
-    }
-  };
 
   const handleSelectVideo = async (video) => {
     setSelectedVideo(video);
@@ -158,16 +170,6 @@ export default function App() {
     } finally {
       setOverallSummaryLoading(false);
     }
-  };
-
-  const showError = (msg) => {
-    setErrorMsg(msg);
-    if (msg) setSuccessMsg(null);
-  };
-
-  const showSuccess = (msg) => {
-    setSuccessMsg(msg);
-    if (msg) setErrorMsg(null);
   };
 
   return (
@@ -281,6 +283,7 @@ export default function App() {
             {/* Center Panel (Timeline Explorer) */}
             <main className="flex-grow flex-1 glass-panel p-6 rounded-2xl flex flex-col min-w-0 min-h-0">
               <TimelineExplorer
+                key={selectedVideo?.id}
                 selectedVideo={selectedVideo}
                 chapters={chapters}
                 selectedChapter={selectedChapter}
@@ -337,7 +340,7 @@ export default function App() {
 
       {/* Footer */}
       <footer className="border-t border-white/5 bg-gray-950/20 py-3 px-6 text-center text-[10px] text-gray-500">
-        © 2026 Summarix Video Chapter Indexer • Powered by Google Gemini and local audio transcribers
+        © 2026 Summarix Video & Podcast Summary Generator • Powered by Google Gemini and OpenAI Whisper
       </footer>
     </div>
   );

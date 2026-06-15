@@ -76,6 +76,8 @@ def _map_catalog_to_sqlite_style(doc: Dict[str, Any]) -> Dict[str, Any]:
         "overall_summary": doc.get("overallSummary", ""),
         "absolute_local_path": doc.get("absoluteLocalPath", ""),
         "grid_fs_id": str(doc["gridFsFileId"]) if doc.get("gridFsFileId") else None,
+        "s3_key": doc.get("s3Key", ""),
+        "s3_bucket": doc.get("s3Bucket", ""),
         "timeline_index": timeline_index,
         "created_at": created_at_str
     }
@@ -94,7 +96,7 @@ def _map_index_to_sqlite_style(doc: Dict[str, Any]) -> Dict[str, Any]:
         "status": doc.get("status", "raw")
     }
 
-def insert_video(video_id: str, file_path: str, file_name: str, duration: float, owner_email: str = "", upload_status: str = "indexed", raw_transcript: str = "", overall_summary: str = "", absolute_local_path: str = None, grid_fs_id: str = None) -> bool:
+def insert_video(video_id: str, file_path: str, file_name: str, duration: float, owner_email: str = "", upload_status: str = "indexed", raw_transcript: str = "", overall_summary: str = "", absolute_local_path: str = None, grid_fs_id: str = None, s3_key: str = None, s3_bucket: str = None) -> bool:
     """Inserts or replaces a video (catalog) document."""
     db = get_db()
     try:
@@ -115,6 +117,11 @@ def insert_video(video_id: str, file_path: str, file_name: str, duration: float,
             absolute_local_path = "" # Do not store local path if stored in database
         else:
             grid_fs_oid = None
+            
+        if s3_key:
+            absolute_local_path = "" # Do not store local path if stored in S3
+            
+        if not grid_fs_id and not s3_key:
             if absolute_local_path is None:
                 absolute_local_path = file_path
             
@@ -124,6 +131,8 @@ def insert_video(video_id: str, file_path: str, file_name: str, duration: float,
             "filePath": file_path,
             "absoluteLocalPath": absolute_local_path,
             "gridFsFileId": grid_fs_oid,
+            "s3Key": s3_key or "",
+            "s3Bucket": s3_bucket or "",
             "duration": duration,
             "ownerEmail": email,
             "updatedAt": datetime.now()
@@ -348,6 +357,15 @@ def delete_video(video_id: str, owner_email: str = "") -> bool:
                 print(f"[DB] GridFS video file {grid_fs_file_id} deleted successfully.")
             except Exception as ge:
                 print(f"[DB Warning] Failed to delete GridFS video file {grid_fs_file_id}: {ge}")
+
+        # Delete AWS S3 file if it exists
+        s3_key = video_doc.get("s3Key")
+        if s3_key:
+            try:
+                from src.s3 import delete_s3_object
+                delete_s3_object(s3_key)
+            except Exception as se:
+                print(f"[DB Warning] Failed to delete S3 video object {s3_key}: {se}")
 
         db.catalogs.delete_one({"_id": actual_oid})
         return True

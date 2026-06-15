@@ -1,15 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { apiUrl } from '../lib/api';
 
 function ChapterThumbnail({ videoSrc, time }) {
-  const [thumbnail, setThumbnail] = React.useState(null);
-  const [loading, setLoading] = React.useState(true);
+  const [thumbnail, setThumbnail] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [prevProps, setPrevProps] = useState({ videoSrc, time });
 
-  React.useEffect(() => {
+  if (prevProps.videoSrc !== videoSrc || prevProps.time !== time) {
+    setPrevProps({ videoSrc, time });
+    setLoading(true);
+    setThumbnail(null);
+  }
+
+  useEffect(() => {
     if (!videoSrc || time === undefined) return;
 
     let active = true;
-    setLoading(true);
 
     const video = document.createElement('video');
     video.src = videoSrc;
@@ -94,17 +100,11 @@ export default function TimelineExplorer({
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
 
-  const videoRef = React.useRef(null);
+  const videoRef = useRef(null);
 
   const videoSrc = selectedVideo
     ? apiUrl(`/api/stream-local-video?video_id=${encodeURIComponent(selectedVideo.id)}`)
     : '';
-
-  // Reset search state when active video changes
-  useEffect(() => {
-    setSearchQuery('');
-    setSearchResults([]);
-  }, [selectedVideo]);
 
   const handleSearch = async (e) => {
     const query = e.target.value;
@@ -181,8 +181,6 @@ export default function TimelineExplorer({
               {selectedVideo.file_name}
             </h3>
             <p className="text-xs text-gray-400 mt-1 flex flex-wrap items-center gap-1.5">
-              <span className="font-semibold text-cyan-400">ID:</span> <span className="font-mono">{selectedVideo.id}</span>
-              <span className="text-gray-600">•</span>
               <span className="font-semibold text-cyan-400">Duration:</span> {selectedVideo.duration_str}
             </p>
           </div>
@@ -205,6 +203,7 @@ export default function TimelineExplorer({
             ref={videoRef}
             src={videoSrc}
             controls
+            crossOrigin="anonymous"
             className="w-full max-h-[300px] object-contain"
           />
         </div>
@@ -246,7 +245,7 @@ export default function TimelineExplorer({
           </div>
         ) : (
           <div className="glass-panel rounded-xl border border-white/5 overflow-hidden flex flex-col divide-y divide-white/5">
-            {displayedChapters.map((c, idx) => {
+            {displayedChapters.map((c) => {
               const isSelected = selectedChapter && selectedChapter.id === c.id;
               return (
                 <div
@@ -262,16 +261,23 @@ export default function TimelineExplorer({
                       videoRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     }
                   }}
-                  className={`p-4 cursor-pointer text-left transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-white/5 border-l-3 ${isSelected
+                  className={`p-4 cursor-pointer text-left transition-all flex flex-col sm:flex-row sm:items-start justify-between gap-3 hover:bg-white/5 border-l-3 ${isSelected
                     ? 'border-cyan-500 bg-cyan-950/10 shadow-[0_0_15px_rgba(6,182,212,0.05)]'
                     : 'border-transparent'
                     }`}
                 >
-                  <h4 className={`font-bold text-sm font-display transition-colors ${isSelected ? 'text-cyan-400' : 'text-white'
-                    }`}>
-                    {c.topic_title}
-                  </h4>
-                  <span className="text-xs bg-gray-800/80 border border-white/5 text-gray-300 font-semibold px-2 py-0.5 rounded-full font-mono shrink-0 select-none">
+                  <div className="flex-1 min-w-0">
+                    <h4 className={`font-bold text-sm font-display transition-colors ${isSelected ? 'text-cyan-400' : 'text-white'
+                      }`}>
+                      {highlightText(c.topic_title, searchQuery)}
+                    </h4>
+                    {searchQuery && c.text && (
+                      <p className="text-xs text-gray-400 mt-1 line-clamp-2 leading-relaxed">
+                        {highlightText(c.text, searchQuery)}
+                      </p>
+                    )}
+                  </div>
+                  <span className="text-xs bg-gray-800/80 border border-white/5 text-gray-300 font-semibold px-2 py-0.5 rounded-full font-mono shrink-0 select-none mt-0.5">
                     {c.start_time_str} → {c.end_time_str}
                   </span>
                 </div>
@@ -296,7 +302,7 @@ export default function TimelineExplorer({
         </div>
 
         <div className="flex gap-4 overflow-x-auto pb-3 scrollbar-thin">
-          {chapters.map((c, idx) => {
+          {chapters.map((c) => {
             const isSelected = selectedChapter && selectedChapter.id === c.id;
             return (
               <div

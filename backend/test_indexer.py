@@ -1,21 +1,11 @@
 import os
 import unittest
-import sqlite3
 import hashlib
 from unittest.mock import patch, MagicMock
 
 # Import the modules we want to test
 from src.indexer import chunk_segments, generate_video_id, reconstruct_blocks_from_topics
 import src.database as db
-
-class TestConnection(sqlite3.Connection):
-    def close(self):
-        # Do nothing to prevent the connection from being closed prematurely
-        pass
-    
-    def real_close(self):
-        # Call the actual close method when we are ready to teardown
-        super().close()
 
 class TestIndexerChunking(unittest.TestCase):
     def test_empty_segments(self):
