@@ -27,6 +27,12 @@ export default function App() {
     return localStorage.getItem('summarix_pending_select') || null;
   });
 
+  // Appearance / Theme states
+  const [theme, setTheme] = useState(() => {
+    return localStorage.getItem('summarix_theme') || 'dark';
+  });
+  const [showSettings, setShowSettings] = useState(false);
+
   // Loading & status states
   const [indexingLoading, setIndexingLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
@@ -123,6 +129,16 @@ export default function App() {
   };
 
 
+
+  // Apply theme class to document root
+  useEffect(() => {
+    if (theme === 'light') {
+      document.documentElement.classList.add('light');
+    } else {
+      document.documentElement.classList.remove('light');
+    }
+    localStorage.setItem('summarix_theme', theme);
+  }, [theme]);
 
   // Fetch videos list on mount or user changes
   useEffect(() => {
@@ -290,7 +306,7 @@ export default function App() {
             <rect x="64" y="68" width="22" height="16" rx="8" fill="#ffffff" />
           </svg>
           <div>
-            <h1 className="text-xl font-bold font-display bg-gradient-to-r from-black to-gray-400 bg-clip-text text-transparent tracking-tight">
+            <h1 className="text-xl font-bold font-display bg-gradient-to-r from-white to-indigo-300 bg-clip-text text-transparent tracking-tight logo-text">
               Summarix
             </h1>
             <p className="text-xs text-cyan-400 font-semibold tracking-widest uppercase mt-0.5">
@@ -313,8 +329,8 @@ export default function App() {
           {currentUser && (
             <div className="flex items-center gap-2 sm:gap-3 mr-2 bg-white/5 border border-white/5 py-1 px-3 rounded-xl">
               <div className="flex flex-col items-end hidden sm:flex">
-                <span className="text-xs text-white font-medium truncate max-w-[150px]">
-                  {currentUser.email}
+                <span className="text-xs text-white font-medium truncate max-w-[150px]" title={currentUser.username || currentUser.email}>
+                  {currentUser.username || currentUser.email}
                 </span>
                 <span className={`text-[9px] font-bold uppercase tracking-wider ${
                   currentUser.role === 'admin' ? 'text-indigo-400' : 'text-cyan-400'
@@ -345,7 +361,10 @@ export default function App() {
           {/* Settings Button */}
           <button
             type="button"
-            className="p-2 text-gray-400 hover:text-white rounded-lg hover:bg-white/5 transition-all cursor-pointer group"
+            onClick={() => setShowSettings(!showSettings)}
+            className={`p-2 text-gray-400 hover:text-white rounded-lg hover:bg-white/5 transition-all cursor-pointer group ${
+              showSettings ? 'text-white bg-white/5' : ''
+            }`}
             title="Settings"
           >
             <svg className="w-4.5 h-4.5 group-hover:rotate-45 transition-transform duration-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -353,6 +372,55 @@ export default function App() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
           </button>
+
+          {showSettings && (
+            <>
+              {/* Invisible overlay backdrop to close dropdown on click outside */}
+              <div 
+                className="fixed inset-0 z-40 cursor-default" 
+                onClick={() => setShowSettings(false)}
+              />
+              <div className="absolute right-0 top-12 w-48 bg-gray-950/95 border border-white/10 rounded-xl p-3 shadow-2xl flex flex-col gap-2 z-50 animate-fade-in">
+                <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-1 mb-1">
+                  Appearance Settings
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTheme('light');
+                    setShowSettings(false);
+                  }}
+                  className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all text-left cursor-pointer ${
+                    theme === 'light'
+                      ? 'bg-indigo-500/10 text-indigo-300 font-semibold'
+                      : 'text-gray-300 hover:bg-white/5 hover:text-white'
+                  }`}
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 3v1m0 16v1m9-9h-1M4 9H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707m0-12.728l.707.707m12.728 12.728l.707-.707M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  Light Mode
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTheme('dark');
+                    setShowSettings(false);
+                  }}
+                  className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all text-left cursor-pointer ${
+                    theme === 'dark'
+                      ? 'bg-indigo-500/10 text-indigo-300 font-semibold'
+                      : 'text-gray-300 hover:bg-white/5 hover:text-white'
+                  }`}
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                  </svg>
+                  Dark Mode
+                </button>
+              </div>
+            </>
+          )}
 
         </div>
       </header>

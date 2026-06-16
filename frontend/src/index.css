@@ -7,18 +7,18 @@
   --font-display: 'Outfit', system-ui, sans-serif;
   
   /* Color theme tokens - Dark (Default) */
-  --bg-color: #090d16;
+  --bg-color: #020408; /* Deep obsidian black */
   --text-main: #f3f4f6;
   --text-muted: #9ca3af;
-  --panel-bg: rgba(17, 24, 39, 0.5);
-  --panel-border: rgba(255, 255, 255, 0.04);
-  --glass-hover-bg: rgba(23, 37, 84, 0.15);
-  --glass-hover-border: rgba(99, 102, 241, 0.25);
-  --header-bg: rgba(3, 7, 18, 0.4);
-  --footer-bg: rgba(3, 7, 18, 0.2);
-  --bg-glow-1: rgba(99, 102, 241, 0.08);
-  --bg-glow-2: rgba(6, 182, 212, 0.08);
-  --bg-glow-3: rgba(139, 92, 246, 0.05);
+  --panel-bg: rgba(10, 15, 30, 0.7); /* Deep dark blue-slate panel fill */
+  --panel-border: rgba(255, 255, 255, 0.06); /* Crisp border outline */
+  --glass-hover-bg: rgba(99, 102, 241, 0.08);
+  --glass-hover-border: rgba(99, 102, 241, 0.2);
+  --header-bg: rgba(2, 4, 8, 0.7);
+  --footer-bg: rgba(2, 4, 8, 0.4);
+  --bg-glow-1: rgba(99, 102, 241, 0.04); /* Very subtle soft indigo glow */
+  --bg-glow-2: rgba(6, 182, 212, 0.03);  /* Very subtle soft cyan glow */
+  --bg-glow-3: rgba(139, 92, 246, 0.02); /* Very subtle soft violet glow */
 }
 
 /* Light Theme overrides */

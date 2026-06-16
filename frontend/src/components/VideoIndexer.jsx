@@ -12,7 +12,7 @@ export default function VideoIndexer({
 }) {
   const [videoPath, setVideoPath] = useState('');
   const [dragActive, setDragActive] = useState(false);
-  const [selectedFile, setSelectedFile] = useState(null);
+  const [selectedFiles, setSelectedFiles] = useState([]);
   const [selectedPlaylistId, setSelectedPlaylistId] = useState('');
   const [newPlaylistName, setNewPlaylistName] = useState('');
   const [creatingPlaylist, setCreatingPlaylist] = useState(false);
@@ -32,14 +32,14 @@ export default function VideoIndexer({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Failed to create folder');
-      
+
       showSuccess(`Folder "${data.name}" created successfully.`);
       setNewPlaylistName('');
-      
+
       if (fetchPlaylists) {
         await fetchPlaylists();
       }
-      
+
       setSelectedPlaylistId(data.id);
     } catch (err) {
       showError('Folder creation failed: ' + err.message);
@@ -53,14 +53,14 @@ export default function VideoIndexer({
       const xhr = new XMLHttpRequest();
       xhr.open('POST', url, true);
       xhr.setRequestHeader('Content-Type', 'application/octet-stream');
-      
+
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) {
           const percentComplete = Math.round((e.loaded / e.total) * 100);
           onProgress(percentComplete);
         }
       };
-      
+
       xhr.onload = () => {
         if (xhr.status >= 200 && xhr.status < 300) {
           try {
@@ -78,11 +78,11 @@ export default function VideoIndexer({
           }
         }
       };
-      
+
       xhr.onerror = () => {
         reject(new Error('Network error during upload'));
       };
-      
+
       xhr.send(file);
     });
   };
@@ -98,10 +98,6 @@ export default function VideoIndexer({
       progress: 0,
       statusText: 'Preparing upload...'
     };
-    
-    // Clear inputs immediately so user can upload next video
-    setVideoPath('');
-    setSelectedFile(null);
 
     setTasks(prev => [newTask, ...prev]);
 
@@ -123,7 +119,7 @@ export default function VideoIndexer({
         gridFsId = uploadData.grid_fs_id;
         s3Key = uploadData.s3_key;
         s3Bucket = uploadData.s3_bucket;
-        
+
         setTasks(prev => prev.map(t => t.id === taskId ? { ...t, progress: 100, statusText: 'Queuing...' } : t));
       }
 
@@ -141,10 +137,10 @@ export default function VideoIndexer({
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail || data.error || 'Failed to queue indexing');
-      
+
       setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: 'queued', statusText: 'Queued' } : t));
       showSuccess(`Queued "${file.name}" in background!`);
-      
+
       if (onIndexSuccess) {
         onIndexSuccess(data.video_id);
       }
@@ -157,8 +153,15 @@ export default function VideoIndexer({
 
   const handleIndexVideo = async (e) => {
     if (e) e.preventDefault();
-    if (!selectedFile) return;
-    runIndexing(selectedFile, selectedPlaylistId);
+    if (selectedFiles.length === 0) return;
+
+    const filesToQueue = [...selectedFiles];
+    setSelectedFiles([]);
+    setVideoPath('');
+
+    filesToQueue.forEach(file => {
+      runIndexing(file, selectedPlaylistId);
+    });
   };
 
   // Drag and drop handlers
@@ -176,18 +179,24 @@ export default function VideoIndexer({
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      const file = e.dataTransfer.files[0];
-      setSelectedFile(file);
-      setVideoPath(file.name);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const files = Array.from(e.dataTransfer.files);
+      setSelectedFiles(prev => [...prev, ...files]);
+      setVideoPath(prev => {
+        const names = files.map(f => f.name);
+        return prev ? `${prev}, ${names.join(', ')}` : names.join(', ');
+      });
     }
   };
 
   const handleFileChange = (e) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      setSelectedFile(file);
-      setVideoPath(file.name);
+    if (e.target.files && e.target.files.length > 0) {
+      const files = Array.from(e.target.files);
+      setSelectedFiles(prev => [...prev, ...files]);
+      setVideoPath(prev => {
+        const names = files.map(f => f.name);
+        return prev ? `${prev}, ${names.join(', ')}` : names.join(', ');
+      });
     }
   };
 
@@ -197,8 +206,8 @@ export default function VideoIndexer({
   );
 
   // Get local tasks that are not yet represented in the database list
-  const activeLocalTasks = tasks.filter((t) => 
-    t.status === 'uploading' && 
+  const activeLocalTasks = tasks.filter((t) =>
+    t.status === 'uploading' &&
     !dbProcessingVideos.some((dv) => dv.file_name === t.name)
   );
 
@@ -209,10 +218,10 @@ export default function VideoIndexer({
       name: v.file_name,
       status: v.upload_status, // 'queued', 'indexing', or 'failed'
       progress: v.upload_status === 'indexing' ? 80 : 0,
-      statusText: v.upload_status === 'failed' 
-        ? 'Failed' 
-        : v.upload_status === 'queued' 
-          ? 'Queued' 
+      statusText: v.upload_status === 'failed'
+        ? 'Failed'
+        : v.upload_status === 'queued'
+          ? 'Queued'
           : 'Indexing...'
     })),
     ...[...activeLocalTasks].reverse()
@@ -266,20 +275,20 @@ export default function VideoIndexer({
           onDragLeave={handleDrag}
           onDrop={handleDrop}
           onClick={() => document.getElementById('file-picker').click()}
-          className={`border border-dashed rounded-xl p-8 text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-3 min-h-[200px] ${
-            dragActive 
-              ? 'border-indigo-500 bg-indigo-950/20 shadow-[0_0_12px_rgba(99,102,241,0.2)] scale-[1.01]' 
+          className={`border border-dashed rounded-xl p-8 text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-3 min-h-[200px] ${dragActive
+              ? 'border-indigo-500 bg-indigo-950/20 shadow-[0_0_12px_rgba(99,102,241,0.2)] scale-[1.01]'
               : 'border-white/10 bg-gray-900/20 hover:border-indigo-500/40 hover:bg-gray-900/40'
-          }`}
+            }`}
         >
           <input
             type="file"
             id="file-picker"
             accept="audio/*,video/*"
+            multiple
             onChange={handleFileChange}
             className="hidden"
           />
-          
+
           <svg className="w-10 h-10 text-indigo-400 transition-transform hover:scale-110" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
           </svg>
@@ -289,33 +298,52 @@ export default function VideoIndexer({
           <div className="text-[10px] text-gray-500 font-mono">Selects local reference path</div>
         </div>
 
-        {videoPath && (
-          <div className="bg-indigo-950/20 border border-indigo-500/10 rounded-lg p-2.5 px-3.5 text-xs flex items-center justify-between select-none animate-fade-in">
-            <div className="flex flex-col gap-0.5 min-w-0">
-              <span className="text-[10px] font-semibold text-cyan-400 uppercase tracking-wider">Selected Video</span>
-              <span className="font-mono text-gray-300 truncate text-xs">
-                {videoPath.split(/[/\\]/).pop()}
+        {selectedFiles.length > 0 && (
+          <div className="bg-indigo-950/20 border border-indigo-500/10 rounded-lg p-3 text-xs flex flex-col gap-2.5 select-none animate-fade-in">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-semibold text-cyan-400 uppercase tracking-wider">
+                Selected Files ({selectedFiles.length})
               </span>
+              <button
+                type="button"
+                onClick={() => { setSelectedFiles([]); setVideoPath(''); }}
+                className="text-[10px] text-gray-500 hover:text-red-400 transition-colors cursor-pointer"
+              >
+                Clear All
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => { setVideoPath(''); setSelectedFile(null); }}
-              className="text-gray-500 hover:text-white transition-colors cursor-pointer text-xs p-1"
-            >
-              Clear
-            </button>
+            <div className="flex flex-col gap-1.5 max-h-[120px] overflow-y-auto pr-1">
+              {selectedFiles.map((file, idx) => (
+                <div key={idx} className="flex items-center justify-between bg-white/5 px-2.5 py-1.5 rounded border border-white/5 text-[11px] gap-2">
+                  <span className="font-mono text-gray-300 truncate" title={file.name}>
+                    {file.name}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const updated = selectedFiles.filter((_, i) => i !== idx);
+                      setSelectedFiles(updated);
+                      setVideoPath(updated.map(f => f.name).join(', '));
+                    }}
+                    className="text-gray-500 hover:text-white transition-colors cursor-pointer text-xs px-1"
+                    title="Remove file"
+                  >
+                    &times;
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
         {/* Proceed Button */}
         <button
           type="submit"
-          disabled={!selectedFile}
-          className={`w-full mt-2 font-bold text-xs py-2 rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer ${
-            selectedFile
+          disabled={selectedFiles.length === 0}
+          className={`w-full mt-2 font-bold text-xs py-2 rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer ${selectedFiles.length > 0
               ? 'bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 active:scale-[0.98] text-white shadow-[0_3px_12px_rgba(99,102,241,0.2)]'
               : 'bg-gray-800 text-gray-500 cursor-not-allowed border border-white/5'
-          }`}
+            }`}
         >
           <span>Proceed</span>
         </button>

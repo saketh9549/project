@@ -538,7 +538,7 @@ def verify_password(password: str, hashed_password_string: str) -> bool:
     ).hex()
     return pwd_hash == test_hash
 
-def create_user(email: str, password_raw: str, role: str) -> Optional[Dict[str, Any]]:
+def create_user(email: str, password_raw: str, role: str, username: str = "") -> Optional[Dict[str, Any]]:
     """Creates a new user record in the database."""
     db = get_db()
     try:
@@ -552,8 +552,10 @@ def create_user(email: str, password_raw: str, role: str) -> Optional[Dict[str, 
             return None
             
         hashed = hash_password(password_raw)
+        final_username = username.strip() if username else email_clean.split('@')[0]
         user_doc = {
             "email": email_clean,
+            "username": final_username,
             "passwordHash": hashed,
             "role": role_clean,
             "createdAt": datetime.now()
@@ -561,24 +563,31 @@ def create_user(email: str, password_raw: str, role: str) -> Optional[Dict[str, 
         db.users.insert_one(user_doc)
         return {
             "email": email_clean,
+            "username": final_username,
             "role": role_clean
         }
     except Exception as e:
         print(f"[DB Error] Failed to create user: {e}")
         return None
 
-def authenticate_user(email: str, password_raw: str) -> Optional[Dict[str, Any]]:
-    """Authenticates a user by email and password, returning their profile if successful."""
+def authenticate_user(username_or_email: str, password_raw: str) -> Optional[Dict[str, Any]]:
+    """Authenticates a user by username/email and password, returning their profile if successful."""
     db = get_db()
     try:
-        email_clean = email.strip().lower()
-        user = db.users.find_one({"email": email_clean})
+        clean_val = username_or_email.strip().lower()
+        user = db.users.find_one({
+            "$or": [
+                {"username": username_or_email.strip()},
+                {"email": clean_val}
+            ]
+        })
         if not user:
             return None
             
         if verify_password(password_raw, user["passwordHash"]):
             return {
                 "email": user["email"],
+                "username": user.get("username", user["email"].split('@')[0]),
                 "role": user["role"]
             }
         return None

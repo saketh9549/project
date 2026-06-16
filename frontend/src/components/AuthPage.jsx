@@ -4,6 +4,7 @@ import { apiUrl } from '../lib/api';
 export default function AuthPage({ onAuthSuccess }) {
   const [isRegister, setIsRegister] = useState(false);
   const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [role, setRole] = useState('user'); // default role is user
@@ -17,12 +18,23 @@ export default function AuthPage({ onAuthSuccess }) {
     setSuccessMsg(null);
 
     // Basic Validation
-    if (!email || !password) {
-      setErrorMsg('Please fill in all required fields.');
-      return;
+    if (isRegister) {
+      if (!email || !password || !username) {
+        setErrorMsg('Please fill in all required fields.');
+        return;
+      }
+    } else {
+      if (!username || !password) {
+        setErrorMsg('Please fill in all required fields.');
+        return;
+      }
     }
 
     if (isRegister) {
+      if (!username.trim()) {
+        setErrorMsg('Please specify a username.');
+        return;
+      }
       if (password !== confirmPassword) {
         setErrorMsg('Passwords do not match.');
         return;
@@ -38,8 +50,8 @@ export default function AuthPage({ onAuthSuccess }) {
     try {
       const endpoint = isRegister ? '/api/auth/register' : '/api/auth/login';
       const payload = isRegister 
-        ? { email, password, role } 
-        : { email, password };
+        ? { email, password, role, username: username.trim() } 
+        : { username: username.trim(), password };
 
       const response = await fetch(apiUrl(endpoint), {
         method: 'POST',
@@ -56,12 +68,14 @@ export default function AuthPage({ onAuthSuccess }) {
       if (isRegister) {
         setSuccessMsg('Registration successful! You can now log in.');
         setIsRegister(false);
+        setUsername('');
         setPassword('');
         setConfirmPassword('');
       } else {
         // Log in success
         const user = {
           email: data.email,
+          username: data.username,
           role: data.role,
         };
         localStorage.setItem('summarix_user', JSON.stringify(user));
@@ -77,10 +91,6 @@ export default function AuthPage({ onAuthSuccess }) {
   return (
     <div className="flex-1 flex items-center justify-center min-h-[80vh] px-4">
       <div className="w-full max-w-md glass-panel p-8 rounded-2xl shadow-[0_8px_32px_0_rgba(99,102,241,0.08)] border border-white/5 flex flex-col relative overflow-hidden">
-        
-        {/* Decorative background glow */}
-        <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-indigo-500/20 to-cyan-500/20 blur-xl rounded-full pointer-events-none" />
-        <div className="absolute bottom-0 left-0 w-24 h-24 bg-gradient-to-tr from-violet-500/20 to-indigo-500/20 blur-xl rounded-full pointer-events-none" />
 
         <div className="flex flex-col items-center mb-8 shrink-0 relative">
           <svg className="h-14 w-14 shadow-[0_0_20px_rgba(11,46,102,0.4)] rounded-2xl mb-4" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -123,18 +133,93 @@ export default function AuthPage({ onAuthSuccess }) {
         )}
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Email Address</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="name@company.com"
-              disabled={loading}
-              required
-              className="w-full bg-gray-900/60 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/30 transition-all disabled:opacity-50"
-            />
-          </div>
+          {isRegister && (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Select Account Role</label>
+              <div className="grid grid-cols-2 gap-3 mt-1">
+                <label className={`flex items-center justify-center gap-2 border rounded-xl py-3 px-4 cursor-pointer transition-all ${
+                  role === 'user'
+                    ? 'border-indigo-500/50 bg-indigo-500/10 text-indigo-300 font-semibold'
+                    : 'border-white/10 bg-gray-900/60 text-gray-400 hover:border-white/20'
+                }`}>
+                  <input
+                    type="radio"
+                    name="role"
+                    value="user"
+                    checked={role === 'user'}
+                    onChange={() => setRole('user')}
+                    className="sr-only"
+                  />
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                  User
+                </label>
+
+                <label className={`flex items-center justify-center gap-2 border rounded-xl py-3 px-4 cursor-pointer transition-all ${
+                  role === 'admin'
+                    ? 'border-indigo-500/50 bg-indigo-500/10 text-indigo-300 font-semibold'
+                    : 'border-white/10 bg-gray-900/60 text-gray-400 hover:border-white/20'
+                }`}>
+                  <input
+                    type="radio"
+                    name="role"
+                    value="admin"
+                    checked={role === 'admin'}
+                    onChange={() => setRole('admin')}
+                    className="sr-only"
+                  />
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                  </svg>
+                  Admin
+                </label>
+              </div>
+            </div>
+          )}
+
+          {isRegister ? (
+            <>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Username</label>
+                <input
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="johndoe"
+                  disabled={loading}
+                  required
+                  className="w-full bg-gray-900/60 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/30 transition-all disabled:opacity-50"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Email Address</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="name@company.com"
+                  disabled={loading}
+                  required
+                  className="w-full bg-gray-900/60 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/30 transition-all disabled:opacity-50"
+                />
+              </div>
+            </>
+          ) : (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Username</label>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Username or Email"
+                disabled={loading}
+                required
+                className="w-full bg-gray-900/60 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/30 transition-all disabled:opacity-50"
+              />
+            </div>
+          )}
 
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Password</label>
@@ -150,63 +235,18 @@ export default function AuthPage({ onAuthSuccess }) {
           </div>
 
           {isRegister && (
-            <>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Confirm Password</label>
-                <input
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="••••••••"
-                  disabled={loading}
-                  required
-                  className="w-full bg-gray-900/60 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/30 transition-all disabled:opacity-50"
-                />
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Select Account Role</label>
-                <div className="grid grid-cols-2 gap-3 mt-1">
-                  <label className={`flex items-center justify-center gap-2 border rounded-xl py-3 px-4 cursor-pointer transition-all ${
-                    role === 'user'
-                      ? 'border-indigo-500/50 bg-indigo-500/10 text-indigo-300 font-semibold'
-                      : 'border-white/10 bg-gray-900/60 text-gray-400 hover:border-white/20'
-                  }`}>
-                    <input
-                      type="radio"
-                      name="role"
-                      value="user"
-                      checked={role === 'user'}
-                      onChange={() => setRole('user')}
-                      className="sr-only"
-                    />
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                    </svg>
-                    User
-                  </label>
-
-                  <label className={`flex items-center justify-center gap-2 border rounded-xl py-3 px-4 cursor-pointer transition-all ${
-                    role === 'admin'
-                      ? 'border-indigo-500/50 bg-indigo-500/10 text-indigo-300 font-semibold'
-                      : 'border-white/10 bg-gray-900/60 text-gray-400 hover:border-white/20'
-                  }`}>
-                    <input
-                      type="radio"
-                      name="role"
-                      value="admin"
-                      checked={role === 'admin'}
-                      onChange={() => setRole('admin')}
-                      className="sr-only"
-                    />
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                    </svg>
-                    Admin
-                  </label>
-                </div>
-              </div>
-            </>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Confirm Password</label>
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="••••••••"
+                disabled={loading}
+                required
+                className="w-full bg-gray-900/60 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/30 transition-all disabled:opacity-50"
+              />
+            </div>
           )}
 
           <button

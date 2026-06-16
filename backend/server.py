@@ -329,9 +329,10 @@ class RegisterRequest(BaseModel):
     email: str
     password: str
     role: str
+    username: Optional[str] = ""
 
 class LoginRequest(BaseModel):
-    email: str
+    username: str
     password: str
 
 @app.post("/api/auth/register")
@@ -340,6 +341,7 @@ def register_endpoint(payload: RegisterRequest):
     email = payload.email.strip()
     password = payload.password
     role = payload.role.strip().lower()
+    username = payload.username.strip() if payload.username else ""
     
     if not email or not password or not role:
         raise HTTPException(status_code=400, detail="Email, password, and role are required")
@@ -347,13 +349,14 @@ def register_endpoint(payload: RegisterRequest):
     if role not in ["admin", "user"]:
         raise HTTPException(status_code=400, detail="Invalid role specified")
         
-    user = db.create_user(email, password, role)
+    user = db.create_user(email, password, role, username)
     if not user:
         raise HTTPException(status_code=400, detail="User with this email already exists")
         
     return {
         "success": True,
         "email": user["email"],
+        "username": user["username"],
         "role": user["role"],
         "message": "User registered successfully"
     }
@@ -361,19 +364,20 @@ def register_endpoint(payload: RegisterRequest):
 @app.post("/api/auth/login")
 def login_endpoint(payload: LoginRequest):
     db.init_db()
-    email = payload.email.strip()
+    username = payload.username.strip()
     password = payload.password
     
-    if not email or not password:
-        raise HTTPException(status_code=400, detail="Email and password are required")
+    if not username or not password:
+        raise HTTPException(status_code=400, detail="Username and password are required")
         
-    user = db.authenticate_user(email, password)
+    user = db.authenticate_user(username, password)
     if not user:
-        raise HTTPException(status_code=401, detail="Invalid email or password")
+        raise HTTPException(status_code=401, detail="Invalid username or password")
         
     return {
         "success": True,
         "email": user["email"],
+        "username": user["username"],
         "role": user["role"],
         "message": "Login successful"
     }

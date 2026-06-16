@@ -42,13 +42,15 @@ class TestAuthAndRoles(unittest.TestCase):
         reg_payload = {
             "email": self.test_email_user,
             "password": self.test_password,
-            "role": "user"
+            "role": "user",
+            "username": "testuser"
         }
         res = self.client.post("/api/auth/register", json=reg_payload)
         self.assertEqual(res.status_code, 200)
         resp_data = res.json()
         self.assertTrue(resp_data["success"])
         self.assertEqual(resp_data["email"], self.test_email_user)
+        self.assertEqual(resp_data["username"], "testuser")
         self.assertEqual(resp_data["role"], "user")
 
         # 2. Register same email again (should fail)
@@ -58,7 +60,7 @@ class TestAuthAndRoles(unittest.TestCase):
 
         # 3. Login with correct credentials
         login_payload = {
-            "email": self.test_email_user,
+            "username": "testuser",
             "password": self.test_password
         }
         res_login = self.client.post("/api/auth/login", json=login_payload)
@@ -66,15 +68,27 @@ class TestAuthAndRoles(unittest.TestCase):
         login_data = res_login.json()
         self.assertTrue(login_data["success"])
         self.assertEqual(login_data["email"], self.test_email_user)
+        self.assertEqual(login_data["username"], "testuser")
         self.assertEqual(login_data["role"], "user")
 
         # 4. Login with incorrect credentials
         login_bad_payload = {
-            "email": self.test_email_user,
+            "username": "testuser",
             "password": "wrong_password"
         }
         res_bad_login = self.client.post("/api/auth/login", json=login_bad_payload)
         self.assertEqual(res_bad_login.status_code, 401)
+
+        # 5. Login using email as username (backward compatibility check)
+        login_email_payload = {
+            "username": self.test_email_user,
+            "password": self.test_password
+        }
+        res_email_login = self.client.post("/api/auth/login", json=login_email_payload)
+        self.assertEqual(res_email_login.status_code, 200)
+        email_login_data = res_email_login.json()
+        self.assertTrue(email_login_data["success"])
+        self.assertEqual(email_login_data["username"], "testuser")
 
     def test_role_based_video_access(self):
         """Test that regular users see own and all admin videos, while admins see only their own uploads."""
