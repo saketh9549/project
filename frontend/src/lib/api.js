@@ -6,7 +6,7 @@ function getCurrentUser() {
   try {
     const userJson = localStorage.getItem('summarix_user');
     return userJson ? JSON.parse(userJson) : null;
-  } catch (e) {
+  } catch {
     return null;
   }
 }

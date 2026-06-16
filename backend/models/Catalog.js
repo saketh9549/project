@@ -58,6 +58,11 @@ const catalogSchema = new mongoose.Schema({
     ref: 'fs.files',
     default: null
   },
+  playlistId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Playlist',
+    default: null
+  },
   s3Key: {
     type: String,
     trim: true,

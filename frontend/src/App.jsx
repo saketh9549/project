@@ -14,14 +14,18 @@ export default function App() {
     try {
       const userJson = localStorage.getItem('summarix_user');
       return userJson ? JSON.parse(userJson) : null;
-    } catch (e) {
+    } catch {
       return null;
     }
   });
   const [videos, setVideos] = useState([]);
+  const [playlists, setPlaylists] = useState([]);
   const [selectedVideo, setSelectedVideo] = useState(null);
   const [chapters, setChapters] = useState([]);
   const [selectedChapter, setSelectedChapter] = useState(null);
+  const [pendingAutoSelectId, setPendingAutoSelectId] = useState(() => {
+    return localStorage.getItem('summarix_pending_select') || null;
+  });
 
   // Loading & status states
   const [indexingLoading, setIndexingLoading] = useState(false);
@@ -58,6 +62,41 @@ export default function App() {
     }
   };
 
+  const fetchPlaylists = async () => {
+    if (!currentUser) return;
+    try {
+      const response = await fetch(apiUrl('/api/playlists'));
+      if (!response.ok) throw new Error('Failed to fetch playlists');
+      const data = await response.json();
+      setPlaylists(data);
+    } catch (err) {
+      showError('Could not load playlists: ' + err.message);
+    }
+  };
+
+  const handleSelectVideo = async (video) => {
+    setSelectedVideo(video);
+    setSelectedChapter(null);
+    setOverallSummary(null);
+    showSuccess(null);
+    showError(null);
+
+    try {
+      const response = await fetch(apiUrl(`/api/videos/${video.id}`));
+      if (!response.ok) throw new Error('Failed to load video chapters');
+      const data = await response.json();
+      setChapters(data.chapters || []);
+      if (data.video) {
+        setSelectedVideo(data.video);
+      }
+      if (data.video && data.video.overall_summary) {
+        setOverallSummary(data.video.overall_summary);
+      }
+    } catch (err) {
+      showError('Could not load video chapters: ' + err.message);
+    }
+  };
+
   const handleMouseDown = (e) => {
     e.preventDefault();
     const startX = e.clientX;
@@ -87,9 +126,43 @@ export default function App() {
 
   // Fetch videos list on mount or user changes
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchVideos();
+    fetchPlaylists();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser]);
+
+  // Polling for processing/indexing videos
+  useEffect(() => {
+    const hasProcessingVideos = videos.some(
+      (v) => v.upload_status === 'queued' || v.upload_status === 'indexing'
+    );
+
+    if (!hasProcessingVideos) return;
+
+    const interval = setInterval(() => {
+      fetchVideos();
+    }, 5000);
+
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [videos]);
+
+  // Auto-select pending video once it completes indexing and summary generation
+  useEffect(() => {
+    const pendingId = pendingAutoSelectId || localStorage.getItem('summarix_pending_select');
+    if (!pendingId || videos.length === 0) return;
+
+    const matchedVideo = videos.find((v) => v.id === pendingId);
+    if (matchedVideo && matchedVideo.upload_status === 'indexed') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      handleSelectVideo(matchedVideo);
+      setPendingAutoSelectId(null);
+      localStorage.removeItem('summarix_pending_select');
+      showSuccess(`Video "${matchedVideo.file_name}" has finished indexing and is ready!`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [videos, pendingAutoSelectId]);
 
   // Auto-dismiss success and error notifications after 2 seconds
   useEffect(() => {
@@ -106,28 +179,7 @@ export default function App() {
     }
   }, [errorMsg, successMsg]);
 
-  const handleSelectVideo = async (video) => {
-    setSelectedVideo(video);
-    setSelectedChapter(null);
-    setOverallSummary(null);
-    showSuccess(null);
-    showError(null);
 
-    try {
-      const response = await fetch(apiUrl(`/api/videos/${video.id}`));
-      if (!response.ok) throw new Error('Failed to load video chapters');
-      const data = await response.json();
-      setChapters(data.chapters || []);
-      if (data.video) {
-        setSelectedVideo(data.video);
-      }
-      if (data.video && data.video.overall_summary) {
-        setOverallSummary(data.video.overall_summary);
-      }
-    } catch (err) {
-      showError('Could not load video chapters: ' + err.message);
-    }
-  };
 
   const handleDeleteVideo = async (e, videoId) => {
     e.stopPropagation();
@@ -149,12 +201,54 @@ export default function App() {
         setSelectedChapter(null);
       }
       await fetchVideos();
+      await fetchPlaylists();
     } catch (err) {
       showError('Deletion failed: ' + err.message);
     }
   };
 
+  const handleDeletePlaylist = async (e, playlistId) => {
+    e.stopPropagation();
+    if (!confirm('Are you sure you want to delete this folder and all its videos from the database?')) return;
 
+    try {
+      const res = await fetch(apiUrl(`/api/playlists/${playlistId}`), {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || data.error || 'Failed to delete folder');
+
+      showSuccess('Folder deleted successfully.');
+      if (selectedVideo && selectedVideo.playlist_id === playlistId) {
+        setSelectedVideo(null);
+        setChapters([]);
+        setSelectedChapter(null);
+      }
+      await fetchPlaylists();
+      await fetchVideos();
+    } catch (err) {
+      showError('Deletion failed: ' + err.message);
+    }
+  };
+
+  const handleUpdateVideoPlaylist = async (videoId, playlistId) => {
+    if (!currentUser) return;
+    try {
+      const response = await fetch(apiUrl(`/api/videos/${videoId}/playlist`), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playlist_id: playlistId })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || 'Failed to update playlist');
+
+      showSuccess('Video playlist updated successfully.');
+      await fetchVideos();
+      await fetchPlaylists();
+    } catch (err) {
+      showError('Failed to move video: ' + err.message);
+    }
+  };
 
   const handleGenerateOverallSummary = async () => {
     if (!selectedVideo) return;
@@ -279,16 +373,20 @@ export default function App() {
               </h2>
               <VideosCatalog
                 videos={videos}
+                playlists={playlists}
                 selectedVideo={selectedVideo}
                 onSelectVideo={handleSelectVideo}
                 onDeleteVideo={handleDeleteVideo}
+                onDeletePlaylist={handleDeletePlaylist}
+                onUpdateVideoPlaylist={handleUpdateVideoPlaylist}
                 isAdmin={currentUser.role === 'admin'}
+                fetchPlaylists={fetchPlaylists}
               />
             </div>
 
             {/* Right Column: Indexer (Admin Only) */}
             {currentUser.role === 'admin' && (
-              <div className="flex-1 max-w-xl w-full glass-panel p-8 rounded-2xl shadow-[0_8px_32px_0_rgba(99,102,241,0.05)] border border-white/5 flex flex-col min-h-0">
+              <div className="flex-grow glass-panel p-8 rounded-2xl shadow-[0_8px_32px_0_rgba(99,102,241,0.05)] border border-white/5 flex flex-col min-h-0">
                 <h2 className="text-xl font-bold text-center text-white mb-6 font-display flex items-center justify-center gap-2 shrink-0">
                   <svg className="w-6 h-6 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
@@ -297,26 +395,21 @@ export default function App() {
                 </h2>
                 <div className="flex-grow overflow-y-auto pr-1">
                   <VideoIndexer
+                    videos={videos}
                     indexingLoading={indexingLoading}
+                    playlists={playlists}
+                    fetchPlaylists={fetchPlaylists}
                     onIndexStart={() => setIndexingLoading(true)}
                     onIndexSuccess={async (videoId) => {
                       setIndexingLoading(false);
+                      setPendingAutoSelectId(videoId);
+                      localStorage.setItem('summarix_pending_select', videoId);
                       await fetchVideos();
-                      try {
-                        const res = await fetch(apiUrl(`/api/videos/${videoId}`));
-                        if (res.ok) {
-                          const data = await res.json();
-                          if (data.video) {
-                            setSelectedVideo(data.video);
-                            setChapters(data.chapters || []);
-                            setOverallSummary(data.video.overall_summary || null);
-                          }
-                        }
-                      } catch (err) {
-                        console.error("Failed to select newly indexed video", err);
-                      }
+                      await fetchPlaylists();
+                      showSuccess("Video successfully queued for indexing! It will open automatically once summaries are generated.");
                     }}
                     onIndexError={() => setIndexingLoading(false)}
+                    onDeleteVideo={handleDeleteVideo}
                     showSuccess={showSuccess}
                     showError={showError}
                   />

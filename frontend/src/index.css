@@ -386,3 +386,35 @@ html.light ::-webkit-scrollbar-thumb {
   background: rgba(99, 102, 241, 0.15);
 }
 
+/* Custom Dropdown and Select Overrides in Light Mode */
+html.light .bg-gray-950\/95 {
+  background-color: rgba(241, 245, 249, 0.95) !important;
+  border-color: rgba(0, 0, 0, 0.12) !important;
+}
+
+html.light .bg-gray-950\/95 button {
+  color: #334155 !important;
+}
+
+html.light .bg-gray-950\/95 button:hover {
+  color: #0f172a !important;
+  background-color: rgba(0, 0, 0, 0.04) !important;
+}
+
+html.light .text-yellow-500 {
+  color: #b45309 !important; /* amber-700 for better contrast in light mode */
+}
+
+html.light select,
+html.light select.text-white {
+  color: #0f172a !important;
+}
+
+html.light select option,
+html.light select option.text-white {
+  color: #0f172a !important;
+  background-color: #ffffff !important;
+}
+
+
+

@@ -45,6 +45,9 @@ def init_db():
     
     # 4. users collection
     db.users.create_index("email", unique=True)
+    
+    # 5. playlists collection
+    db.playlists.create_index("ownerEmail")
     print("[DB] MongoDB collections and indexes initialized successfully.")
 
 def _map_catalog_to_sqlite_style(doc: Dict[str, Any]) -> Dict[str, Any]:
@@ -75,6 +78,7 @@ def _map_catalog_to_sqlite_style(doc: Dict[str, Any]) -> Dict[str, Any]:
         "file_name": doc.get("fileName", ""),
         "file_type": doc.get("fileType", ""),
         "file_path": doc.get("filePath", ""),
+        "playlist_id": str(doc["playlistId"]) if doc.get("playlistId") else None,
         "duration": doc.get("duration", 0.0),
         "upload_status": doc.get("uploadStatus", "pending"),
         "raw_transcript": doc.get("rawTranscript", ""),
@@ -102,7 +106,7 @@ def _map_index_to_sqlite_style(doc: Dict[str, Any]) -> Dict[str, Any]:
         "status": doc.get("status", "raw")
     }
 
-def insert_video(video_id: str, file_path: str, file_name: str, duration: float, owner_email: str = "", upload_status: str = "indexed", raw_transcript: str = "", overall_summary: str = "", absolute_local_path: str = None, grid_fs_id: str = None, s3_key: str = None, s3_bucket: str = None) -> bool:
+def insert_video(video_id: str, file_path: str, file_name: str, duration: float, owner_email: str = "", upload_status: str = "indexed", raw_transcript: str = "", overall_summary: str = "", absolute_local_path: str = None, grid_fs_id: str = None, s3_key: str = None, s3_bucket: str = None, playlist_id: str = None) -> bool:
     """Inserts or replaces a video (catalog) document."""
     db = get_db()
     try:
@@ -131,10 +135,19 @@ def insert_video(video_id: str, file_path: str, file_name: str, duration: float,
             if absolute_local_path is None:
                 absolute_local_path = file_path
             
+        if playlist_id:
+            try:
+                playlist_oid = ObjectId(playlist_id)
+            except InvalidId:
+                playlist_oid = playlist_id
+        else:
+            playlist_oid = None
+            
         update_fields = {
             "fileName": file_name,
             "fileType": file_type,
             "filePath": file_path,
+            "playlistId": playlist_oid,
             "absoluteLocalPath": absolute_local_path,
             "gridFsFileId": grid_fs_oid,
             "s3Key": s3_key or "",
@@ -158,8 +171,7 @@ def insert_video(video_id: str, file_path: str, file_name: str, duration: float,
         update_doc = {
             "$set": update_fields,
             "$setOnInsert": {
-                "createdAt": datetime.now(),
-                "history": [history_entry]
+                "createdAt": datetime.now()
             }
         }
         
@@ -167,6 +179,8 @@ def insert_video(video_id: str, file_path: str, file_name: str, duration: float,
             update_doc["$push"] = {
                 "history": history_entry
             }
+        else:
+            update_doc["$setOnInsert"]["history"] = [history_entry]
             
         db.catalogs.update_one(
             {"_id": oid},
@@ -581,4 +595,160 @@ def get_admin_emails() -> List[str]:
     except Exception as e:
         print(f"[DB Error] Failed to get admin emails: {e}")
         return []
+
+def create_playlist(name: str, owner_email: str) -> Dict[str, Any]:
+    """Creates a new playlist."""
+    db = get_db()
+    email_clean = owner_email.strip().lower()
+    doc = {
+        "name": name.strip(),
+        "ownerEmail": email_clean,
+        "createdAt": datetime.now(),
+        "updatedAt": datetime.now()
+    }
+    result = db.playlists.insert_one(doc)
+    doc["id"] = str(result.inserted_id)
+    doc.pop("_id", None)
+    return doc
+
+def get_playlist(playlist_id: str, owner_email: str = "", role: str = "user") -> Optional[Dict[str, Any]]:
+    """Retrieves a single playlist."""
+    db = get_db()
+    try:
+        try:
+            oid = ObjectId(playlist_id)
+            query = {"_id": oid}
+        except InvalidId:
+            query = {"_id": playlist_id}
+            
+        if owner_email:
+            query.update(_build_owner_filter(owner_email, role))
+            
+        doc = db.playlists.find_one(query)
+        if doc:
+            return {
+                "id": str(doc["_id"]),
+                "name": doc.get("name", ""),
+                "owner_email": doc.get("ownerEmail", ""),
+                "created_at": doc.get("createdAt").isoformat() if isinstance(doc.get("createdAt"), datetime) else str(doc.get("createdAt", ""))
+            }
+        return None
+    except Exception as e:
+        print(f"[DB Error] Failed to get playlist: {e}")
+        return None
+
+def list_playlists(owner_email: str = "", role: str = "user") -> List[Dict[str, Any]]:
+    """Lists playlists, sorted by creation time descending."""
+    db = get_db()
+    try:
+        query = {}
+        if owner_email:
+            query.update(_build_owner_filter(owner_email, role))
+            
+        docs = db.playlists.find(query).sort("createdAt", -1)
+        res = []
+        for doc in docs:
+            res.append({
+                "id": str(doc["_id"]),
+                "name": doc.get("name", ""),
+                "owner_email": doc.get("ownerEmail", ""),
+                "created_at": doc.get("createdAt").isoformat() if isinstance(doc.get("createdAt"), datetime) else str(doc.get("createdAt", ""))
+            })
+        return res
+    except Exception as e:
+        print(f"[DB Error] Failed to list playlists: {e}")
+        return []
+
+def delete_playlist(playlist_id: str, owner_email: str = "", role: str = "user") -> bool:
+    """Deletes a playlist and cascades deletion to all videos inside it."""
+    db = get_db()
+    try:
+        try:
+            oid = ObjectId(playlist_id)
+            query = {"_id": oid}
+        except InvalidId:
+            query = {"_id": playlist_id}
+            
+        if owner_email:
+            query.update(_build_owner_filter(owner_email, role))
+            
+        playlist_doc = db.playlists.find_one(query)
+        if not playlist_doc:
+            return False
+            
+        actual_playlist_oid = playlist_doc["_id"]
+        
+        # Find all videos in this playlist
+        videos_in_playlist = db.catalogs.find({"playlistId": actual_playlist_oid})
+        for video in videos_in_playlist:
+            # Delete each video using our existing delete_video helper
+            delete_video(str(video["_id"]), owner_email=owner_email, role=role)
+            
+        # Delete the playlist itself
+        db.playlists.delete_one({"_id": actual_playlist_oid})
+        return True
+    except Exception as e:
+        print(f"[DB Error] Failed to delete playlist: {e}")
+        return False
+
+def update_video_playlist(video_id: str, playlist_id: Optional[str], owner_email: str = "", role: str = "user") -> bool:
+    """Updates the playlist of a video. If playlist_id is empty/None, moves it to root (None)."""
+    db = get_db()
+    try:
+        try:
+            oid = ObjectId(video_id)
+            query = {"_id": oid}
+        except InvalidId:
+            query = {"_id": video_id}
+            
+        if owner_email:
+            query.update(_build_owner_filter(owner_email, role))
+            
+        video_doc = db.catalogs.find_one(query)
+        if not video_doc:
+            return False
+            
+        actual_oid = video_doc["_id"]
+        
+        if playlist_id:
+            try:
+                playlist_oid = ObjectId(playlist_id)
+            except InvalidId:
+                playlist_oid = playlist_id
+        else:
+            playlist_oid = None
+            
+        db.catalogs.update_one(
+            {"_id": actual_oid},
+            {"$set": {
+                "playlistId": playlist_oid,
+                "updatedAt": datetime.now()
+            }}
+        )
+        return True
+    except Exception as e:
+        print(f"[DB Error] Failed to update video playlist: {e}")
+        return False
+
+def update_upload_status(video_id: str, status: str) -> bool:
+    """Updates the upload status of a video."""
+    db = get_db()
+    try:
+        try:
+            oid = ObjectId(video_id)
+        except InvalidId:
+            oid = video_id
+            
+        db.catalogs.update_one(
+            {"_id": oid},
+            {"$set": {
+                "uploadStatus": status,
+                "updatedAt": datetime.now()
+            }}
+        )
+        return True
+    except Exception as e:
+        print(f"[DB Error] Failed to update upload status: {e}")
+        return False
+
 

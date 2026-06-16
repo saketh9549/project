@@ -91,19 +91,57 @@ def reconstruct_blocks_from_topics(
         
     valid_topics = []
     for topic in topics:
+        # Check alternative keys for start_time
+        raw_start = topic.get('start_time')
+        if raw_start is None:
+            raw_start = topic.get('startTime')
+        if raw_start is None:
+            raw_start = topic.get('start')
+        if raw_start is None:
+            raw_start = topic.get('time')
+        if raw_start is None:
+            raw_start = 0.0
+            
+        # Parse raw_start to float
         try:
-            start_time = float(topic.get('start_time', 0.0))
+            if isinstance(raw_start, (int, float)):
+                start_time = float(raw_start)
+            else:
+                s_val = str(raw_start).strip()
+                if ":" in s_val:
+                    parts = list(map(int, s_val.split(":")))
+                    if len(parts) == 3: # HH:MM:SS
+                        start_time = float(parts[0] * 3600 + parts[1] * 60 + parts[2])
+                    elif len(parts) == 2: # MM:SS
+                        start_time = float(parts[0] * 60 + parts[1])
+                    else:
+                        start_time = 0.0
+                else:
+                    start_time = float(s_val)
         except (ValueError, TypeError):
             continue
             
         if start_time < 0.0:
             start_time = 0.0
-        if start_time >= video_duration:
+            
+        # Handle duration fallback: if video_duration is 0.0 or less, skip duration upper bound check
+        if video_duration > 0.0 and start_time >= video_duration:
             continue
+            
+        # Check alternative keys for topic title
+        topic_title = topic.get('topic')
+        if topic_title is None:
+            topic_title = topic.get('topic_title')
+        if topic_title is None:
+            topic_title = topic.get('title')
+        if topic_title is None:
+            topic_title = topic.get('topicTitle')
+        if topic_title is None:
+            topic_title = 'Untitled Topic'
             
         valid_topics.append({
             'start_time': start_time,
-            'topic': topic.get('topic', 'Untitled Topic')
+            'topic': topic_title
         })
         
     if not valid_topics:
@@ -264,7 +302,7 @@ def build_transcript_string(segments: List[Dict[str, Any]]) -> str:
         lines.append(f"[{start_str} -> {end_str}] {text}")
     return "\n".join(lines)
 
-def index_video(video_path: str, language: str = None, owner_email: str = "", grid_fs_id: str = None, original_filename: str = None, s3_key: str = None, s3_bucket: str = None) -> Tuple[str, List[Dict[str, Any]]]:
+def index_video(video_path: str, language: str = None, owner_email: str = "", grid_fs_id: str = None, original_filename: str = None, s3_key: str = None, s3_bucket: str = None, playlist_id: str = None) -> Tuple[str, List[Dict[str, Any]]]:
     """Runs the full pipeline to extract, transcribe, chunk semantically, and index a video file."""
     abs_path = os.path.abspath(video_path)
     if not os.path.exists(abs_path):
@@ -340,7 +378,8 @@ def index_video(video_path: str, language: str = None, owner_email: str = "", gr
             absolute_local_path="" if (grid_fs_id or s3_key) else abs_path,
             grid_fs_id=grid_fs_id,
             s3_key=s3_key,
-            s3_bucket=s3_bucket
+            s3_bucket=s3_bucket,
+            playlist_id=playlist_id
         )
         db.insert_semantic_blocks(video_id, blocks)
         

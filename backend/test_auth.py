@@ -189,7 +189,7 @@ class TestAuthAndRoles(unittest.TestCase):
         # 1. Test /api/upload as regular user (should get 403)
         res_upload = self.client.post(
             f"/api/upload?filename=test.mp4&owner_email={self.test_email_user}&role=user",
-            data=b"dummy content"
+            content=b"dummy content"
         )
         self.assertEqual(res_upload.status_code, 403)
         self.assertIn("regular users are not allowed to upload", res_upload.json()["detail"])

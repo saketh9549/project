@@ -2,50 +2,109 @@ import { useState } from 'react';
 import { apiUrl } from '../lib/api';
 
 export default function VideoIndexer({
-  indexingLoading,
-  onIndexStart,
+  playlists = [],
+  fetchPlaylists,
   onIndexSuccess,
-  onIndexError,
   showSuccess,
-  showError
+  showError,
+  videos = [],
+  onDeleteVideo
 }) {
   const [videoPath, setVideoPath] = useState('');
-  const [language, setLanguage] = useState('');
   const [dragActive, setDragActive] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
+  const [selectedPlaylistId, setSelectedPlaylistId] = useState('');
+  const [newPlaylistName, setNewPlaylistName] = useState('');
+  const [creatingPlaylist, setCreatingPlaylist] = useState(false);
 
-  // Simulated Indexing progress states
-  const [indexingProgress, setIndexingProgress] = useState(0);
-  const [indexingStatus, setIndexingStatus] = useState('Initializing...');
+  // Tracks active uploads and queue status in the indexer console
+  const [tasks, setTasks] = useState([]);
 
-  const runIndexing = async (file, lang) => {
-    if (!file) return;
-    
-    onIndexStart();
+  const handleCreatePlaylist = async () => {
+    if (!newPlaylistName.trim()) return;
+    setCreatingPlaylist(true);
     showError(null);
-    showSuccess('Indexing video in progress... Please wait. This extracts audio and transcribes it.');
-    setIndexingProgress(0);
-    setIndexingStatus('Initializing...');
-
-    // Start progress simulator
-    let currentProgress = 0;
-    const interval = setInterval(() => {
-      if (currentProgress < 15) {
-        currentProgress += 1.5;
-        setIndexingStatus('Extracting audio track...');
-      } else if (currentProgress < 75) {
-        currentProgress += 0.4;
-        setIndexingStatus('Transcribing dialogue (Whisper)...');
-      } else if (currentProgress < 95) {
-        currentProgress += 0.2;
-        setIndexingStatus('Analyzing semantic moments (Gemini)...');
-      } else if (currentProgress < 98) {
-        currentProgress += 0.05;
-        setIndexingStatus('Writing index tables...');
+    try {
+      const res = await fetch(apiUrl('/api/playlists'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newPlaylistName.trim() })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Failed to create folder');
+      
+      showSuccess(`Folder "${data.name}" created successfully.`);
+      setNewPlaylistName('');
+      
+      if (fetchPlaylists) {
+        await fetchPlaylists();
       }
-      setIndexingProgress(Math.min(98, Math.round(currentProgress)));
-    }, 200);
+      
+      setSelectedPlaylistId(data.id);
+    } catch (err) {
+      showError('Folder creation failed: ' + err.message);
+    } finally {
+      setCreatingPlaylist(false);
+    }
+  };
+
+  const uploadFileWithXhr = (file, url, onProgress) => {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', url, true);
+      xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+      
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          const percentComplete = Math.round((e.loaded / e.total) * 100);
+          onProgress(percentComplete);
+        }
+      };
+      
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const data = JSON.parse(xhr.responseText);
+            resolve(data);
+          } catch {
+            resolve({ error: 'Failed to parse server response' });
+          }
+        } else {
+          try {
+            const data = JSON.parse(xhr.responseText);
+            reject(new Error(data.detail || data.error || `Upload failed with status ${xhr.status}`));
+          } catch {
+            reject(new Error(`Upload failed with status ${xhr.status}`));
+          }
+        }
+      };
+      
+      xhr.onerror = () => {
+        reject(new Error('Network error during upload'));
+      };
+      
+      xhr.send(file);
+    });
+  };
+
+  const runIndexing = async (file, targetPlaylistId) => {
+    if (!file) return;
+
+    const taskId = Date.now().toString() + '_' + Math.random().toString(36).substr(2, 5);
+    const newTask = {
+      id: taskId,
+      name: file.name,
+      status: 'uploading',
+      progress: 0,
+      statusText: 'Preparing upload...'
+    };
     
+    // Clear inputs immediately so user can upload next video
+    setVideoPath('');
+    setSelectedFile(null);
+
+    setTasks(prev => [newTask, ...prev]);
+
     try {
       let path = file.path || '';
       let gridFsId = null;
@@ -54,26 +113,18 @@ export default function VideoIndexer({
 
       // If we don't have an absolute path (web browser upload), upload first
       if (!path) {
-        setIndexingStatus('Uploading file to server...');
-        setIndexingProgress(5);
+        setTasks(prev => prev.map(t => t.id === taskId ? { ...t, progress: 5, statusText: 'Uploading...' } : t));
 
         const uploadUrl = apiUrl(`/api/upload?filename=${encodeURIComponent(file.name)}`);
-        const uploadResponse = await fetch(uploadUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/octet-stream'
-          },
-          body: file
+        const uploadData = await uploadFileWithXhr(file, uploadUrl, (percent) => {
+          setTasks(prev => prev.map(t => t.id === taskId ? { ...t, progress: percent, statusText: `Uploading (${percent}%)...` } : t));
         });
-
-        const uploadData = await uploadResponse.json();
-        if (!uploadResponse.ok) throw new Error(uploadData.error || 'Failed to upload file');
 
         gridFsId = uploadData.grid_fs_id;
         s3Key = uploadData.s3_key;
         s3Bucket = uploadData.s3_bucket;
-        setIndexingStatus('File uploaded. Starting indexing...');
-        setIndexingProgress(15);
+        
+        setTasks(prev => prev.map(t => t.id === taskId ? { ...t, progress: 100, statusText: 'Queuing...' } : t));
       }
 
       const response = await fetch(apiUrl('/api/index'), {
@@ -85,38 +136,29 @@ export default function VideoIndexer({
           s3_bucket: s3Bucket || undefined,
           video_path: path ? path.trim() : undefined,
           file_name: file.name,
-          language: lang.trim() || undefined
+          playlist_id: targetPlaylistId && targetPlaylistId !== 'new' ? targetPlaylistId : undefined
         })
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Failed to index video');
+      if (!response.ok) throw new Error(data.detail || data.error || 'Failed to queue indexing');
       
-      // Stop simulator, go to 100%
-      clearInterval(interval);
-      setIndexingProgress(100);
-      setIndexingStatus('Indexing complete!');
-      showSuccess(`Successfully indexed video! ID: ${data.video_id}`);
+      setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: 'queued', statusText: 'Queued' } : t));
+      showSuccess(`Queued "${file.name}" in background!`);
       
-      // Wait 1.5 seconds so user sees 100% completion screen
-      setTimeout(() => {
-        setVideoPath('');
-        setLanguage('');
-        setSelectedFile(null);
-        setIndexingProgress(0);
+      if (onIndexSuccess) {
         onIndexSuccess(data.video_id);
-      }, 1500);
+      }
 
     } catch (err) {
-      clearInterval(interval);
-      setIndexingProgress(0);
-      showError('Indexing failed: ' + err.message);
-      onIndexError();
+      setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: 'failed', statusText: `Failed: ${err.message}` } : t));
+      showError(`Indexing failed for "${file.name}": ` + err.message);
     }
   };
 
   const handleIndexVideo = async (e) => {
     if (e) e.preventDefault();
-    runIndexing(selectedFile, language);
+    if (!selectedFile) return;
+    runIndexing(selectedFile, selectedPlaylistId);
   };
 
   // Drag and drop handlers
@@ -137,10 +179,7 @@ export default function VideoIndexer({
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const file = e.dataTransfer.files[0];
       setSelectedFile(file);
-      const path = file.path || file.name;
-      setVideoPath(path);
-      showSuccess(`Selected: '${file.name}'. Starting indexing...`);
-      runIndexing(file, language);
+      setVideoPath(file.name);
     }
   };
 
@@ -148,107 +187,110 @@ export default function VideoIndexer({
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       setSelectedFile(file);
-      const path = file.path || file.name;
-      setVideoPath(path);
-      showSuccess(`Selected: '${file.name}'. Starting indexing...`);
-      runIndexing(file, language);
+      setVideoPath(file.name);
     }
   };
 
-  if (indexingLoading) {
-    return (
-      <div className="flex-grow flex flex-col items-center justify-center p-6 text-center animate-fade-in h-[350px]">
-        {/* Glowing Progress Circle Ring */}
-        <div className="relative h-28 w-28 mb-6 flex items-center justify-center">
-          {/* Pulsing glow background */}
-          <div className="absolute inset-0 rounded-full bg-indigo-500/5 blur-md animate-pulse" />
-          
-          {/* SVG Progress Ring */}
-          <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
-            {/* Track Circle */}
-            <circle
-              cx="50"
-              cy="50"
-              r="40"
-              className="stroke-white/5"
-              strokeWidth="6"
-              fill="transparent"
-            />
-            {/* Indicator Circle */}
-            <circle
-              cx="50"
-              cy="50"
-              r="40"
-              className="stroke-indigo-500 transition-all duration-300 ease-out"
-              strokeWidth="6"
-              fill="transparent"
-              strokeDasharray={251.2}
-              strokeDashoffset={251.2 - (251.2 * indexingProgress) / 100}
-              strokeLinecap="round"
-            />
-          </svg>
-          {/* Centered Percentage Text */}
-          <span className="absolute text-xl font-bold font-mono text-white tracking-tighter">
-            {indexingProgress}%
-          </span>
-        </div>
+  // Get all processing/failed videos from database
+  const dbProcessingVideos = videos.filter(
+    (v) => v.upload_status === 'queued' || v.upload_status === 'indexing' || v.upload_status === 'failed'
+  );
 
-        {/* Progress Text Description */}
-        <h3 className="font-bold text-xs text-white font-display uppercase tracking-wider mb-1">
-          {indexingStatus}
-        </h3>
-        <p className="text-[10px] text-gray-500 max-w-[200px] leading-relaxed mx-auto">
-          Running speech-to-text models and Gemini semantic moments.
-        </p>
+  // Get local tasks that are not yet represented in the database list
+  const activeLocalTasks = tasks.filter((t) => 
+    t.status === 'uploading' && 
+    !dbProcessingVideos.some((dv) => dv.file_name === t.name)
+  );
 
-        {/* Horizontal glowing loading bar */}
-        <div className="w-full max-w-[180px] bg-gray-900 rounded-full h-1 overflow-hidden mt-6 border border-white/5 mx-auto">
-          <div
-            className="bg-gradient-to-r from-indigo-500 to-cyan-400 h-1 rounded-full transition-all duration-300"
-            style={{ width: `${indexingProgress}%` }}
-          />
-        </div>
-      </div>
-    );
-  }
+  // Map db videos to the same task structure for rendering in oldest-first order (FIFO)
+  const displayTasks = [
+    ...[...dbProcessingVideos].reverse().map((v) => ({
+      id: v.id,
+      name: v.file_name,
+      status: v.upload_status, // 'queued', 'indexing', or 'failed'
+      progress: v.upload_status === 'indexing' ? 80 : 0,
+      statusText: v.upload_status === 'failed' 
+        ? 'Failed' 
+        : v.upload_status === 'queued' 
+          ? 'Queued' 
+          : 'Indexing...'
+    })),
+    ...[...activeLocalTasks].reverse()
+  ];
 
   return (
     <div className="flex flex-col gap-4 overflow-y-auto max-h-[calc(100vh-190px)] pr-1">
-      {/* Drag & Drop Zone */}
-      <div
-        onDragEnter={handleDrag}
-        onDragOver={handleDrag}
-        onDragLeave={handleDrag}
-        onDrop={handleDrop}
-        onClick={() => document.getElementById('file-picker').click()}
-        className={`border border-dashed rounded-xl p-4 text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-2 ${
-          dragActive 
-            ? 'border-indigo-500 bg-indigo-950/20 shadow-[0_0_12px_rgba(99,102,241,0.2)] scale-[1.01]' 
-            : 'border-white/10 bg-gray-900/20 hover:border-indigo-500/40 hover:bg-gray-900/40'
-        }`}
-      >
-        <input
-          type="file"
-          id="file-picker"
-          accept="audio/*,video/*"
-          onChange={handleFileChange}
-          className="hidden"
-          disabled={indexingLoading}
-        />
-        
-        <svg className="w-6 h-6 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-        </svg>
-        <div className="text-[11px] text-gray-300">
-          <span className="font-semibold text-indigo-400">Click to select file</span> or drag & drop
-        </div>
-        <div className="text-[9px] text-gray-500 font-mono">Selects local reference path</div>
-      </div>
-
       {/* Indexing Action Form */}
-      <form onSubmit={handleIndexVideo} className="flex flex-col gap-3">
+      <form onSubmit={handleIndexVideo} className="flex flex-col gap-4">
+        {/* Folder (Playlist) Selection */}
+        <div className="flex flex-col gap-1.5">
+          <label className="text-[10px] font-semibold text-gray-400">Folder (Playlist)</label>
+          <select
+            value={selectedPlaylistId}
+            onChange={(e) => setSelectedPlaylistId(e.target.value)}
+            className="w-full bg-gray-900/60 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500 transition-all cursor-pointer"
+          >
+            <option value="">No Folder (Root Catalog)</option>
+            {playlists && playlists.map((pl) => (
+              <option key={pl.id} value={pl.id}>{pl.name}</option>
+            ))}
+            <option value="new">+ Create New Folder...</option>
+          </select>
+        </div>
+
+        {selectedPlaylistId === 'new' && (
+          <div className="flex gap-2 items-center animate-fade-in mb-1">
+            <input
+              type="text"
+              placeholder="New folder name..."
+              value={newPlaylistName}
+              onChange={(e) => setNewPlaylistName(e.target.value)}
+              className="flex-grow bg-gray-900/60 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500 transition-all placeholder-gray-700"
+              disabled={creatingPlaylist}
+            />
+            <button
+              type="button"
+              onClick={handleCreatePlaylist}
+              disabled={creatingPlaylist || !newPlaylistName.trim()}
+              className="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs px-3 py-1.5 rounded-lg transition-all cursor-pointer"
+            >
+              {creatingPlaylist ? 'Creating...' : 'Create'}
+            </button>
+          </div>
+        )}
+
+        {/* Drag & Drop Zone - Expanded to fill more space */}
+        <div
+          onDragEnter={handleDrag}
+          onDragOver={handleDrag}
+          onDragLeave={handleDrag}
+          onDrop={handleDrop}
+          onClick={() => document.getElementById('file-picker').click()}
+          className={`border border-dashed rounded-xl p-8 text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-3 min-h-[200px] ${
+            dragActive 
+              ? 'border-indigo-500 bg-indigo-950/20 shadow-[0_0_12px_rgba(99,102,241,0.2)] scale-[1.01]' 
+              : 'border-white/10 bg-gray-900/20 hover:border-indigo-500/40 hover:bg-gray-900/40'
+          }`}
+        >
+          <input
+            type="file"
+            id="file-picker"
+            accept="audio/*,video/*"
+            onChange={handleFileChange}
+            className="hidden"
+          />
+          
+          <svg className="w-10 h-10 text-indigo-400 transition-transform hover:scale-110" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+          </svg>
+          <div className="text-xs text-gray-300">
+            <span className="font-semibold text-indigo-400">Click to select file</span> or drag & drop video/audio here
+          </div>
+          <div className="text-[10px] text-gray-500 font-mono">Selects local reference path</div>
+        </div>
+
         {videoPath && (
-          <div className="bg-indigo-950/20 border border-indigo-500/10 rounded-lg p-2.5 px-3.5 text-xs flex items-center justify-between select-none animate-fade-in mb-1">
+          <div className="bg-indigo-950/20 border border-indigo-500/10 rounded-lg p-2.5 px-3.5 text-xs flex items-center justify-between select-none animate-fade-in">
             <div className="flex flex-col gap-0.5 min-w-0">
               <span className="text-[10px] font-semibold text-cyan-400 uppercase tracking-wider">Selected Video</span>
               <span className="font-mono text-gray-300 truncate text-xs">
@@ -265,106 +307,74 @@ export default function VideoIndexer({
           </div>
         )}
 
-        <div className="flex flex-col gap-1.5">
-          <label className="text-[10px] font-semibold text-gray-400">Language Code (Optional)</label>
-          <input
-            type="text"
-            placeholder="e.g. en, es, auto"
-            value={language}
-            onChange={(e) => setLanguage(e.target.value)}
-            className="w-full bg-gray-900/60 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500 transition-all placeholder-gray-700"
-            disabled={indexingLoading}
-          />
-        </div>
+        {/* Proceed Button */}
         <button
           type="submit"
-          disabled={indexingLoading || !videoPath.trim()}
-          className="w-full mt-2 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 active:scale-[0.98] disabled:opacity-50 disabled:scale-100 disabled:pointer-events-none text-white font-bold text-xs py-2 rounded-lg transition-all shadow-[0_3px_12px_rgba(99,102,241,0.2)] flex items-center justify-center gap-2 cursor-pointer"
+          disabled={!selectedFile}
+          className={`w-full mt-2 font-bold text-xs py-2 rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer ${
+            selectedFile
+              ? 'bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 active:scale-[0.98] text-white shadow-[0_3px_12px_rgba(99,102,241,0.2)]'
+              : 'bg-gray-800 text-gray-500 cursor-not-allowed border border-white/5'
+          }`}
         >
-          {indexingLoading ? (
-            <>
-              <svg className="animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              <span>Indexing Video...</span>
-            </>
-          ) : (
-            <span>Index Video</span>
-          )}
+          <span>Proceed</span>
         </button>
       </form>
 
-      {/* Language Code Legend Guide */}
-      <div className="mt-2 bg-gray-950/40 border border-white/5 rounded-xl p-3.5 select-none flex flex-col gap-2">
-        <h4 className="text-[10px] font-bold text-gray-400 tracking-wider uppercase flex items-center gap-1.5">
-          <svg className="w-3.5 h-3.5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 11.37 7.31 16.5 3 19" />
-          </svg>
-          Language Codes
-        </h4>
-        <p className="text-[9px] text-gray-500 leading-relaxed mb-1">
-          Click any code below to automatically prefill the language input field:
-        </p>
-        <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-[10px] font-mono">
-          <div 
-            onClick={() => !indexingLoading && setLanguage('en')}
-            className="flex justify-between items-center border-b border-white/5 pb-1 hover:border-indigo-500/30 hover:bg-white/5 px-1 py-0.5 rounded transition-all cursor-pointer group"
-          >
-            <span className="text-gray-400 group-hover:text-gray-300 transition-colors">English</span>
-            <span className="lang-badge">en</span>
-          </div>
-          <div 
-            onClick={() => !indexingLoading && setLanguage('de')}
-            className="flex justify-between items-center border-b border-white/5 pb-1 hover:border-indigo-500/30 hover:bg-white/5 px-1 py-0.5 rounded transition-all cursor-pointer group"
-          >
-            <span className="text-gray-400 group-hover:text-gray-300 transition-colors">German</span>
-            <span className="lang-badge">de</span>
-          </div>
-          <div 
-            onClick={() => !indexingLoading && setLanguage('es')}
-            className="flex justify-between items-center border-b border-white/5 pb-1 hover:border-indigo-500/30 hover:bg-white/5 px-1 py-0.5 rounded transition-all cursor-pointer group"
-          >
-            <span className="text-gray-400 group-hover:text-gray-300 transition-colors">Spanish</span>
-            <span className="lang-badge">es</span>
-          </div>
-          <div 
-            onClick={() => !indexingLoading && setLanguage('fr')}
-            className="flex justify-between items-center border-b border-white/5 pb-1 hover:border-indigo-500/30 hover:bg-white/5 px-1 py-0.5 rounded transition-all cursor-pointer group"
-          >
-            <span className="text-gray-400 group-hover:text-gray-300 transition-colors">French</span>
-            <span className="lang-badge">fr</span>
-          </div>
-          <div 
-            onClick={() => !indexingLoading && setLanguage('it')}
-            className="flex justify-between items-center border-b border-white/5 pb-1 hover:border-indigo-500/30 hover:bg-white/5 px-1 py-0.5 rounded transition-all cursor-pointer group"
-          >
-            <span className="text-gray-400 group-hover:text-gray-300 transition-colors">Italian</span>
-            <span className="lang-badge">it</span>
-          </div>
-          <div 
-            onClick={() => !indexingLoading && setLanguage('ja')}
-            className="flex justify-between items-center border-b border-white/5 pb-1 hover:border-indigo-500/30 hover:bg-white/5 px-1 py-0.5 rounded transition-all cursor-pointer group"
-          >
-            <span className="text-gray-400 group-hover:text-gray-300 transition-colors">Japanese</span>
-            <span className="lang-badge">ja</span>
-          </div>
-          <div 
-            onClick={() => !indexingLoading && setLanguage('zh')}
-            className="flex justify-between items-center border-b border-white/5 pb-1 hover:border-indigo-500/30 hover:bg-white/5 px-1 py-0.5 rounded transition-all cursor-pointer group"
-          >
-            <span className="text-gray-400 group-hover:text-gray-300 transition-colors">Mandarin</span>
-            <span className="lang-badge">zh</span>
-          </div>
-          <div 
-            onClick={() => !indexingLoading && setLanguage('auto')}
-            className="flex justify-between items-center border-b border-white/5 pb-1 hover:border-indigo-500/30 hover:bg-white/5 px-1 py-0.5 rounded transition-all cursor-pointer group"
-          >
-            <span className="text-gray-400 group-hover:text-gray-300 transition-colors">Auto-Detect</span>
-            <span className="lang-badge">auto</span>
+      {/* Task Upload Queue list rendering */}
+      {displayTasks.length > 0 && (
+        <div className="mt-2 bg-gray-950/40 border border-white/5 rounded-xl p-3.5 select-none flex flex-col gap-2">
+          <h4 className="text-[10px] font-bold text-gray-400 tracking-wider uppercase flex items-center gap-1.5">
+            <svg className="w-3.5 h-3.5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+            </svg>
+            Active Ingest Worker Queue
+          </h4>
+          <div className="flex flex-col gap-2 max-h-[160px] overflow-y-auto pr-1">
+            {displayTasks.map((t) => {
+              const isUploading = t.status === 'uploading';
+              const isQueued = t.status === 'queued';
+              const isFailed = t.status === 'failed';
+              return (
+                <div key={t.id} className="flex flex-col gap-1 bg-white/5 p-2 rounded-lg border border-white/5">
+                  <div className="flex items-center justify-between text-[10px] gap-2">
+                    <span className="text-gray-300 font-semibold truncate max-w-[170px]" title={t.name}>
+                      {t.name}
+                    </span>
+                    <div className="flex items-center gap-1.5 font-mono text-[9px]">
+                      <span className={
+                        isFailed ? 'text-red-400' : isQueued ? 'text-blue-400' : 'text-cyan-400'
+                      }>
+                        {t.statusText}
+                      </span>
+                      {isFailed && onDeleteVideo && (
+                        <button
+                          type="button"
+                          onClick={(e) => onDeleteVideo(e, t.id)}
+                          className="text-gray-500 hover:text-red-400 transition-colors cursor-pointer p-0.5"
+                          title="Remove Failed Upload"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {isUploading && (
+                    <div className="w-full bg-gray-900 rounded-full h-1 overflow-hidden border border-white/5">
+                      <div
+                        className="bg-cyan-400 h-1 rounded-full transition-all duration-300"
+                        style={{ width: `${t.progress}%` }}
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

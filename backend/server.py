@@ -21,6 +21,153 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import src.database as db
 from src.indexer import index_video, analyse_video
 from main import format_timestamp
+import queue
+import threading
+
+# Global task queue
+indexing_queue = queue.Queue()
+
+def run_pipeline_task(video_id: str, payload_dict: dict, owner_email: str):
+    s3_key = payload_dict.get("s3_key", "")
+    s3_bucket = payload_dict.get("s3_bucket", "")
+    grid_fs_id = payload_dict.get("grid_fs_id", "")
+    video_path = payload_dict.get("video_path", "")
+    language = payload_dict.get("language")
+    playlist_id = payload_dict.get("playlist_id")
+    
+    try:
+        # Option A: AWS S3
+        if s3_key:
+            from src.s3 import get_s3_client
+            from src.config import get_temp_dir
+            import uuid
+            
+            s3_client = get_s3_client()
+            bucket = s3_bucket if s3_bucket else os.getenv("AWS_S3_BUCKET")
+            if not bucket:
+                raise ValueError("S3 bucket configuration is missing")
+                
+            temp_dir = get_temp_dir()
+            safe_filename = os.path.basename(s3_key)
+            unique_id = str(uuid.uuid4())[:8]
+            temp_video_path = os.path.join(temp_dir, f"temp_{unique_id}_{safe_filename}")
+            
+            print(f"[Queue Worker] Buffering S3 file '{s3_key}' to temp path: {temp_video_path} ...")
+            try:
+                s3_client.download_file(bucket, s3_key, temp_video_path)
+            except Exception as e:
+                raise ValueError(f"S3 file not found or download failed: {e}")
+                
+            try:
+                print(f"[Queue Worker] Indexing S3 video: {s3_key} ...")
+                index_video(
+                    temp_video_path,
+                    language=language,
+                    owner_email=owner_email,
+                    original_filename=safe_filename,
+                    s3_key=s3_key,
+                    s3_bucket=bucket,
+                    playlist_id=playlist_id
+                )
+            finally:
+                if os.path.exists(temp_video_path):
+                    os.remove(temp_video_path)
+                    print(f"[Queue Worker] Cleaned up temporary video file: {temp_video_path}")
+                    
+        # Option B: GridFS
+        elif grid_fs_id:
+            import gridfs
+            from bson.objectid import ObjectId
+            from src.database import get_db
+            from src.config import get_temp_dir
+            
+            mongo_db = get_db()
+            fs = gridfs.GridFS(mongo_db)
+            
+            try:
+                grid_out = fs.get(ObjectId(grid_fs_id))
+            except Exception as e:
+                raise ValueError(f"GridFS file not found: {e}")
+                
+            temp_dir = get_temp_dir()
+            safe_filename = os.path.basename(grid_out.filename)
+            temp_video_path = os.path.join(temp_dir, f"temp_{grid_fs_id}_{safe_filename}")
+            
+            print(f"[Queue Worker] Buffering GridFS file to temp path: {temp_video_path} ...")
+            with open(temp_video_path, 'wb') as temp_file:
+                temp_file.write(grid_out.read())
+                
+            try:
+                print(f"[Queue Worker] Indexing GridFS video: {grid_out.filename} ...")
+                index_video(
+                    temp_video_path,
+                    language=language,
+                    owner_email=owner_email,
+                    grid_fs_id=grid_fs_id,
+                    original_filename=grid_out.filename,
+                    playlist_id=playlist_id
+                )
+            finally:
+                if os.path.exists(temp_video_path):
+                    os.remove(temp_video_path)
+                    print(f"[Queue Worker] Cleaned up temporary video file: {temp_video_path}")
+                    
+        # Option C: Local path
+        else:
+            if not video_path:
+                raise ValueError("video_path, s3_key, or grid_fs_id is required")
+                
+            resolved_path = resolve_local_file_path(video_path)
+            if not resolved_path:
+                raise ValueError(f"Local video file not found at path: {video_path}")
+                
+            print(f"[Queue Worker] Indexing video: {resolved_path} ...")
+            index_video(resolved_path, language=language, owner_email=owner_email, playlist_id=playlist_id)
+            
+        # Common post-index steps
+        try:
+            print(f"[Queue Worker] Automatically analyzing video ID: {video_id} ...")
+            analyse_video(video_id, owner_email=owner_email)
+        except Exception as ex:
+            print(f"[Queue Worker Warning] Automatic boundary analysis failed: {ex}")
+            
+        try:
+            print(f"[Queue Worker] Automatically generating overall summary for video ID: {video_id} ...")
+            generate_overall_summary(video_id, owner_email=owner_email)
+        except Exception as ex:
+            print(f"[Queue Worker Warning] Automatic overall summary generation failed: {ex}")
+            
+        db.update_upload_status(video_id, "indexed")
+        
+    except Exception as e:
+        print(f"[Queue Worker Error] Failed to complete background indexing pipeline for video {video_id}: {e}")
+        db.update_upload_status(video_id, "failed")
+
+def queue_worker():
+    while True:
+        try:
+            task = indexing_queue.get()
+            if task is None:
+                break
+            
+            video_id, payload_dict, owner_email = task
+            print(f"[Queue Worker] Starting background processing for video: {video_id} ...")
+            
+            # Update status to indexing
+            db.update_upload_status(video_id, "indexing")
+            
+            # Run the processing pipeline
+            run_pipeline_task(video_id, payload_dict, owner_email)
+            
+            print(f"[Queue Worker] Completed processing for video: {video_id}")
+        except Exception as e:
+            print(f"[Queue Worker Error] Error processing task: {e}")
+        finally:
+            indexing_queue.task_done()
+
+# Start background worker thread
+worker_thread = threading.Thread(target=queue_worker, daemon=True)
+worker_thread.start()
 
 PORT = 8000
 
@@ -283,6 +430,8 @@ def list_videos(owner_email: str = Query(...), role: str = Query("user")):
                 "id": v["id"],
                 "file_name": v["file_name"],
                 "file_path": v["file_path"],
+                "playlist_id": v.get("playlist_id", None),
+                "upload_status": v.get("upload_status", "pending"),
                 "absolute_local_path": v.get("absolute_local_path", ""),
                 "timeline_index": v.get("timeline_index", []),
                 "duration": v["duration"],
@@ -321,6 +470,8 @@ def get_video(video_id: str, owner_email: str = Query(...), role: str = Query("u
                 "id": video["id"],
                 "file_name": video["file_name"],
                 "file_path": video["file_path"],
+                "playlist_id": video.get("playlist_id", None),
+                "upload_status": video.get("upload_status", "pending"),
                 "absolute_local_path": video.get("absolute_local_path", ""),
                 "timeline_index": video.get("timeline_index", []),
                 "duration": video["duration"],
@@ -445,7 +596,9 @@ class IndexRequest(BaseModel):
     s3_bucket: Optional[str] = ""
     grid_fs_id: Optional[str] = ""
     video_path: Optional[str] = ""
+    file_name: Optional[str] = ""
     language: Optional[str] = None
+    playlist_id: Optional[str] = None
     
 @app.post("/api/index")
 async def index_endpoint(payload: IndexRequest, owner_email: str = Query(...), role: str = Query("user")):
@@ -457,122 +610,80 @@ async def index_endpoint(payload: IndexRequest, owner_email: str = Query(...), r
     s3_bucket = payload.s3_bucket.strip() if payload.s3_bucket else ""
     grid_fs_id = payload.grid_fs_id.strip() if payload.grid_fs_id else ""
     video_path = payload.video_path.strip() if payload.video_path else ""
+    file_name = payload.file_name.strip() if payload.file_name else ""
     language = payload.language.strip() if (payload.language and payload.language.strip()) else None
+    playlist_id = payload.playlist_id.strip() if (payload.playlist_id and payload.playlist_id.strip()) else None
     owner_email = owner_email.strip()
     
-    def run_pipeline():
-        # Option A: AWS S3
-        if s3_key:
-            from src.s3 import get_s3_client
-            from src.config import get_temp_dir
-            import uuid
-            
-            s3_client = get_s3_client()
-            bucket = s3_bucket if s3_bucket else os.getenv("AWS_S3_BUCKET")
-            if not bucket:
-                raise HTTPException(status_code=500, detail="S3 bucket configuration is missing")
-                
-            temp_dir = get_temp_dir()
-            safe_filename = os.path.basename(s3_key)
-            unique_id = str(uuid.uuid4())[:8]
-            temp_video_path = os.path.join(temp_dir, f"temp_{unique_id}_{safe_filename}")
-            
-            print(f"[Server API] Buffering S3 file '{s3_key}' to temp path: {temp_video_path} ...")
-            try:
-                s3_client.download_file(bucket, s3_key, temp_video_path)
-            except Exception as e:
-                raise HTTPException(status_code=404, detail=f"S3 file not found or download failed: {e}")
-                
-            try:
-                print(f"[Server API] Indexing S3 video: {s3_key} ...")
-                video_id, blocks = index_video(
-                    temp_video_path,
-                    language=language,
-                    owner_email=owner_email,
-                    original_filename=safe_filename,
-                    s3_key=s3_key,
-                    s3_bucket=bucket
-                )
-            finally:
-                if os.path.exists(temp_video_path):
-                    os.remove(temp_video_path)
-                    print(f"[Server API] Cleaned up temporary video file: {temp_video_path}")
-                    
-        # Option B: GridFS
-        elif grid_fs_id:
-            import gridfs
-            from bson.objectid import ObjectId
-            from src.database import get_db
-            from src.config import get_temp_dir
-            
-            mongo_db = get_db()
-            fs = gridfs.GridFS(mongo_db)
-            
-            try:
-                grid_out = fs.get(ObjectId(grid_fs_id))
-            except Exception as e:
-                raise HTTPException(status_code=404, detail=f"GridFS file not found: {e}")
-                
-            temp_dir = get_temp_dir()
-            safe_filename = os.path.basename(grid_out.filename)
-            temp_video_path = os.path.join(temp_dir, f"temp_{grid_fs_id}_{safe_filename}")
-            
-            print(f"[Server API] Buffering GridFS file to temp path: {temp_video_path} ...")
-            with open(temp_video_path, 'wb') as temp_file:
-                temp_file.write(grid_out.read())
-                
-            try:
-                print(f"[Server API] Indexing GridFS video: {grid_out.filename} ...")
-                video_id, blocks = index_video(
-                    temp_video_path,
-                    language=language,
-                    owner_email=owner_email,
-                    grid_fs_id=grid_fs_id,
-                    original_filename=grid_out.filename
-                )
-            finally:
-                if os.path.exists(temp_video_path):
-                    os.remove(temp_video_path)
-                    print(f"[Server API] Cleaned up temporary video file: {temp_video_path}")
-                    
-        # Option C: Local path
-        else:
-            if not video_path:
-                raise HTTPException(status_code=400, detail="video_path, s3_key, or grid_fs_id is required")
-                
-            resolved_path = resolve_local_file_path(video_path)
-            if not resolved_path:
-                raise HTTPException(status_code=404, detail=f"Local video file not found at path: {video_path}")
-                
-            print(f"[Server API] Indexing video: {resolved_path} ...")
-            video_id, blocks = index_video(resolved_path, language=language, owner_email=owner_email)
-            
-        # Common post-index steps
-        try:
-            print(f"[Server API] Automatically analyzing video ID: {video_id} ...")
-            analyse_video(video_id, owner_email=owner_email)
-        except Exception as ex:
-            print(f"[Server API Warning] Automatic boundary analysis failed: {ex}")
-            
-        try:
-            print(f"[Server API] Automatically generating overall summary for video ID: {video_id} ...")
-            generate_overall_summary(video_id, owner_email=owner_email)
-        except Exception as ex:
-            print(f"[Server API Warning] Automatic overall summary generation failed: {ex}")
-            
-        return video_id
+    import hashlib
+    from src.indexer import generate_video_id
+    
+    # 1. Determine lookup path
+    if grid_fs_id:
+        lookup_path = file_name or "video.mp4"
+    elif s3_key:
+        lookup_path = s3_key
+    else:
+        resolved_path = resolve_local_file_path(video_path)
+        if not resolved_path:
+            raise HTTPException(status_code=404, detail=f"Local video file not found at path: {video_path}")
+        lookup_path = resolved_path
         
-    try:
-        video_id = await run_in_threadpool(run_pipeline)
-        return {
-            "success": True,
-            "video_id": video_id,
-            "message": "Successfully indexed video, ran semantic boundary analysis, and generated overall summary."
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to complete indexing pipeline: {e}")
+    # 2. Check duplicate
+    existing_video = db.get_video_by_path(lookup_path, owner_email)
+    if existing_video:
+        video_id = existing_video["id"]
+        # If it's already indexed, return indexed
+        if existing_video.get("upload_status") == "indexed":
+            return {
+                "success": True,
+                "video_id": video_id,
+                "status": "indexed",
+                "message": "Video is already indexed."
+            }
+    else:
+        if grid_fs_id:
+            fingerprint = f"{owner_email.strip().lower()}_gridfs_{grid_fs_id}"
+            video_id = hashlib.sha256(fingerprint.encode('utf-8')).hexdigest()[:24]
+        elif s3_key:
+            fingerprint = f"{owner_email.strip().lower()}_s3_{s3_key}"
+            video_id = hashlib.sha256(fingerprint.encode('utf-8')).hexdigest()[:24]
+        else:
+            video_id = generate_video_id(lookup_path, owner_email=owner_email)
+            
+    final_file_name = file_name or os.path.basename(lookup_path)
+    
+    # Create a placeholder in the database
+    db.insert_video(
+        video_id=video_id,
+        file_path=lookup_path,
+        file_name=final_file_name,
+        duration=0.0,
+        owner_email=owner_email,
+        upload_status="queued",
+        grid_fs_id=grid_fs_id or None,
+        s3_key=s3_key or None,
+        s3_bucket=s3_bucket or None,
+        playlist_id=playlist_id
+    )
+    
+    # Enqueue background task
+    task_payload = {
+        "s3_key": s3_key,
+        "s3_bucket": s3_bucket,
+        "grid_fs_id": grid_fs_id,
+        "video_path": video_path,
+        "language": language,
+        "playlist_id": playlist_id
+    }
+    indexing_queue.put((video_id, task_payload, owner_email))
+    
+    return {
+        "success": True,
+        "video_id": video_id,
+        "status": "queued",
+        "message": "Successfully queued video for indexing."
+    }
 
 
 class AnalyseRequest(BaseModel):
@@ -994,6 +1105,63 @@ def stream_video(
             return StreamingResponse(local_full_generator(), status_code=200, media_type=content_type, headers=headers)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Local streaming failed: {e}")
+
+class PlaylistCreateRequest(BaseModel):
+    name: str
+
+@app.get("/api/playlists")
+def list_playlists(owner_email: str = Query(...), role: str = Query("user")):
+    db.init_db()
+    try:
+        return db.list_playlists(owner_email, role)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list playlists: {e}")
+
+@app.post("/api/playlists")
+def create_playlist(payload: PlaylistCreateRequest, owner_email: str = Query(...), role: str = Query("user")):
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden: only admins can create playlists")
+    db.init_db()
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Playlist name is required")
+    try:
+        return db.create_playlist(name, owner_email)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create playlist: {e}")
+
+@app.delete("/api/playlists/{playlist_id}")
+def delete_playlist(playlist_id: str, owner_email: str = Query(...), role: str = Query("user")):
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden: only admins can delete playlists")
+    db.init_db()
+    try:
+        success = db.delete_playlist(playlist_id, owner_email, role)
+        if not success:
+            raise HTTPException(status_code=404, detail="Playlist not found or deletion failed")
+        return {"success": True, "message": "Playlist and all its videos deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete playlist: {e}")
+
+class UpdatePlaylistRequest(BaseModel):
+    playlist_id: Optional[str] = None
+
+@app.patch("/api/videos/{video_id}/playlist")
+def update_video_playlist_endpoint(video_id: str, payload: UpdatePlaylistRequest, owner_email: str = Query(...), role: str = Query("user")):
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden: only admins can reorganize the catalog")
+    db.init_db()
+    try:
+        success = db.update_video_playlist(video_id, payload.playlist_id, owner_email, role)
+        if not success:
+            raise HTTPException(status_code=404, detail="Video not found or update failed")
+        return {"success": True, "message": "Video playlist updated successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update playlist: {e}")
 
 
 if __name__ == "__main__":
