@@ -211,6 +211,7 @@ export default function TimelineExplorer({
         <div className="mb-4 rounded-xl overflow-hidden border border-white/10 bg-black shadow-inner">
           <video
             ref={videoRef}
+            id="main-video-player"
             src={videoSrc}
             controls
             crossOrigin="anonymous"

@@ -523,8 +523,10 @@ export default function App() {
             {/* Right Sidebar (Summary Console) */}
             <aside className="resizable-right-panel w-full lg:w-auto shrink-0 glass-panel p-5 rounded-2xl flex flex-col min-h-0">
               <SummaryConsole
+                selectedVideo={selectedVideo}
                 selectedChapter={selectedChapter}
                 chapters={chapters}
+                onSelectChapter={setSelectedChapter}
                 showSuccess={showSuccess}
                 overallSummary={overallSummary}
                 overallSummaryLoading={overallSummaryLoading}

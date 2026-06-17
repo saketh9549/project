@@ -252,8 +252,8 @@ def cmd_summarize(args):
         
         system_instruction = (
             "You are a professional video content summarizer. "
-            "Your task is to write a concise, bulleted summary of the provided chapter transcript. "
-            "Highlight key takeaways, action items, and important ideas."
+            "Your task is to write a highly minimized, concise, and clear summary of the provided chapter transcript. "
+            "Focus only on the most critical takeaways and core details, keeping it very short and effective."
         )
         
         prompt = (

@@ -302,7 +302,7 @@ def build_transcript_string(segments: List[Dict[str, Any]]) -> str:
         lines.append(f"[{start_str} -> {end_str}] {text}")
     return "\n".join(lines)
 
-def index_video(video_path: str, language: str = None, owner_email: str = "", grid_fs_id: str = None, original_filename: str = None, s3_key: str = None, s3_bucket: str = None, playlist_id: str = None) -> Tuple[str, List[Dict[str, Any]]]:
+def index_video(video_path: str, language: str = None, owner_email: str = "", grid_fs_id: str = None, original_filename: str = None, s3_key: str = None, s3_bucket: str = None, playlist_id: str = None, upload_status: str = "indexed") -> Tuple[str, List[Dict[str, Any]]]:
     """Runs the full pipeline to extract, transcribe, chunk semantically, and index a video file."""
     abs_path = os.path.abspath(video_path)
     if not os.path.exists(abs_path):
@@ -339,6 +339,7 @@ def index_video(video_path: str, language: str = None, owner_email: str = "", gr
     
     # 1. Initialize database collections
     db.init_db()
+    db.update_upload_status(video_id, "Extracting Audio (15%)")
     
     # 2. Try to get video duration using ffprobe
     duration = get_video_duration(abs_path)
@@ -348,6 +349,7 @@ def index_video(video_path: str, language: str = None, owner_email: str = "", gr
     
     try:
         # 4. Transcribe audio
+        db.update_upload_status(video_id, "Transcribing Audio (45%)")
         transcription_result = transcribe_audio(audio_path, language=language)
         
         # 5. Extract timed segments
@@ -373,7 +375,7 @@ def index_video(video_path: str, language: str = None, owner_email: str = "", gr
             file_name=file_name,
             duration=duration,
             owner_email=owner_email,
-            upload_status="indexed",
+            upload_status=upload_status,
             raw_transcript=raw_transcript,
             absolute_local_path="" if (grid_fs_id or s3_key) else abs_path,
             grid_fs_id=grid_fs_id,

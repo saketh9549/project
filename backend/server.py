@@ -236,15 +236,15 @@ def generate_overall_summary(video_id: str, owner_email: str) -> str:
     client = genai.Client(api_key=api_key)
     system_instruction = (
         "You are a professional video content summarizer. "
-        "Your task is to write a cohesive, comprehensive overall summary "
+        "Your task is to write a highly concise, brief, and minimized overall summary "
         "of the entire video based on the provided chapter transcripts. "
+        "Keep the summary extremely short, effective, clear, and straight to the point (no fluff). "
         "Do NOT write it section-wise, chapter-wise, or with section headers/numbers. "
-        "Instead, synthesize all details into a single unified summary of the entire video, "
-        "while retaining all the key points and core takeaways in that summary."
+        "Synthesize all critical details into a brief unified narrative."
     )
     prompt = (
-        f"Please generate a unified overall summary (not broken down by chapter or section) "
-        f"for the following video, capturing all key points and takeaways in a cohesive narrative:\n\n"
+        f"Please generate a highly concise and minimized overall summary "
+        f"for the following video, capturing only the most important takeaways in a clear, brief narrative:\n\n"
         f"Video Title: {video['file_name']}\n\n"
         f"{full_chapters_text}"
     )
@@ -480,7 +480,8 @@ def get_video(video_id: str, owner_email: str = Query(...), role: str = Query("u
                 "timeline_index": video.get("timeline_index", []),
                 "duration": video["duration"],
                 "duration_str": format_timestamp(video["duration"]),
-                "overall_summary": video.get("overall_summary", "")
+                "overall_summary": video.get("overall_summary", ""),
+                "raw_transcript": video.get("raw_transcript", "")
             },
             "chapters": chapters
         }
@@ -783,8 +784,8 @@ async def summarize_endpoint(payload: SummarizeRequest, owner_email: str = Query
         client = genai.Client(api_key=api_key)
         system_instruction = (
             "You are a professional video content summarizer. "
-            "Your task is to write a concise, bulleted summary of the provided chapter transcript. "
-            "Highlight key takeaways, use-cases, and explanations."
+            "Your task is to write a highly minimized, concise, and clear summary of the provided chapter transcript. "
+            "Focus only on the most critical takeaways and core details, keeping it very short and effective."
         )
         prompt = (
             f"Please summarize the following video chapter transcript:\n\n"
