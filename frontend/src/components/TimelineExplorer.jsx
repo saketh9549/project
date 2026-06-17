@@ -164,9 +164,9 @@ export default function TimelineExplorer({
   }
 
   return (
-    <div className="flex-1 flex flex-col min-h-0">
+    <div className="flex-1 flex flex-col min-h-0 overflow-y-auto pr-1">
       {/* Timeline Header Info */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-white/5 pb-4 mb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-white/5 pb-4 mb-4 shrink-0">
         <div className="flex items-center gap-3 min-w-0">
           <button
             onClick={onUploadNew}
@@ -208,7 +208,7 @@ export default function TimelineExplorer({
 
       {/* Video Player */}
       {videoSrc && (
-        <div className="mb-4 rounded-xl overflow-hidden border border-white/10 bg-black shadow-inner">
+        <div className="mb-4 rounded-xl overflow-hidden border border-white/10 bg-black shadow-inner shrink-0">
           <video
             ref={videoRef}
             id="main-video-player"
@@ -221,7 +221,7 @@ export default function TimelineExplorer({
       )}
 
       {/* Search Bar */}
-      <div className="relative mb-4">
+      <div className="relative mb-4 shrink-0">
         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
           <svg className="h-4 w-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -247,7 +247,7 @@ export default function TimelineExplorer({
       </div>
 
       {/* Chapters List */}
-      <div className="flex-1 overflow-y-auto pr-1">
+      <div className="flex-none pr-1">
         {displayedChapters.length === 0 ? (
           <div className="text-center text-gray-500 text-sm py-12">
             {searchQuery.trim()
@@ -346,7 +346,7 @@ export default function TimelineExplorer({
                 </div>
 
                 <div className="flex flex-col gap-1 px-1">
-                  <span className="text-[10px] font-bold text-cyan-400 font-mono tracking-tighter">
+                  <span className="text-[10px] font-bold text-cyan-400 font-mono tracking-tighter mb-0.5">
                     {c.start_time_str}
                   </span>
                   <p className={`text-[11px] font-semibold font-display leading-snug line-clamp-2 transition-colors ${isSelected ? 'text-cyan-400' : 'text-white'

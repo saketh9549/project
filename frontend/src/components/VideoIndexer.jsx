@@ -1,5 +1,100 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { apiUrl } from '../lib/api';
+
+// New IngestTaskRow component for smooth, self-incrementing progress animation
+function IngestTaskRow({ t, onDeleteVideo }) {
+  const isUploading = t.status === 'uploading';
+  const isQueued = t.status === 'queued';
+  const isFailed = t.status === 'failed';
+  
+  const [localProgress, setLocalProgress] = useState(t.progress);
+
+  useEffect(() => {
+    if (isUploading) {
+      setLocalProgress(t.progress);
+      return;
+    }
+
+    if (isFailed) {
+      setLocalProgress(0);
+      return;
+    }
+
+    // Set local progress to at least the backend reported progress
+    setLocalProgress(prev => Math.max(prev, t.progress));
+
+    // Determine target cap and speed of increment for the current background status
+    let targetCap = 0;
+    let increment = 0.1; // progress percentage to add per 100ms tick
+
+    if (isQueued) {
+      targetCap = 12;
+      increment = 0.05;
+    } else if (t.status === 'indexing') {
+      targetCap = 15;
+      increment = 0.1;
+    } else if (t.statusText && t.statusText.includes('Extracting')) {
+      targetCap = 44;
+      increment = 0.15;
+    } else if (t.statusText && t.statusText.includes('Transcribing')) {
+      targetCap = 95;
+      increment = 0.08;
+    } else {
+      targetCap = 95;
+      increment = 0.1;
+    }
+
+    const interval = setInterval(() => {
+      setLocalProgress((prev) => {
+        if (prev >= targetCap) return prev;
+        return Math.min(targetCap, prev + increment);
+      });
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, [t.progress, t.statusText, isUploading, isQueued, isFailed]);
+
+  const displayStatusText = t.statusText && t.statusText.includes('%') && localProgress > 0
+    ? t.statusText.replace(/\d+%/, `${Math.round(localProgress)}%`)
+    : t.statusText;
+
+  return (
+    <div className="flex flex-col gap-1 bg-white/5 p-2 rounded-lg border border-white/5 animate-fade-in">
+      <div className="flex items-center justify-between text-[10px] gap-2">
+        <span className="text-gray-300 font-semibold truncate max-w-[170px]" title={t.name}>
+          {t.name}
+        </span>
+        <div className="flex items-center gap-1.5 font-mono text-[9px]">
+          <span className={
+            isFailed ? 'text-red-400' : isQueued ? 'text-blue-400' : 'text-cyan-400'
+          }>
+            {displayStatusText}
+          </span>
+          {isFailed && onDeleteVideo && (
+            <button
+              type="button"
+              onClick={(e) => onDeleteVideo(e, t.id)}
+              className="text-gray-500 hover:text-red-400 transition-colors cursor-pointer p-0.5"
+              title="Remove Failed Upload"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            </button>
+          )}
+        </div>
+      </div>
+      {(isUploading || localProgress > 0) && (
+        <div className="w-full bg-gray-900 rounded-full h-1 overflow-hidden border border-white/5">
+          <div
+            className="bg-cyan-400 h-1 rounded-full transition-all duration-100 ease-out"
+            style={{ width: `${localProgress}%` }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function VideoIndexer({
   playlists = [],
@@ -202,7 +297,7 @@ export default function VideoIndexer({
 
   // Get all processing/failed videos from database
   const dbProcessingVideos = videos.filter(
-    (v) => v.upload_status === 'queued' || v.upload_status === 'indexing' || v.upload_status === 'failed'
+    (v) => v.upload_status !== 'indexed'
   );
 
   // Get local tasks that are not yet represented in the database list
@@ -213,17 +308,34 @@ export default function VideoIndexer({
 
   // Map db videos to the same task structure for rendering in oldest-first order (FIFO)
   const displayTasks = [
-    ...[...dbProcessingVideos].reverse().map((v) => ({
-      id: v.id,
-      name: v.file_name,
-      status: v.upload_status, // 'queued', 'indexing', or 'failed'
-      progress: v.upload_status === 'indexing' ? 80 : 0,
-      statusText: v.upload_status === 'failed'
-        ? 'Failed'
-        : v.upload_status === 'queued'
-          ? 'Queued'
-          : 'Indexing...'
-    })),
+    ...[...dbProcessingVideos].reverse().map((v) => {
+      const isFailed = v.upload_status === 'failed';
+      const isQueued = v.upload_status === 'queued';
+      
+      let progress = 0;
+      if (v.upload_status && v.upload_status.includes('%')) {
+        const match = v.upload_status.match(/(\d+)%/);
+        if (match) {
+          progress = parseInt(match[1], 10);
+        }
+      } else if (v.upload_status === 'indexing') {
+        progress = 50;
+      }
+
+      let statusText = 'Processing...';
+      if (isFailed) statusText = 'Failed';
+      else if (isQueued) statusText = 'Queued';
+      else if (v.upload_status === 'indexing') statusText = 'Indexing...';
+      else if (v.upload_status) statusText = v.upload_status;
+
+      return {
+        id: v.id,
+        name: v.file_name,
+        status: v.upload_status,
+        progress: progress,
+        statusText: statusText
+      };
+    }),
     ...[...activeLocalTasks].reverse()
   ];
 
@@ -359,47 +471,9 @@ export default function VideoIndexer({
             Active Ingest Worker Queue
           </h4>
           <div className="flex flex-col gap-2 max-h-[160px] overflow-y-auto pr-1">
-            {displayTasks.map((t) => {
-              const isUploading = t.status === 'uploading';
-              const isQueued = t.status === 'queued';
-              const isFailed = t.status === 'failed';
-              return (
-                <div key={t.id} className="flex flex-col gap-1 bg-white/5 p-2 rounded-lg border border-white/5">
-                  <div className="flex items-center justify-between text-[10px] gap-2">
-                    <span className="text-gray-300 font-semibold truncate max-w-[170px]" title={t.name}>
-                      {t.name}
-                    </span>
-                    <div className="flex items-center gap-1.5 font-mono text-[9px]">
-                      <span className={
-                        isFailed ? 'text-red-400' : isQueued ? 'text-blue-400' : 'text-cyan-400'
-                      }>
-                        {t.statusText}
-                      </span>
-                      {isFailed && onDeleteVideo && (
-                        <button
-                          type="button"
-                          onClick={(e) => onDeleteVideo(e, t.id)}
-                          className="text-gray-500 hover:text-red-400 transition-colors cursor-pointer p-0.5"
-                          title="Remove Failed Upload"
-                        >
-                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  {isUploading && (
-                    <div className="w-full bg-gray-900 rounded-full h-1 overflow-hidden border border-white/5">
-                      <div
-                        className="bg-cyan-400 h-1 rounded-full transition-all duration-300"
-                        style={{ width: `${t.progress}%` }}
-                      />
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+            {displayTasks.map((t) => (
+              <IngestTaskRow key={t.id} t={t} onDeleteVideo={onDeleteVideo} />
+            ))}
           </div>
         </div>
       )}
