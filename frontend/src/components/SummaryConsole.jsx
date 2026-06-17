@@ -10,7 +10,7 @@ export default function SummaryConsole({
   overallSummaryLoading,
   onGenerateOverallSummary
 }) {
-  const [activeTab, setActiveTab] = useState('summary');
+  const [activeTab, setActiveTab] = useState('transcript');
 
   // Automatically scroll first highlighted transcript line into view when selectedChapter changes
   useEffect(() => {
@@ -213,19 +213,6 @@ export default function SummaryConsole({
       <div className="flex border-b border-white/5 pb-2 mb-4 shrink-0 justify-between items-center gap-4">
         <div className="flex gap-4">
           <button
-            onClick={() => setActiveTab('summary')}
-            className={`pb-1 text-xs font-bold font-display uppercase tracking-widest cursor-pointer transition-colors relative ${
-              activeTab === 'summary'
-                ? 'text-cyan-400'
-                : 'text-gray-500 hover:text-gray-300'
-            }`}
-          >
-            Summary
-            {activeTab === 'summary' && (
-              <span className="absolute left-0 right-0 -bottom-[9px] h-[2px] bg-cyan-500 shadow-[0_0_8px_rgba(6,182,212,0.8)]" />
-            )}
-          </button>
-          <button
             onClick={() => setActiveTab('transcript')}
             className={`pb-1 text-xs font-bold font-display uppercase tracking-widest cursor-pointer transition-colors relative ${
               activeTab === 'transcript'
@@ -235,6 +222,19 @@ export default function SummaryConsole({
           >
             Transcript
             {activeTab === 'transcript' && (
+              <span className="absolute left-0 right-0 -bottom-[9px] h-[2px] bg-cyan-500 shadow-[0_0_8px_rgba(6,182,212,0.8)]" />
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab('summary')}
+            className={`pb-1 text-xs font-bold font-display uppercase tracking-widest cursor-pointer transition-colors relative ${
+              activeTab === 'summary'
+                ? 'text-cyan-400'
+                : 'text-gray-500 hover:text-gray-300'
+            }`}
+          >
+            Summary
+            {activeTab === 'summary' && (
               <span className="absolute left-0 right-0 -bottom-[9px] h-[2px] bg-cyan-500 shadow-[0_0_8px_rgba(6,182,212,0.8)]" />
             )}
           </button>
