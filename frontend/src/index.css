@@ -416,5 +416,64 @@ html.light select option.text-white {
   background-color: #ffffff !important;
 }
 
+/* Custom Ingest Task Row Progress Shimmer and Glow Animations */
+@keyframes shimmer-sweep {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(220%); }
+}
+
+.progress-shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 35%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  animation: shimmer-sweep 1.6s ease-in-out infinite;
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Custom Stepper Node Active Glow animation */
+@keyframes pulse-stepper-glow {
+  0%, 100% {
+    box-shadow: 0 0 4px rgba(34, 211, 238, 0.4), 0 0 10px rgba(99, 102, 241, 0.2);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 8px rgba(34, 211, 238, 0.8), 0 0 16px rgba(99, 102, 241, 0.5);
+    transform: scale(1.15);
+  }
+}
+
+.animate-stepper-pulse {
+  animation: pulse-stepper-glow 2s infinite ease-in-out;
+}
+
+/* Light mode adjustments for stepper elements to ensure high contrast */
+html.light .stepper-label-future {
+  color: #64748b !important; /* slate-500 */
+}
+html.light .stepper-node-future {
+  border-color: #cbd5e1 !important; /* slate-300 */
+  color: #64748b !important;
+  background-color: #f1f5f9 !important; /* slate-100 */
+}
+html.light .stepper-line-future {
+  background-color: #cbd5e1 !important; /* slate-300 */
+}
+html.light .stepper-label-completed {
+  color: #0891b2 !important; /* cyan-600 */
+}
+html.light .stepper-label-active {
+  color: #0284c7 !important; /* sky-600 */
+}
+
 
 

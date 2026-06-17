@@ -75,7 +75,7 @@ export default function VideosCatalog({
   const renderVideoItem = (v, indent = false) => {
     const isSelected = selectedVideo && selectedVideo.id === v.id;
     const isProcessing = v.upload_status && v.upload_status !== 'indexed';
-    const isFailed = v.upload_status === 'failed';
+    const isFailed = v.upload_status === 'failed' || (v.upload_status && v.upload_status.startsWith('failed_'));
     const isMenuOpen = activeMenuVideoId === v.id;
 
     const handleClick = () => {

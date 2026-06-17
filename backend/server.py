@@ -56,6 +56,7 @@ def run_pipeline_task(video_id: str, payload_dict: dict, owner_email: str):
             try:
                 s3_client.download_file(bucket, s3_key, temp_video_path)
             except Exception as e:
+                db.update_upload_status(video_id, "failed_uploading")
                 raise ValueError(f"S3 file not found or download failed: {e}")
                 
             try:
@@ -67,7 +68,8 @@ def run_pipeline_task(video_id: str, payload_dict: dict, owner_email: str):
                     original_filename=safe_filename,
                     s3_key=s3_key,
                     s3_bucket=bucket,
-                    playlist_id=playlist_id
+                    playlist_id=playlist_id,
+                    upload_status="indexing"
                 )
             finally:
                 if os.path.exists(temp_video_path):
@@ -87,6 +89,7 @@ def run_pipeline_task(video_id: str, payload_dict: dict, owner_email: str):
             try:
                 grid_out = fs.get(ObjectId(grid_fs_id))
             except Exception as e:
+                db.update_upload_status(video_id, "failed_uploading")
                 raise ValueError(f"GridFS file not found: {e}")
                 
             temp_dir = get_temp_dir()
@@ -105,7 +108,8 @@ def run_pipeline_task(video_id: str, payload_dict: dict, owner_email: str):
                     owner_email=owner_email,
                     grid_fs_id=grid_fs_id,
                     original_filename=grid_out.filename,
-                    playlist_id=playlist_id
+                    playlist_id=playlist_id,
+                    upload_status="indexing"
                 )
             finally:
                 if os.path.exists(temp_video_path):
@@ -122,26 +126,34 @@ def run_pipeline_task(video_id: str, payload_dict: dict, owner_email: str):
                 raise ValueError(f"Local video file not found at path: {video_path}")
                 
             print(f"[Queue Worker] Indexing video: {resolved_path} ...")
-            index_video(resolved_path, language=language, owner_email=owner_email, playlist_id=playlist_id)
+            index_video(resolved_path, language=language, owner_email=owner_email, playlist_id=playlist_id, upload_status="indexing")
             
         # Common post-index steps
         try:
+            db.update_upload_status(video_id, "Summarizing")
             print(f"[Queue Worker] Automatically analyzing video ID: {video_id} ...")
             analyse_video(video_id, owner_email=owner_email)
         except Exception as ex:
             print(f"[Queue Worker Warning] Automatic boundary analysis failed: {ex}")
+            db.update_upload_status(video_id, "failed_summarizing")
+            raise ex
             
         try:
             print(f"[Queue Worker] Automatically generating overall summary for video ID: {video_id} ...")
             generate_overall_summary(video_id, owner_email=owner_email)
         except Exception as ex:
             print(f"[Queue Worker Warning] Automatic overall summary generation failed: {ex}")
+            db.update_upload_status(video_id, "failed_summarizing")
+            raise ex
             
         db.update_upload_status(video_id, "indexed")
         
     except Exception as e:
         print(f"[Queue Worker Error] Failed to complete background indexing pipeline for video {video_id}: {e}")
-        db.update_upload_status(video_id, "failed")
+        # Only overwrite to general 'failed' if not already set to a granular stage-specific failure status
+        current = db.get_video(video_id, owner_email)
+        if current and not current.get("upload_status", "").startswith("failed_"):
+            db.update_upload_status(video_id, "failed")
 
 def queue_worker():
     while True:

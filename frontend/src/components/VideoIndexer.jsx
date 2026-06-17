@@ -2,30 +2,74 @@ import { useState, useEffect } from 'react';
 import { apiUrl } from '../lib/api';
 
 // New IngestTaskRow component for smooth, self-incrementing progress animation
+const STAGES = [
+  { key: 'uploading', label: 'Upload' },
+  { key: 'indexing', label: 'Index' },
+  { key: 'extracting', label: 'Extract' },
+  { key: 'summarizing', label: 'Summarize' },
+  { key: 'done', label: 'Done' }
+];
+
+function getStage(status, statusText) {
+  const s = (status || '').toLowerCase();
+  const txt = (statusText || '').toLowerCase();
+
+  if (s === 'failed' || s.startsWith('failed_') || txt.includes('failed:')) {
+    return 'failed';
+  }
+  if (s === 'uploading' || txt.includes('uploading') || txt.includes('preparing upload')) {
+    return 'uploading';
+  }
+  if (txt.includes('extracting') || txt.includes('transcribing') || txt.includes('extract') || txt.includes('transcribe')) {
+    return 'extracting';
+  }
+  if (s === 'summarizing' || txt.includes('summarizing') || txt.includes('summary')) {
+    return 'summarizing';
+  }
+  if (s === 'indexed' || txt === 'indexed' || txt === 'done') {
+    return 'done';
+  }
+  return 'indexing';
+}
+
+function getFailedStage(status, statusText) {
+  const s = (status || '').toLowerCase();
+  const txt = (statusText || '').toLowerCase();
+  if (s === 'failed_uploading' || txt.includes('upload')) return 0;
+  if (s === 'failed_indexing' || txt.includes('index')) return 1;
+  if (s === 'failed_extracting' || txt.includes('extract') || txt.includes('transcribe')) return 2;
+  if (s === 'failed_summarizing' || txt.includes('summariz') || txt.includes('summary')) return 3;
+  return 1; // Default fallback to indexing
+}
+
+// IngestTaskRow component for smooth progress and horizontal stepper
 function IngestTaskRow({ t, onDeleteVideo }) {
   const isUploading = t.status === 'uploading';
   const isQueued = t.status === 'queued';
-  const isFailed = t.status === 'failed';
-  
-  const [localProgress, setLocalProgress] = useState(t.progress);
+  const isFailed = t.status === 'failed' || (t.status && t.status.startsWith('failed_'));
+  const isActive = !isUploading && !isQueued && !isFailed;
 
-  useEffect(() => {
+  const [prevProps, setPrevProps] = useState({ progress: t.progress, status: t.status, statusText: t.statusText });
+  const [localProgress, setLocalProgress] = useState(isFailed ? 0 : t.progress);
+
+  if (t.progress !== prevProps.progress || t.status !== prevProps.status || t.statusText !== prevProps.statusText) {
+    setPrevProps({ progress: t.progress, status: t.status, statusText: t.statusText });
     if (isUploading) {
       setLocalProgress(t.progress);
-      return;
-    }
-
-    if (isFailed) {
+    } else if (isFailed) {
       setLocalProgress(0);
+    } else {
+      setLocalProgress(Math.max(localProgress, t.progress));
+    }
+  }
+
+  useEffect(() => {
+    if (isUploading || isFailed) {
       return;
     }
 
-    // Set local progress to at least the backend reported progress
-    setLocalProgress(prev => Math.max(prev, t.progress));
-
-    // Determine target cap and speed of increment for the current background status
     let targetCap = 0;
-    let increment = 0.1; // progress percentage to add per 100ms tick
+    let increment = 0.1;
 
     if (isQueued) {
       targetCap = 12;
@@ -52,22 +96,59 @@ function IngestTaskRow({ t, onDeleteVideo }) {
     }, 100);
 
     return () => clearInterval(interval);
-  }, [t.progress, t.statusText, isUploading, isQueued, isFailed]);
+  }, [t.status, t.statusText, isUploading, isFailed, isQueued]);
 
   const displayStatusText = t.statusText && t.statusText.includes('%') && localProgress > 0
     ? t.statusText.replace(/\d+%/, `${Math.round(localProgress)}%`)
     : t.statusText;
 
+  // Stepper calculations
+  const currentStageKey = getStage(t.status, t.statusText);
+  const isTaskFailed = currentStageKey === 'failed';
+  
+  let activeIdx = -1;
+  let failedIdx = -1;
+  
+  if (isTaskFailed) {
+    failedIdx = getFailedStage(t.status, t.statusText);
+  } else {
+    activeIdx = STAGES.findIndex(s => s.key === currentStageKey);
+    if (activeIdx === -1) activeIdx = 1; // Default fallback to Indexing
+  }
+
+  // maxStageIdx logic to prevent backwards progression jumps
+  const [prevId, setPrevId] = useState(t.id);
+  const [maxStageIdx, setMaxStageIdx] = useState(activeIdx);
+
+  if (t.id !== prevId) {
+    setPrevId(t.id);
+    setMaxStageIdx(activeIdx);
+  } else if (!isTaskFailed && activeIdx > maxStageIdx) {
+    setMaxStageIdx(activeIdx);
+  }
+
+  const effectiveActiveIdx = isTaskFailed ? activeIdx : Math.max(activeIdx, maxStageIdx);
+
+  const lineProgressWidth = isTaskFailed
+    ? `${failedIdx * 25}%`
+    : (currentStageKey === 'done' || effectiveActiveIdx === 4)
+      ? '100%'
+      : `${effectiveActiveIdx * 25}%`;
+
   return (
-    <div className="flex flex-col gap-1 bg-white/5 p-2 rounded-lg border border-white/5 animate-fade-in">
+    <div className="flex flex-col gap-2 bg-white/5 p-3.5 rounded-lg border border-white/5 animate-fade-in">
       <div className="flex items-center justify-between text-[10px] gap-2">
         <span className="text-gray-300 font-semibold truncate max-w-[170px]" title={t.name}>
           {t.name}
         </span>
         <div className="flex items-center gap-1.5 font-mono text-[9px]">
-          <span className={
-            isFailed ? 'text-red-400' : isQueued ? 'text-blue-400' : 'text-cyan-400'
-          }>
+          {isActive && (
+            <span className="relative flex h-1.5 w-1.5 shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-60" />
+              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-cyan-400" />
+            </span>
+          )}
+          <span className={isFailed ? 'text-red-400' : isQueued ? 'text-blue-400' : 'text-cyan-400'}>
             {displayStatusText}
           </span>
           {isFailed && onDeleteVideo && (
@@ -84,10 +165,79 @@ function IngestTaskRow({ t, onDeleteVideo }) {
           )}
         </div>
       </div>
+
+      {/* Stepper Indicator */}
+      <div className="relative w-full flex items-center justify-between mt-2 mb-1.5 px-4 select-none">
+        {/* Background Line */}
+        <div className="absolute left-[24px] right-[24px] top-[7px] h-[1.5px] stepper-line-future bg-gray-800 z-0" />
+        {/* Active Line */}
+        <div 
+          className="absolute left-[24px] top-[7px] h-[1.5px] bg-cyan-400 z-0 transition-[width] duration-500 ease-out" 
+          style={{ width: `calc(${lineProgressWidth} * (100% - 48px) / 100)` }}
+        />
+
+        {STAGES.map((stage, idx) => {
+          let nodeState;
+          if (isTaskFailed) {
+            if (idx < failedIdx) nodeState = 'completed';
+            else if (idx === failedIdx) nodeState = 'failed';
+            else nodeState = 'future';
+          } else {
+            if (currentStageKey === 'done' || effectiveActiveIdx === 4) {
+              nodeState = 'completed';
+            } else {
+              if (idx < effectiveActiveIdx) nodeState = 'completed';
+              else if (idx === effectiveActiveIdx) nodeState = 'active';
+              else nodeState = 'future';
+            }
+          }
+
+          let nodeClass;
+          let labelClass;
+          let nodeContent = null;
+
+          if (nodeState === 'completed') {
+            nodeClass = 'bg-cyan-400 text-white';
+            labelClass = 'stepper-label-completed text-cyan-400/80 font-medium';
+            nodeContent = (
+              <svg className="w-2.5 h-2.5 stroke-white stroke-[3px]" fill="none" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            );
+          } else if (nodeState === 'active') {
+            nodeClass = 'bg-gradient-to-r from-indigo-500 to-cyan-400 animate-stepper-pulse';
+            labelClass = 'stepper-label-active text-cyan-400 font-semibold';
+            nodeContent = <div className="w-1.5 h-1.5 rounded-full bg-white" />;
+          } else if (nodeState === 'failed') {
+            nodeClass = 'bg-red-500 text-white';
+            labelClass = 'text-red-400 font-semibold';
+            nodeContent = (
+              <svg className="w-2 h-2 stroke-white stroke-[3px]" fill="none" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            );
+          } else {
+            nodeClass = 'stepper-node-future border border-gray-700 bg-gray-950 text-gray-500';
+            labelClass = 'stepper-label-future text-gray-500';
+          }
+
+          return (
+            <div key={stage.key} className="flex flex-col items-center relative z-10 w-12 shrink-0">
+              <div className={`w-4 h-4 rounded-full flex items-center justify-center transition-all duration-300 ${nodeClass}`}>
+                {nodeContent}
+              </div>
+              <span className={`text-[8.5px] mt-1 text-center truncate w-full select-none ${labelClass}`}>
+                {stage.label}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
       {(isUploading || localProgress > 0) && (
-        <div className="w-full bg-gray-900 rounded-full h-1 overflow-hidden border border-white/5">
+        <div className="w-full bg-gray-900/80 rounded-full h-1.5 overflow-hidden border border-white/5 mt-0.5">
           <div
-            className="bg-cyan-400 h-1 rounded-full transition-all duration-100 ease-out"
+            className="progress-shimmer relative h-full overflow-hidden rounded-full bg-gradient-to-r from-indigo-500 via-cyan-400 to-cyan-300 shadow-[0_0_10px_rgba(34,211,238,0.45)] transition-[width] duration-300 ease-out"
             style={{ width: `${localProgress}%` }}
           />
         </div>
@@ -103,9 +253,9 @@ export default function VideoIndexer({
   showSuccess,
   showError,
   videos = [],
-  onDeleteVideo
+  onDeleteVideo,
+  pendingAutoSelectId = null
 }) {
-  const [videoPath, setVideoPath] = useState('');
   const [dragActive, setDragActive] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [selectedPlaylistId, setSelectedPlaylistId] = useState('');
@@ -252,7 +402,6 @@ export default function VideoIndexer({
 
     const filesToQueue = [...selectedFiles];
     setSelectedFiles([]);
-    setVideoPath('');
 
     filesToQueue.forEach(file => {
       runIndexing(file, selectedPlaylistId);
@@ -277,10 +426,6 @@ export default function VideoIndexer({
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const files = Array.from(e.dataTransfer.files);
       setSelectedFiles(prev => [...prev, ...files]);
-      setVideoPath(prev => {
-        const names = files.map(f => f.name);
-        return prev ? `${prev}, ${names.join(', ')}` : names.join(', ');
-      });
     }
   };
 
@@ -288,16 +433,12 @@ export default function VideoIndexer({
     if (e.target.files && e.target.files.length > 0) {
       const files = Array.from(e.target.files);
       setSelectedFiles(prev => [...prev, ...files]);
-      setVideoPath(prev => {
-        const names = files.map(f => f.name);
-        return prev ? `${prev}, ${names.join(', ')}` : names.join(', ');
-      });
     }
   };
 
-  // Get all processing/failed videos from database
+  // Get all processing/failed videos from database, but keep the pending auto-select one so the user can see it hit 'Done'
   const dbProcessingVideos = videos.filter(
-    (v) => v.upload_status !== 'indexed'
+    (v) => v.upload_status !== 'indexed' || v.id === pendingAutoSelectId
   );
 
   // Get local tasks that are not yet represented in the database list
@@ -309,11 +450,13 @@ export default function VideoIndexer({
   // Map db videos to the same task structure for rendering in oldest-first order (FIFO)
   const displayTasks = [
     ...[...dbProcessingVideos].reverse().map((v) => {
-      const isFailed = v.upload_status === 'failed';
+      const isFailed = v.upload_status === 'failed' || (v.upload_status && v.upload_status.startsWith('failed_'));
       const isQueued = v.upload_status === 'queued';
       
       let progress = 0;
-      if (v.upload_status && v.upload_status.includes('%')) {
+      if (v.upload_status === 'indexed') {
+        progress = 100;
+      } else if (v.upload_status && v.upload_status.includes('%')) {
         const match = v.upload_status.match(/(\d+)%/);
         if (match) {
           progress = parseInt(match[1], 10);
@@ -323,9 +466,14 @@ export default function VideoIndexer({
       }
 
       let statusText = 'Processing...';
-      if (isFailed) statusText = 'Failed';
+      if (isFailed) {
+        statusText = v.upload_status.startsWith('failed_')
+          ? 'Failed: ' + v.upload_status.substring(7)
+          : 'Failed';
+      }
       else if (isQueued) statusText = 'Queued';
       else if (v.upload_status === 'indexing') statusText = 'Indexing...';
+      else if (v.upload_status === 'indexed') statusText = 'Done';
       else if (v.upload_status) statusText = v.upload_status;
 
       return {
@@ -418,7 +566,7 @@ export default function VideoIndexer({
               </span>
               <button
                 type="button"
-                onClick={() => { setSelectedFiles([]); setVideoPath(''); }}
+                onClick={() => { setSelectedFiles([]); }}
                 className="text-[10px] text-gray-500 hover:text-red-400 transition-colors cursor-pointer"
               >
                 Clear All
@@ -435,7 +583,6 @@ export default function VideoIndexer({
                     onClick={() => {
                       const updated = selectedFiles.filter((_, i) => i !== idx);
                       setSelectedFiles(updated);
-                      setVideoPath(updated.map(f => f.name).join(', '));
                     }}
                     className="text-gray-500 hover:text-white transition-colors cursor-pointer text-xs px-1"
                     title="Remove file"

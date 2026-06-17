@@ -25,7 +25,11 @@ const catalogSchema = new mongoose.Schema({
   uploadStatus: {
     type: String,
     enum: {
-      values: ['pending', 'uploaded', 'indexing', 'indexed', 'failed'],
+      values: [
+        'pending', 'uploaded', 'indexing', 'indexed', 'failed',
+        'Extracting Audio (15%)', 'Transcribing Audio (45%)', 'Summarizing',
+        'failed_uploading', 'failed_extracting', 'failed_indexing', 'failed_summarizing'
+      ],
       message: '{VALUE} is not a valid upload status'
     },
     default: 'pending'

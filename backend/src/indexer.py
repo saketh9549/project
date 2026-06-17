@@ -339,19 +339,32 @@ def index_video(video_path: str, language: str = None, owner_email: str = "", gr
     
     # 1. Initialize database collections
     db.init_db()
-    db.update_upload_status(video_id, "Extracting Audio (15%)")
+    audio_path = ""
     
-    # 2. Try to get video duration using ffprobe
-    duration = get_video_duration(abs_path)
-    
-    # 3. Extract audio
-    audio_path = extract_audio(abs_path)
-    
+    try:
+        db.update_upload_status(video_id, "Extracting Audio (15%)")
+        # 2. Try to get video duration using ffprobe
+        duration = get_video_duration(abs_path)
+        # 3. Extract audio
+        audio_path = extract_audio(abs_path)
+    except Exception as e:
+        db.update_upload_status(video_id, "failed_extracting")
+        raise e
+        
     try:
         # 4. Transcribe audio
         db.update_upload_status(video_id, "Transcribing Audio (45%)")
         transcription_result = transcribe_audio(audio_path, language=language)
+    except Exception as e:
+        db.update_upload_status(video_id, "failed_extracting")
+        if audio_path and os.path.exists(audio_path):
+            try:
+                os.remove(audio_path)
+            except Exception:
+                pass
+        raise e
         
+    try:
         # 5. Extract timed segments
         segments = extract_segments(transcription_result)
         
@@ -387,10 +400,12 @@ def index_video(video_path: str, language: str = None, owner_email: str = "", gr
         
         print(f"[Indexer] Successfully indexed {len(blocks)} blocks for video {file_name} in MongoDB!")
         return video_id, blocks
-        
+    except Exception as e:
+        db.update_upload_status(video_id, "failed_indexing")
+        raise e
     finally:
         # Clean up temporary audio file to preserve disk space
-        if os.path.exists(audio_path):
+        if audio_path and os.path.exists(audio_path):
             try:
                 os.remove(audio_path)
                 print(f"[Indexer] Cleaned up temporary audio file: {os.path.basename(audio_path)}")

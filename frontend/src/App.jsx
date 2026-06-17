@@ -151,7 +151,7 @@ export default function App() {
   // Polling for processing/indexing videos
   useEffect(() => {
     const hasProcessingVideos = videos.some(
-      (v) => v.upload_status !== 'indexed' && v.upload_status !== 'failed'
+      (v) => v.upload_status !== 'indexed' && v.upload_status !== 'failed' && !v.upload_status.startsWith('failed_')
     );
 
     if (!hasProcessingVideos) return;
@@ -171,11 +171,13 @@ export default function App() {
 
     const matchedVideo = videos.find((v) => v.id === pendingId);
     if (matchedVideo && matchedVideo.upload_status === 'indexed') {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      handleSelectVideo(matchedVideo);
-      setPendingAutoSelectId(null);
-      localStorage.removeItem('summarix_pending_select');
-      showSuccess(`Video "${matchedVideo.file_name}" has finished indexing and is ready!`);
+      const timer = setTimeout(() => {
+        handleSelectVideo(matchedVideo);
+        setPendingAutoSelectId(null);
+        localStorage.removeItem('summarix_pending_select');
+        showSuccess(`Video "${matchedVideo.file_name}" has finished indexing and is ready!`);
+      }, 1000);
+      return () => clearTimeout(timer);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videos, pendingAutoSelectId]);
@@ -467,6 +469,7 @@ export default function App() {
                     indexingLoading={indexingLoading}
                     playlists={playlists}
                     fetchPlaylists={fetchPlaylists}
+                    pendingAutoSelectId={pendingAutoSelectId}
                     onIndexStart={() => setIndexingLoading(true)}
                     onIndexSuccess={async (videoId) => {
                       setIndexingLoading(false);
