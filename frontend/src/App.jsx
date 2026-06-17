@@ -151,7 +151,7 @@ export default function App() {
   // Polling for processing/indexing videos
   useEffect(() => {
     const hasProcessingVideos = videos.some(
-      (v) => v.upload_status === 'queued' || v.upload_status === 'indexing'
+      (v) => v.upload_status !== 'indexed' && v.upload_status !== 'failed'
     );
 
     if (!hasProcessingVideos) return;
@@ -292,7 +292,7 @@ export default function App() {
   };
 
   return (
-    <div className="flex flex-col min-h-screen">
+    <div className="flex flex-col h-auto lg:h-screen lg:overflow-hidden">
       {/* Header */}
       <header className="border-b border-white/5 bg-gray-950/40 backdrop-blur-md px-8 py-3 flex items-center justify-between sticky top-0 z-50 gap-4">
         <div className="flex items-center gap-3 shrink-0">
@@ -426,7 +426,7 @@ export default function App() {
       </header>
 
       {/* Main Container */}
-      <div className="flex-1 flex flex-col p-6 overflow-hidden h-auto lg:h-[calc(100vh-130px)] w-full">
+      <div className="flex-grow flex-1 flex flex-col p-6 overflow-hidden min-h-0 w-full">
         {!currentUser ? (
           <AuthPage onAuthSuccess={(user) => setCurrentUser(user)} />
         ) : !selectedVideo ? (
