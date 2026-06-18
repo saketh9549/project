@@ -213,7 +213,7 @@ function IngestTaskRow({ t, onDeleteVideo }) {
                 </svg>
               );
             } else if (nodeState === 'active') {
-              nodeClass = 'bg-gradient-to-r from-indigo-500 to-cyan-400 animate-stepper-pulse';
+              nodeClass = 'bg-cyan-400 animate-stepper-pulse';
               labelClass = 'stepper-label-active text-cyan-400 font-semibold';
               nodeContent = <div className="w-1.5 h-1.5 rounded-full bg-white" />;
             } else if (nodeState === 'failed') {
@@ -246,7 +246,7 @@ function IngestTaskRow({ t, onDeleteVideo }) {
       {isCollapsed && (isUploading || localProgress > 0) && (
         <div className="w-full bg-gray-900/80 rounded-full h-1.5 overflow-hidden border border-white/5 mt-0.5">
           <div
-            className="progress-shimmer relative h-full overflow-hidden rounded-full bg-gradient-to-r from-indigo-500 via-cyan-400 to-cyan-300 shadow-[0_0_10px_rgba(34,211,238,0.45)] transition-[width] duration-300 ease-out"
+            className="progress-shimmer relative h-full overflow-hidden rounded-full bg-cyan-400 shadow-[0_0_6px_rgba(34,211,238,0.3)] transition-[width] duration-300 ease-out"
             style={{ width: `${localProgress}%` }}
           />
         </div>

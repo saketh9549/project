@@ -443,12 +443,12 @@ html.light select option.text-white {
 /* Custom Stepper Node Active Glow animation */
 @keyframes pulse-stepper-glow {
   0%, 100% {
-    box-shadow: 0 0 4px rgba(34, 211, 238, 0.4), 0 0 10px rgba(99, 102, 241, 0.2);
+    box-shadow: 0 0 4px rgba(34, 211, 238, 0.4);
     transform: scale(1);
   }
   50% {
-    box-shadow: 0 0 8px rgba(34, 211, 238, 0.8), 0 0 16px rgba(99, 102, 241, 0.5);
-    transform: scale(1.15);
+    box-shadow: 0 0 10px rgba(34, 211, 238, 0.8);
+    transform: scale(1.1);
   }
 }
 
