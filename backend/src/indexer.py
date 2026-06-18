@@ -348,7 +348,7 @@ def index_video(video_path: str, language: str = "en", owner_email: str = "", gr
         # 3. Extract audio
         audio_path = extract_audio(abs_path)
     except Exception as e:
-        db.update_upload_status(video_id, "failed_extracting")
+        db.update_upload_status(video_id, "failed_indexing")
         raise e
         
     try:
