@@ -20,6 +20,9 @@ function getStage(status, statusText) {
   if (s === 'uploading' || txt.includes('uploading') || txt.includes('preparing upload')) {
     return 'uploading';
   }
+  if (txt.includes('extracting audio') || txt.includes('extract audio')) {
+    return 'indexing';
+  }
   if (txt.includes('extracting') || txt.includes('transcribing') || txt.includes('extract') || txt.includes('transcribe')) {
     return 'extracting';
   }
@@ -37,7 +40,7 @@ function getFailedStage(status, statusText) {
   const txt = (statusText || '').toLowerCase();
   if (s === 'failed_uploading' || txt.includes('upload')) return 0;
   if (s === 'failed_indexing' || txt.includes('index')) return 1;
-  if (s === 'failed_extracting' || txt.includes('extract') || txt.includes('transcribe')) return 2;
+  if (s === 'failed_extracting' || txt.includes('transcribe') || txt.includes('transcribing')) return 2;
   if (s === 'failed_summarizing' || txt.includes('summariz') || txt.includes('summary')) return 3;
   return 1; // Default fallback to indexing
 }
@@ -496,7 +499,7 @@ export default function VideoIndexer({
   ];
 
   return (
-    <div className="flex flex-col gap-4 overflow-y-auto max-h-[calc(100vh-190px)] pr-1">
+    <div className="flex flex-col gap-4">
       {/* Indexing Action Form */}
       <form onSubmit={handleIndexVideo} className="flex flex-col gap-4">
         {/* Folder (Playlist) Selection */}

@@ -1,5 +1,46 @@
 import { useState, useEffect } from 'react';
 
+const parseTranscript = (rawText) => {
+  if (!rawText) return [];
+  return rawText.split('\n').map((line, idx) => {
+    const trimmed = line.trim();
+    if (!trimmed) return null;
+
+    // Look for [start -> end] text
+    const match = trimmed.match(/^\[([^\]]+)\]\s*(.*)$/);
+    if (match) {
+      const timePart = match[1];
+      const text = match[2];
+      const times = timePart.split('->').map(t => t.trim());
+      if (times.length === 2) {
+        const startStr = times[0];
+        const endStr = times[1];
+
+        // Parse startStr to seconds
+        const parts = startStr.split(':').map(Number);
+        let seconds = 0;
+        if (parts.length === 3) {
+          seconds = parts[0] * 3600 + parts[1] * 60 + parts[2];
+        } else if (parts.length === 2) {
+          seconds = parts[0] * 60 + parts[1];
+        }
+
+        return {
+          id: idx,
+          startStr,
+          endStr,
+          seconds,
+          text
+        };
+      }
+    }
+    return {
+      id: idx,
+      text: trimmed
+    };
+  }).filter(Boolean);
+};
+
 export default function SummaryConsole({
   selectedVideo,
   selectedChapter,
@@ -12,25 +53,14 @@ export default function SummaryConsole({
   currentTime = 0
 }) {
   const [activeTab, setActiveTab] = useState('transcript');
-  const [activeLineId, setActiveLineId] = useState(null);
 
-  // Monitor and update active line ID only when it changes to prevent scroll fighting
-  useEffect(() => {
-    if (selectedVideo?.raw_transcript) {
-      const lines = parseTranscript(selectedVideo.raw_transcript);
-      const currentActiveLine = lines.find((line, idx) => {
-        if (line.seconds === undefined) return false;
-        const nextLineWithSeconds = lines.slice(idx + 1).find(l => l.seconds !== undefined);
-        return currentTime >= line.seconds && (!nextLineWithSeconds || currentTime < nextLineWithSeconds.seconds);
-      });
-      const currentActiveId = currentActiveLine ? currentActiveLine.id : null;
-      if (currentActiveId !== activeLineId) {
-        setActiveLineId(currentActiveId);
-      }
-    } else {
-      setActiveLineId(null);
-    }
-  }, [currentTime, selectedVideo, activeLineId]);
+  const lines = selectedVideo?.raw_transcript ? parseTranscript(selectedVideo.raw_transcript) : [];
+  const currentActiveLine = lines.find((line, idx) => {
+    if (line.seconds === undefined) return false;
+    const nextLineWithSeconds = lines.slice(idx + 1).find(l => l.seconds !== undefined);
+    return currentTime >= line.seconds && (!nextLineWithSeconds || currentTime < nextLineWithSeconds.seconds);
+  });
+  const activeLineId = currentActiveLine ? currentActiveLine.id : null;
 
   // Automatically scroll active transcript line into view when it changes
   useEffect(() => {
@@ -196,46 +226,6 @@ export default function SummaryConsole({
     });
   };
 
-  const parseTranscript = (rawText) => {
-    if (!rawText) return [];
-    return rawText.split('\n').map((line, idx) => {
-      const trimmed = line.trim();
-      if (!trimmed) return null;
-
-      // Look for [start -> end] text
-      const match = trimmed.match(/^\[([^\]]+)\]\s*(.*)$/);
-      if (match) {
-        const timePart = match[1];
-        const text = match[2];
-        const times = timePart.split('->').map(t => t.trim());
-        if (times.length === 2) {
-          const startStr = times[0];
-          const endStr = times[1];
-
-          // Parse startStr to seconds
-          const parts = startStr.split(':').map(Number);
-          let seconds = 0;
-          if (parts.length === 3) {
-            seconds = parts[0] * 3600 + parts[1] * 60 + parts[2];
-          } else if (parts.length === 2) {
-            seconds = parts[0] * 60 + parts[1];
-          }
-
-          return {
-            id: idx,
-            startStr,
-            endStr,
-            seconds,
-            text
-          };
-        }
-      }
-      return {
-        id: idx,
-        text: trimmed
-      };
-    }).filter(Boolean);
-  };
 
   return (
     <div className="flex-grow flex flex-col min-h-0">
@@ -318,7 +308,7 @@ export default function SummaryConsole({
           <div className="flex-grow flex flex-col min-h-0">
             {selectedVideo?.raw_transcript ? (
               <div className="text-left select-text pb-4 flex flex-col gap-2">
-                {parseTranscript(selectedVideo.raw_transcript).map((line) => {
+                {lines.map((line) => {
                   if (line.startStr) {
                     const isHighlighted = selectedChapter &&
                                           line.seconds >= selectedChapter.start_time &&

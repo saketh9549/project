@@ -97,7 +97,6 @@ export default function TimelineExplorer({
   onSelectChapter,
   onUploadNew,
   isAdmin,
-  currentTime,
   onTimeUpdate
 }) {
   const [searchQuery, setSearchQuery] = useState('');
