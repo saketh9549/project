@@ -614,7 +614,7 @@ class IndexRequest(BaseModel):
     grid_fs_id: Optional[str] = ""
     video_path: Optional[str] = ""
     file_name: Optional[str] = ""
-    language: Optional[str] = None
+    language: Optional[str] = "en"
     playlist_id: Optional[str] = None
     
 @app.post("/api/index")
@@ -628,7 +628,7 @@ async def index_endpoint(payload: IndexRequest, owner_email: str = Query(...), r
     grid_fs_id = payload.grid_fs_id.strip() if payload.grid_fs_id else ""
     video_path = payload.video_path.strip() if payload.video_path else ""
     file_name = payload.file_name.strip() if payload.file_name else ""
-    language = payload.language.strip() if (payload.language and payload.language.strip()) else None
+    language = payload.language.strip() if (payload.language and payload.language.strip()) else "en"
     playlist_id = payload.playlist_id.strip() if (payload.playlist_id and payload.playlist_id.strip()) else None
     owner_email = owner_email.strip()
     

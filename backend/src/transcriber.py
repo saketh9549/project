@@ -9,7 +9,7 @@ class WhisperInitializationError(Exception):
 def transcribe_audio(
     audio_path: str, 
     model_name: str = "base", 
-    language: str = None
+    language: str = "en"
 ) -> Dict[str, Any]:
     """Transcribes local audio using a local native faster-whisper WhisperModel on CPU.
     
