@@ -23,9 +23,22 @@ export default function App() {
   const [selectedVideo, setSelectedVideo] = useState(null);
   const [chapters, setChapters] = useState([]);
   const [selectedChapter, setSelectedChapter] = useState(null);
+  const [currentTime, setCurrentTime] = useState(0);
   const [pendingAutoSelectId, setPendingAutoSelectId] = useState(() => {
     return localStorage.getItem('summarix_pending_select') || null;
   });
+
+  const handleTimeUpdate = (time) => {
+    setCurrentTime(time);
+    if (chapters && chapters.length > 0) {
+      const activeChapter = chapters.find(
+        (c) => time >= c.start_time && time < c.end_time
+      );
+      if (activeChapter && (!selectedChapter || selectedChapter.id !== activeChapter.id)) {
+        setSelectedChapter(activeChapter);
+      }
+    }
+  };
 
   // Appearance / Theme states
   const [theme, setTheme] = useState(() => {
@@ -83,6 +96,7 @@ export default function App() {
   const handleSelectVideo = async (video) => {
     setSelectedVideo(video);
     setSelectedChapter(null);
+    setCurrentTime(0);
     setOverallSummary(null);
     showSuccess(null);
     showError(null);
@@ -498,12 +512,15 @@ export default function App() {
                 chapters={chapters}
                 selectedChapter={selectedChapter}
                 onSelectChapter={setSelectedChapter}
+                currentTime={currentTime}
+                onTimeUpdate={handleTimeUpdate}
                 isAdmin={currentUser.role === 'admin'}
                 onUploadNew={() => {
                   setSelectedVideo(null);
                   setChapters([]);
                   setSelectedChapter(null);
                   setOverallSummary(null);
+                  setCurrentTime(0);
                 }}
               />
             </main>
@@ -534,6 +551,7 @@ export default function App() {
                 overallSummary={overallSummary}
                 overallSummaryLoading={overallSummaryLoading}
                 onGenerateOverallSummary={handleGenerateOverallSummary}
+                currentTime={currentTime}
               />
             </aside>
 
