@@ -302,7 +302,7 @@ def build_transcript_string(segments: List[Dict[str, Any]]) -> str:
         lines.append(f"[{start_str} -> {end_str}] {text}")
     return "\n".join(lines)
 
-def index_video(video_path: str, language: str = None, owner_email: str = "", grid_fs_id: str = None, original_filename: str = None, s3_key: str = None, s3_bucket: str = None, playlist_id: str = None, upload_status: str = "indexed") -> Tuple[str, List[Dict[str, Any]]]:
+def index_video(video_path: str, language: str = "en", owner_email: str = "", grid_fs_id: str = None, original_filename: str = None, s3_key: str = None, s3_bucket: str = None, playlist_id: str = None, upload_status: str = "indexed") -> Tuple[str, List[Dict[str, Any]]]:
     """Runs the full pipeline to extract, transcribe, chunk semantically, and index a video file."""
     abs_path = os.path.abspath(video_path)
     if not os.path.exists(abs_path):

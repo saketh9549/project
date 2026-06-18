@@ -47,8 +47,7 @@ function IngestTaskRow({ t, onDeleteVideo }) {
   const isUploading = t.status === 'uploading';
   const isQueued = t.status === 'queued';
   const isFailed = t.status === 'failed' || (t.status && t.status.startsWith('failed_'));
-  const isActive = !isUploading && !isQueued && !isFailed;
-
+  const [isCollapsed, setIsCollapsed] = useState(false);
   const [prevProps, setPrevProps] = useState({ progress: t.progress, status: t.status, statusText: t.statusText });
   const [localProgress, setLocalProgress] = useState(isFailed ? 0 : t.progress);
 
@@ -98,9 +97,7 @@ function IngestTaskRow({ t, onDeleteVideo }) {
     return () => clearInterval(interval);
   }, [t.status, t.statusText, isUploading, isFailed, isQueued]);
 
-  const displayStatusText = t.statusText && t.statusText.includes('%') && localProgress > 0
-    ? t.statusText.replace(/\d+%/, `${Math.round(localProgress)}%`)
-    : t.statusText;
+
 
   // Stepper calculations
   const currentStageKey = getStage(t.status, t.statusText);
@@ -123,6 +120,7 @@ function IngestTaskRow({ t, onDeleteVideo }) {
   if (t.id !== prevId) {
     setPrevId(t.id);
     setMaxStageIdx(activeIdx);
+    setIsCollapsed(false);
   } else if (!isTaskFailed && activeIdx > maxStageIdx) {
     setMaxStageIdx(activeIdx);
   }
@@ -138,19 +136,28 @@ function IngestTaskRow({ t, onDeleteVideo }) {
   return (
     <div className="flex flex-col gap-2 bg-white/5 p-3.5 rounded-lg border border-white/5 animate-fade-in">
       <div className="flex items-center justify-between text-[10px] gap-2">
-        <span className="text-gray-300 font-semibold truncate max-w-[170px]" title={t.name}>
-          {t.name}
-        </span>
-        <div className="flex items-center gap-1.5 font-mono text-[9px]">
-          {isActive && (
-            <span className="relative flex h-1.5 w-1.5 shrink-0">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-60" />
-              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-cyan-400" />
-            </span>
-          )}
-          <span className={isFailed ? 'text-red-400' : isQueued ? 'text-blue-400' : 'text-cyan-400'}>
-            {displayStatusText}
+        <div className="flex items-center gap-1.5 min-w-0">
+          <button
+            type="button"
+            onClick={() => setIsCollapsed(!isCollapsed)}
+            className="text-gray-400 hover:text-white transition-colors cursor-pointer p-0.5 shrink-0 flex items-center justify-center rounded hover:bg-white/5"
+            title={isCollapsed ? "View Progress Details" : "Collapse Progress Details"}
+          >
+            {isCollapsed ? (
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7" />
+              </svg>
+            ) : (
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 15l7-7 7 7" />
+              </svg>
+            )}
+          </button>
+          <span className="text-gray-300 font-semibold truncate max-w-[280px]" title={t.name}>
+            {t.name}
           </span>
+        </div>
+        <div className="flex items-center gap-1.5 font-mono text-[9px]">
           {isFailed && onDeleteVideo && (
             <button
               type="button"
@@ -167,74 +174,76 @@ function IngestTaskRow({ t, onDeleteVideo }) {
       </div>
 
       {/* Stepper Indicator */}
-      <div className="relative w-full flex items-center justify-between mt-2 mb-1.5 px-4 select-none">
-        {/* Background Line */}
-        <div className="absolute left-[24px] right-[24px] top-[7px] h-[1.5px] stepper-line-future bg-gray-800 z-0" />
-        {/* Active Line */}
-        <div 
-          className="absolute left-[24px] top-[7px] h-[1.5px] bg-cyan-400 z-0 transition-[width] duration-500 ease-out" 
-          style={{ width: `calc(${lineProgressWidth} * (100% - 48px) / 100)` }}
-        />
+      {!isCollapsed && (
+        <div className="relative w-full flex items-center justify-between mt-2 mb-1.5 px-4 select-none">
+          {/* Background Line */}
+          <div className="absolute left-[24px] right-[24px] top-[7px] h-[1.5px] stepper-line-future bg-gray-800 z-0" />
+          {/* Active Line */}
+          <div 
+            className="absolute left-[24px] top-[7px] h-[1.5px] bg-cyan-400 z-0 transition-[width] duration-500 ease-out" 
+            style={{ width: `calc(${lineProgressWidth} * (100% - 48px) / 100)` }}
+          />
 
-        {STAGES.map((stage, idx) => {
-          let nodeState;
-          if (isTaskFailed) {
-            if (idx < failedIdx) nodeState = 'completed';
-            else if (idx === failedIdx) nodeState = 'failed';
-            else nodeState = 'future';
-          } else {
-            if (currentStageKey === 'done' || effectiveActiveIdx === 4) {
-              nodeState = 'completed';
-            } else {
-              if (idx < effectiveActiveIdx) nodeState = 'completed';
-              else if (idx === effectiveActiveIdx) nodeState = 'active';
+          {STAGES.map((stage, idx) => {
+            let nodeState;
+            if (isTaskFailed) {
+              if (idx < failedIdx) nodeState = 'completed';
+              else if (idx === failedIdx) nodeState = 'failed';
               else nodeState = 'future';
+            } else {
+              if (currentStageKey === 'done' || effectiveActiveIdx === 4) {
+                nodeState = 'completed';
+              } else {
+                if (idx < effectiveActiveIdx) nodeState = 'completed';
+                else if (idx === effectiveActiveIdx) nodeState = 'active';
+                else nodeState = 'future';
+              }
             }
-          }
 
-          let nodeClass;
-          let labelClass;
-          let nodeContent = null;
+            let nodeClass;
+            let labelClass;
+            let nodeContent = null;
 
-          if (nodeState === 'completed') {
-            nodeClass = 'bg-cyan-400 text-white';
-            labelClass = 'stepper-label-completed text-cyan-400/80 font-medium';
-            nodeContent = (
-              <svg className="w-2.5 h-2.5 stroke-white stroke-[3px]" fill="none" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-              </svg>
-            );
-          } else if (nodeState === 'active') {
-            nodeClass = 'bg-gradient-to-r from-indigo-500 to-cyan-400 animate-stepper-pulse';
-            labelClass = 'stepper-label-active text-cyan-400 font-semibold';
-            nodeContent = <div className="w-1.5 h-1.5 rounded-full bg-white" />;
-          } else if (nodeState === 'failed') {
-            nodeClass = 'bg-red-500 text-white';
-            labelClass = 'text-red-400 font-semibold';
-            nodeContent = (
-              <svg className="w-2 h-2 stroke-white stroke-[3px]" fill="none" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            );
-          } else {
-            nodeClass = 'stepper-node-future border border-gray-700 bg-gray-950 text-gray-500';
-            labelClass = 'stepper-label-future text-gray-500';
-          }
+            if (nodeState === 'completed') {
+              nodeClass = 'bg-cyan-400 text-white';
+              labelClass = 'stepper-label-completed text-cyan-400/80 font-medium';
+              nodeContent = (
+                <svg className="w-2.5 h-2.5 stroke-white stroke-[3px]" fill="none" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              );
+            } else if (nodeState === 'active') {
+              nodeClass = 'bg-gradient-to-r from-indigo-500 to-cyan-400 animate-stepper-pulse';
+              labelClass = 'stepper-label-active text-cyan-400 font-semibold';
+              nodeContent = <div className="w-1.5 h-1.5 rounded-full bg-white" />;
+            } else if (nodeState === 'failed') {
+              nodeClass = 'bg-red-500 text-white';
+              labelClass = 'text-red-400 font-semibold';
+              nodeContent = (
+                <svg className="w-2 h-2 stroke-white stroke-[3px]" fill="none" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              );
+            } else {
+              nodeClass = 'stepper-node-future border border-gray-700 bg-gray-950 text-gray-500';
+              labelClass = 'stepper-label-future text-gray-500';
+            }
 
-          return (
-            <div key={stage.key} className="flex flex-col items-center relative z-10 w-12 shrink-0">
-              <div className={`w-4 h-4 rounded-full flex items-center justify-center transition-all duration-300 ${nodeClass}`}>
-                {nodeContent}
+            return (
+              <div key={stage.key} className="flex flex-col items-center relative z-10 w-12 shrink-0">
+                <div className={`w-4 h-4 rounded-full flex items-center justify-center transition-all duration-300 ${nodeClass}`}>
+                  {nodeContent}
+                </div>
+                <span className={`text-[8.5px] mt-1 text-center truncate w-full select-none ${labelClass}`}>
+                  {stage.label}
+                </span>
               </div>
-              <span className={`text-[8.5px] mt-1 text-center truncate w-full select-none ${labelClass}`}>
-                {stage.label}
-              </span>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
-      {(isUploading || localProgress > 0) && (
+      {isCollapsed && (isUploading || localProgress > 0) && (
         <div className="w-full bg-gray-900/80 rounded-full h-1.5 overflow-hidden border border-white/5 mt-0.5">
           <div
             className="progress-shimmer relative h-full overflow-hidden rounded-full bg-gradient-to-r from-indigo-500 via-cyan-400 to-cyan-300 shadow-[0_0_10px_rgba(34,211,238,0.45)] transition-[width] duration-300 ease-out"
