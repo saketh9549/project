@@ -8,9 +8,39 @@ export default function SummaryConsole({
   showSuccess,
   overallSummary,
   overallSummaryLoading,
-  onGenerateOverallSummary
+  onGenerateOverallSummary,
+  currentTime = 0
 }) {
   const [activeTab, setActiveTab] = useState('transcript');
+  const [activeLineId, setActiveLineId] = useState(null);
+
+  // Monitor and update active line ID only when it changes to prevent scroll fighting
+  useEffect(() => {
+    if (selectedVideo?.raw_transcript) {
+      const lines = parseTranscript(selectedVideo.raw_transcript);
+      const currentActiveLine = lines.find((line, idx) => {
+        if (line.seconds === undefined) return false;
+        const nextLineWithSeconds = lines.slice(idx + 1).find(l => l.seconds !== undefined);
+        return currentTime >= line.seconds && (!nextLineWithSeconds || currentTime < nextLineWithSeconds.seconds);
+      });
+      const currentActiveId = currentActiveLine ? currentActiveLine.id : null;
+      if (currentActiveId !== activeLineId) {
+        setActiveLineId(currentActiveId);
+      }
+    } else {
+      setActiveLineId(null);
+    }
+  }, [currentTime, selectedVideo, activeLineId]);
+
+  // Automatically scroll active transcript line into view when it changes
+  useEffect(() => {
+    if (activeTab === 'transcript' && activeLineId !== null) {
+      const activeElement = document.querySelector(`[data-line-id="${activeLineId}"]`);
+      if (activeElement) {
+        activeElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }
+  }, [activeLineId, activeTab]);
 
   // Automatically scroll first highlighted transcript line into view when selectedChapter changes
   useEffect(() => {
@@ -293,9 +323,11 @@ export default function SummaryConsole({
                     const isHighlighted = selectedChapter &&
                                           line.seconds >= selectedChapter.start_time &&
                                           line.seconds < selectedChapter.end_time;
+                    const isActiveLine = activeLineId === line.id;
                     return (
                       <div
                         key={line.id}
+                        data-line-id={line.id}
                         data-highlighted={isHighlighted}
                         onClick={() => {
                           const videoEl = document.getElementById('main-video-player');
@@ -313,20 +345,26 @@ export default function SummaryConsole({
                           }
                         }}
                         className={`flex items-start gap-3 p-2 rounded-xl transition-all cursor-pointer group border ${
-                          isHighlighted
+                          isActiveLine
+                            ? 'bg-cyan-500/10 border-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.15)]'
+                            : isHighlighted
                             ? 'bg-cyan-950/20 border-cyan-500/20 shadow-[0_0_10px_rgba(6,182,212,0.05)]'
                             : 'border-transparent hover:bg-white/5 hover:border-white/5'
                         }`}
                       >
                         <span className={`text-[10px] font-mono px-2 py-0.5 rounded-lg shrink-0 select-none mt-0.5 transition-all border ${
-                          isHighlighted
-                            ? 'text-black bg-cyan-400 border-cyan-400 font-bold shadow-[0_0_8px_rgba(6,182,212,0.4)]'
+                          isActiveLine
+                            ? 'text-black bg-cyan-400 border-cyan-400 font-bold shadow-[0_0_10px_rgba(6,182,212,0.5)] scale-[1.03]'
+                            : isHighlighted
+                            ? 'text-cyan-400 bg-cyan-950/40 border-cyan-500/10 font-bold'
                             : 'text-cyan-400 bg-cyan-950/40 border-cyan-500/10 font-bold'
                         }`}>
                           {line.startStr}
                         </span>
                         <span className={`text-xs leading-relaxed transition-colors ${
-                          isHighlighted
+                          isActiveLine
+                            ? 'text-white font-semibold'
+                            : isHighlighted
                             ? 'text-white font-medium'
                             : 'text-gray-300 group-hover:text-white'
                         }`}>

@@ -96,7 +96,9 @@ export default function TimelineExplorer({
   selectedChapter,
   onSelectChapter,
   onUploadNew,
-  isAdmin
+  isAdmin,
+  currentTime,
+  onTimeUpdate
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
@@ -106,6 +108,7 @@ export default function TimelineExplorer({
   const videoSrc = selectedVideo
     ? apiUrl(`/api/stream-local-video?video_id=${encodeURIComponent(selectedVideo.id)}`)
     : '';
+
 
   const handleSearch = async (e) => {
     const query = e.target.value;
@@ -216,6 +219,11 @@ export default function TimelineExplorer({
             controls
             crossOrigin="anonymous"
             className="w-full max-h-[300px] object-contain"
+            onTimeUpdate={(e) => {
+              if (onTimeUpdate) {
+                onTimeUpdate(e.target.currentTime);
+              }
+            }}
           />
         </div>
       )}
@@ -261,6 +269,7 @@ export default function TimelineExplorer({
               return (
                 <div
                   key={c.id}
+                  data-chapter-id-vertical={c.id}
                   onClick={() => {
                     onSelectChapter(c);
                     if (videoRef.current) {
@@ -318,6 +327,7 @@ export default function TimelineExplorer({
             return (
               <div
                 key={c.id}
+                data-chapter-id-horizontal={c.id}
                 onClick={() => {
                   onSelectChapter(c);
                   if (videoRef.current) {
