@@ -45,59 +45,19 @@ function getFailedStage(status, statusText) {
 // IngestTaskRow component for smooth progress and horizontal stepper
 function IngestTaskRow({ t, onDeleteVideo }) {
   const isUploading = t.status === 'uploading';
-  const isQueued = t.status === 'queued';
   const isFailed = t.status === 'failed' || (t.status && t.status.startsWith('failed_'));
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [prevProps, setPrevProps] = useState({ progress: t.progress, status: t.status, statusText: t.statusText });
-  const [localProgress, setLocalProgress] = useState(isFailed ? 0 : t.progress);
+  const [stageProgress, setStageProgress] = useState(isFailed ? 0 : (isUploading ? t.progress : 0));
 
   if (t.progress !== prevProps.progress || t.status !== prevProps.status || t.statusText !== prevProps.statusText) {
     setPrevProps({ progress: t.progress, status: t.status, statusText: t.statusText });
     if (isUploading) {
-      setLocalProgress(t.progress);
+      setStageProgress(t.progress);
     } else if (isFailed) {
-      setLocalProgress(0);
-    } else {
-      setLocalProgress(Math.max(localProgress, t.progress));
+      setStageProgress(0);
     }
   }
-
-  useEffect(() => {
-    if (isUploading || isFailed) {
-      return;
-    }
-
-    let targetCap = 0;
-    let increment = 0.1;
-
-    if (isQueued) {
-      targetCap = 12;
-      increment = 0.05;
-    } else if (t.status === 'indexing') {
-      targetCap = 15;
-      increment = 0.1;
-    } else if (t.statusText && t.statusText.includes('Extracting')) {
-      targetCap = 44;
-      increment = 0.15;
-    } else if (t.statusText && t.statusText.includes('Transcribing')) {
-      targetCap = 95;
-      increment = 0.08;
-    } else {
-      targetCap = 95;
-      increment = 0.1;
-    }
-
-    const interval = setInterval(() => {
-      setLocalProgress((prev) => {
-        if (prev >= targetCap) return prev;
-        return Math.min(targetCap, prev + increment);
-      });
-    }, 100);
-
-    return () => clearInterval(interval);
-  }, [t.status, t.statusText, isUploading, isFailed, isQueued]);
-
-
 
   // Stepper calculations
   const currentStageKey = getStage(t.status, t.statusText);
@@ -121,11 +81,50 @@ function IngestTaskRow({ t, onDeleteVideo }) {
     setPrevId(t.id);
     setMaxStageIdx(activeIdx);
     setIsCollapsed(false);
+    setStageProgress(0);
   } else if (!isTaskFailed && activeIdx > maxStageIdx) {
     setMaxStageIdx(activeIdx);
   }
 
   const effectiveActiveIdx = isTaskFailed ? activeIdx : Math.max(activeIdx, maxStageIdx);
+
+  const [prevActiveIdx, setPrevActiveIdx] = useState(effectiveActiveIdx);
+  if (effectiveActiveIdx !== prevActiveIdx) {
+    setPrevActiveIdx(effectiveActiveIdx);
+    setStageProgress(0);
+  }
+
+  useEffect(() => {
+    if (isUploading || isFailed || currentStageKey === 'done') {
+      return;
+    }
+
+    let targetCap = 90;
+    let increment = 0.5; // default for indexing
+
+    if (currentStageKey === 'extracting') {
+      increment = 0.2; // extracting (transcribing) is slower
+    } else if (currentStageKey === 'summarizing') {
+      increment = 0.8; // summarizing is faster
+    }
+
+    const interval = setInterval(() => {
+      setStageProgress((prev) => {
+        if (prev >= targetCap) return prev;
+        return Math.min(targetCap, prev + increment);
+      });
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, [currentStageKey, isUploading, isFailed]);
+
+
+
+  const effectiveStageProgress = (currentStageKey === 'done' || effectiveActiveIdx === 4) ? 100 : stageProgress;
+
+  const overallProgress = isTaskFailed
+    ? failedIdx * 25
+    : Math.min(100, (effectiveActiveIdx * 25) + (effectiveStageProgress * 0.25));
 
   const lineProgressWidth = isTaskFailed
     ? `${failedIdx * 25}%`
@@ -243,11 +242,11 @@ function IngestTaskRow({ t, onDeleteVideo }) {
         </div>
       )}
 
-      {isCollapsed && (isUploading || localProgress > 0) && (
+      {isCollapsed && (isUploading || overallProgress > 0) && (
         <div className="w-full bg-gray-900/80 rounded-full h-1.5 overflow-hidden border border-white/5 mt-0.5">
           <div
             className="progress-shimmer relative h-full overflow-hidden rounded-full bg-gradient-to-r from-indigo-500 via-cyan-400 to-cyan-300 shadow-[0_0_10px_rgba(34,211,238,0.45)] transition-[width] duration-300 ease-out"
-            style={{ width: `${localProgress}%` }}
+            style={{ width: `${overallProgress}%` }}
           />
         </div>
       )}
