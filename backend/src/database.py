@@ -368,9 +368,10 @@ def delete_video(video_id: str, owner_email: str = "", role: str = "user") -> bo
             
         actual_oid = video_doc["_id"]
         
-        # Cascade delete indices and summaries
+        # Cascade delete indices, summaries, and quizzes
         db.summaries.delete_many({"catalogId": actual_oid})
         db.indices.delete_many({"catalogId": actual_oid})
+        db.quizzes.delete_many({"catalogId": actual_oid})
         
         # Drop GridFS file if it exists
         grid_fs_file_id = video_doc.get("gridFsFileId")
@@ -693,6 +694,9 @@ def delete_playlist(playlist_id: str, owner_email: str = "", role: str = "user")
             # Delete each video using our existing delete_video helper
             delete_video(str(video["_id"]), owner_email=owner_email, role=role)
             
+        # Cascade delete playlist-level quizzes
+        db.quizzes.delete_many({"playlistId": actual_playlist_oid})
+
         # Delete the playlist itself
         db.playlists.delete_one({"_id": actual_playlist_oid})
         return True
@@ -759,5 +763,92 @@ def update_upload_status(video_id: str, status: str) -> bool:
     except Exception as e:
         print(f"[DB Error] Failed to update upload status: {e}")
         return False
+
+def save_quiz(title: str, created_by: str, catalog_id: str = None, playlist_id: str = None, questions: list = None) -> str:
+    """Inserts or updates a quiz linked to either a catalog_id (video) or playlist_id."""
+    db = get_db()
+    cat_oid = None
+    if catalog_id:
+        try:
+            cat_oid = ObjectId(catalog_id)
+        except InvalidId:
+            cat_oid = catalog_id
+
+    play_oid = None
+    if playlist_id:
+        try:
+            play_oid = ObjectId(playlist_id)
+        except InvalidId:
+            play_oid = playlist_id
+
+    query = {}
+    if cat_oid:
+        query["catalogId"] = cat_oid
+    elif play_oid:
+        query["playlistId"] = play_oid
+    else:
+        raise ValueError("Either catalog_id or playlist_id must be provided.")
+
+    quiz_doc = {
+        "title": title,
+        "catalogId": cat_oid,
+        "playlistId": play_oid,
+        "questions": questions or [],
+        "createdBy": created_by,
+        "updatedAt": datetime.now()
+    }
+
+    existing = db.quizzes.find_one(query)
+    if existing:
+        db.quizzes.update_one({"_id": existing["_id"]}, {"$set": quiz_doc})
+        return str(existing["_id"])
+    else:
+        quiz_doc["createdAt"] = datetime.now()
+        res = db.quizzes.insert_one(quiz_doc)
+        return str(res.inserted_id)
+
+def get_quiz_by_target(catalog_id: str = None, playlist_id: str = None) -> Optional[dict]:
+    """Retrieves a quiz by catalog_id (video) or playlist_id. Returns mapped dictionary or None."""
+    db = get_db()
+    query = {}
+    if catalog_id:
+        try:
+            query["catalogId"] = ObjectId(catalog_id)
+        except InvalidId:
+            query["catalogId"] = catalog_id
+    elif playlist_id:
+        try:
+            query["playlistId"] = ObjectId(playlist_id)
+        except InvalidId:
+            query["playlistId"] = playlist_id
+    else:
+        return None
+
+    doc = db.quizzes.find_one(query)
+    if doc:
+        doc["_id"] = str(doc["_id"])
+        if doc.get("catalogId"):
+            doc["catalogId"] = str(doc["catalogId"])
+        if doc.get("playlistId"):
+            doc["playlistId"] = str(doc["playlistId"])
+        return doc
+    return None
+
+def delete_quiz(quiz_id: str) -> bool:
+    """Deletes a quiz by its ID."""
+    db = get_db()
+    try:
+        try:
+            oid = ObjectId(quiz_id)
+            query = {"_id": oid}
+        except InvalidId:
+            query = {"_id": quiz_id}
+
+        res = db.quizzes.delete_one(query)
+        return res.deleted_count > 0
+    except Exception as e:
+        print(f"[DB Error] Failed to delete quiz: {e}")
+        return False
+
 
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { apiUrl } from '../lib/api';
 
 function ChapterThumbnail({ videoSrc, time }) {
@@ -102,7 +102,6 @@ export default function TimelineExplorer({
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
-  const [subtitleCues, setSubtitleCues] = useState([]);
   const [ccEnabled, setCcEnabled] = useState(true);
   const [vttUrl, setVttUrl] = useState('');
   const videoRef = useRef(null);
@@ -215,18 +214,19 @@ export default function TimelineExplorer({
     }).filter(Boolean);
   };
 
-  useEffect(() => {
+  const subtitleCues = useMemo(() => {
     if (selectedVideo?.raw_transcript) {
-      const parsed = parseTranscriptForSubtitles(selectedVideo.raw_transcript);
-      setSubtitleCues(parsed);
-    } else {
-      setSubtitleCues([]);
+      return parseTranscriptForSubtitles(selectedVideo.raw_transcript);
     }
+    return [];
   }, [selectedVideo]);
 
   useEffect(() => {
     if (subtitleCues.length === 0) {
-      setVttUrl('');
+      if (vttUrl !== '') {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setVttUrl('');
+      }
       return;
     }
 
@@ -252,7 +252,7 @@ export default function TimelineExplorer({
     return () => {
       URL.revokeObjectURL(url);
     };
-  }, [subtitleCues]);
+  }, [subtitleCues, vttUrl]);
 
   useEffect(() => {
     const video = videoRef.current;

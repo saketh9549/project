@@ -1180,6 +1180,127 @@ def update_video_playlist_endpoint(video_id: str, payload: UpdatePlaylistRequest
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to update playlist: {e}")
 
+class QuestionModel(BaseModel):
+    questionText: str
+    options: List[str]
+    correctAnswerIdx: int
+    explanation: Optional[str] = ""
+
+class QuizCreateRequest(BaseModel):
+    title: str
+    catalogId: Optional[str] = None
+    playlistId: Optional[str] = None
+    questions: List[QuestionModel]
+
+@app.post("/api/quizzes")
+def create_quiz_endpoint(
+    payload: QuizCreateRequest,
+    owner_email: str = Query(...),
+    role: str = Query("user")
+):
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden: Only admin can create or edit quizzes.")
+
+    if not payload.catalogId and not payload.playlistId:
+        raise HTTPException(status_code=400, detail="Either catalogId or playlistId must be provided.")
+
+    try:
+        questions_dict = [q.model_dump() for q in payload.questions]
+        quiz_id = db.save_quiz(
+            title=payload.title,
+            created_by=owner_email,
+            catalog_id=payload.catalogId,
+            playlist_id=payload.playlistId,
+            questions=questions_dict
+        )
+        return {"success": True, "quiz_id": quiz_id, "message": "Quiz saved successfully."}
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save quiz: {e}")
+
+@app.get("/api/quizzes")
+def get_quiz_endpoint(
+    video_id: Optional[str] = Query(None),
+    playlist_id: Optional[str] = Query(None)
+):
+    if not video_id and not playlist_id:
+        raise HTTPException(status_code=400, detail="Either video_id or playlist_id must be provided.")
+
+    try:
+        quiz = db.get_quiz_by_target(catalog_id=video_id, playlist_id=playlist_id)
+        if not quiz:
+            raise HTTPException(status_code=404, detail="Quiz not found for the specified video or playlist.")
+        return quiz
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch quiz: {e}")
+
+class AnswerSubmission(BaseModel):
+    questionIdx: int
+    selectedOptionIdx: int
+
+class QuizSubmitRequest(BaseModel):
+    quizId: str
+    answers: List[AnswerSubmission]
+
+@app.post("/api/quizzes/submit")
+def submit_quiz_endpoint(payload: QuizSubmitRequest):
+    from bson.objectid import ObjectId
+    from bson.errors import InvalidId
+    db_conn = db.get_db()
+    try:
+        try:
+            oid = ObjectId(payload.quizId)
+            quiz = db_conn.quizzes.find_one({"_id": oid})
+        except InvalidId:
+            quiz = db_conn.quizzes.find_one({"_id": payload.quizId})
+
+        if not quiz:
+            raise HTTPException(status_code=404, detail="Quiz not found")
+
+        questions = quiz.get("questions", [])
+        total_questions = len(questions)
+        if total_questions == 0:
+            return {
+                "score": 0.0,
+                "correctCount": 0,
+                "totalCount": 0,
+                "results": []
+            }
+
+        user_answers = {ans.questionIdx: ans.selectedOptionIdx for ans in payload.answers}
+        correct_count = 0
+        results = []
+
+        for idx, q in enumerate(questions):
+            selected = user_answers.get(idx, -1)
+            correct_idx = q.get("correctAnswerIdx")
+            is_correct = (selected == correct_idx)
+            if is_correct:
+                correct_count += 1
+
+            results.append({
+                "questionIdx": idx,
+                "questionText": q.get("questionText"),
+                "options": q.get("options", []),
+                "selectedOptionIdx": selected,
+                "correctAnswerIdx": correct_idx,
+                "isCorrect": is_correct,
+                "explanation": q.get("explanation", "")
+            })
+
+        score_percentage = round((correct_count / total_questions) * 100, 2)
+        return {
+            "score": score_percentage,
+            "correctCount": correct_count,
+            "totalCount": total_questions,
+            "results": results
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to submit quiz: {e}")
+
 
 if __name__ == "__main__":
     import uvicorn
