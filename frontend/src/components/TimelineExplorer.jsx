@@ -386,6 +386,16 @@ export default function TimelineExplorer({
                 onTimeUpdate(e.target.currentTime);
               }
             }}
+            onEnded={() => {
+              if (selectedVideo && selectedVideo.id) {
+                const watched = JSON.parse(localStorage.getItem('summarix_watched') || '[]');
+                if (!watched.includes(selectedVideo.id)) {
+                  watched.push(selectedVideo.id);
+                  localStorage.setItem('summarix_watched', JSON.stringify(watched));
+                  window.dispatchEvent(new Event('summarix_watched_change'));
+                }
+              }
+            }}
             onLoadedMetadata={handleLoadedMetadata}
             onPlay={handlePlay}
             onPause={handlePause}

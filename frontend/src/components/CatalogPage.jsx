@@ -1,0 +1,190 @@
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import VideosCatalog from './VideosCatalog';
+
+export default function CatalogPage({
+  videos,
+  playlists,
+  onDeleteVideo,
+  onDeletePlaylist,
+  onUpdateVideoPlaylist,
+  currentUser,
+  fetchPlaylists
+}) {
+  const navigate = useNavigate();
+  const isAdmin = currentUser?.role === 'admin';
+
+  // State to re-evaluate watched progress on change
+  const [watchedList, setWatchedList] = useState([]);
+  const [startedFolders, setStartedFolders] = useState([]);
+
+  useEffect(() => {
+    const loadWatched = () => {
+      const watched = JSON.parse(localStorage.getItem('summarix_watched') || '[]');
+      setWatchedList(watched);
+    };
+    const loadStarted = () => {
+      const started = JSON.parse(localStorage.getItem('summarix_started_folders') || '[]');
+      setStartedFolders(started);
+    };
+    loadWatched();
+    loadStarted();
+    window.addEventListener('summarix_watched_change', loadWatched);
+    window.addEventListener('summarix_started_folders_change', loadStarted);
+    return () => {
+      window.removeEventListener('summarix_watched_change', loadWatched);
+      window.removeEventListener('summarix_started_folders_change', loadStarted);
+    };
+  }, []);
+
+  const handleSelectVideo = (video) => {
+    navigate(`/video/${video.id}`);
+  };
+
+  const handleSelectFolder = (pl) => {
+    const folderVideos = videos.filter(v => v.playlist_id === pl.id && v.upload_status === 'indexed');
+    if (folderVideos.length > 0) {
+      navigate(`/video/${folderVideos[0].id}`);
+    } else {
+      alert("This folder is empty or contains no indexed videos yet.");
+    }
+  };
+
+  // If Admin, show the standard folder catalog with folder builder and delete actions
+  if (isAdmin) {
+    return (
+      <div className="flex-grow flex-1 flex flex-col max-w-4xl mx-auto w-full glass-panel p-8 rounded-2xl shadow-[0_8px_32px_0_rgba(99,102,241,0.05)] border border-white/5 min-h-0 animate-quiz-slide">
+        <h2 className="text-xl font-bold text-center text-white mb-6 font-display flex items-center justify-center gap-2 shrink-0">
+          <svg className="w-6 h-6 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+          </svg>
+          Folder Manager Library
+        </h2>
+        <div className="flex-grow overflow-y-auto pr-1">
+          <VideosCatalog
+            videos={videos}
+            playlists={playlists}
+            selectedVideo={null}
+            onSelectVideo={handleSelectVideo}
+            onDeleteVideo={onDeleteVideo}
+            onDeletePlaylist={onDeletePlaylist}
+            onUpdateVideoPlaylist={onUpdateVideoPlaylist}
+            isAdmin={true}
+            fetchPlaylists={fetchPlaylists}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  // Student view: LMS "Continue Learning" Cards Grid (Image 1 style)
+  return (
+    <div className="flex-grow flex-1 flex flex-col max-w-5xl mx-auto w-full p-4 animate-quiz-slide">
+      {/* Subject cards slider */}
+      <div className="mb-8">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-xl font-bold font-sans text-white tracking-tight">
+            Continue Learning
+          </h2>
+          <div className="flex items-center gap-4">
+            <span className="text-xs text-indigo-400 font-bold hover:underline cursor-pointer select-none">
+              See all
+            </span>
+            <div className="flex gap-2">
+              <button className="w-8 h-8 rounded-full border border-white/10 hover:bg-white/5 text-gray-400 hover:text-white flex items-center justify-center cursor-pointer transition-all select-none">
+                &lt;
+              </button>
+              <button className="w-8 h-8 rounded-full border border-white/10 hover:bg-white/5 text-gray-400 hover:text-white flex items-center justify-center cursor-pointer transition-all select-none">
+                &gt;
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {(() => {
+          const startedPlaylists = playlists.filter(pl => {
+            // It is started if it is in startedFolders (clicked in dashboard)
+            if (startedFolders.includes(pl.id)) return true;
+            
+            // Or has progress
+            const folderVideos = videos.filter(v => v.playlist_id === pl.id && v.upload_status === 'indexed');
+            const watchedLessons = folderVideos.filter(v => watchedList.includes(v.id)).length;
+            return watchedLessons > 0;
+          });
+
+          if (startedPlaylists.length === 0) {
+            return (
+              <div className="text-center text-gray-500 text-xs py-16 font-mono border border-dashed border-white/5 rounded-2xl">
+                No started course modules in your library yet. Choose a course from the Dashboard to begin learning!
+              </div>
+            );
+          }
+
+          return (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {startedPlaylists.map((pl) => {
+                const folderVideos = videos.filter(v => v.playlist_id === pl.id && v.upload_status === 'indexed');
+                const totalLessons = folderVideos.length;
+                const watchedLessons = folderVideos.filter(v => watchedList.includes(v.id)).length;
+                const progressPercent = totalLessons > 0 ? Math.round((watchedLessons / totalLessons) * 100) : 0;
+
+                return (
+                  <div
+                    key={pl.id}
+                    onClick={() => handleSelectFolder(pl)}
+                    className="glass-panel rounded-2xl overflow-hidden border border-white/5 shadow-lg cursor-pointer glass-panel-hover flex flex-col justify-between"
+                  >
+                    {/* Course Thumbnail Image Box */}
+                    <div className="h-40 relative select-none border-b border-white/5 overflow-hidden bg-gray-950/40">
+                      {pl.cover_image ? (
+                        <img
+                          src={pl.cover_image}
+                          alt={pl.name}
+                          className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
+                        />
+                      ) : (
+                        /* Clean fallback folder visual: no custom text, just a clean folder icon */
+                        <div className="w-full h-full flex items-center justify-center bg-gray-900/20 text-indigo-400/60">
+                          <svg className="w-12 h-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.2">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                          </svg>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Course Details and Progress indicators */}
+                    <div className="p-5 flex flex-col gap-4">
+                      <div>
+                        <h3 className="font-bold text-sm text-white font-sans truncate leading-snug" title={pl.name}>
+                          {pl.name}
+                        </h3>
+                        <p className="text-[10px] text-gray-500 font-semibold mt-1">
+                          Course Module
+                        </p>
+                      </div>
+
+                      {/* Progress details */}
+                      <div className="flex flex-col gap-1.5">
+                        {/* Thick Progress bar */}
+                        <div className="w-full bg-white/5 rounded-full h-2 overflow-hidden border border-white/5">
+                          <div
+                            className="h-full bg-cyan-400 shadow-[0_0_6px_rgba(34,211,238,0.3)] transition-[width] duration-500 ease-out"
+                            style={{ width: `${progressPercent}%` }}
+                          />
+                        </div>
+                        <div className="flex justify-between text-[11px] font-bold font-mono">
+                          <span className="text-cyan-400">{progressPercent}%</span>
+                          <span className="text-gray-500">{watchedLessons}/{totalLessons} Lessons</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
+      </div>
+    </div>
+  );
+}

@@ -491,6 +491,55 @@ video::cue {
   }
 }
 
+/* Quiz Page Styles */
+.progress-ring-circle {
+  transition: stroke-dashoffset 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+  stroke-dasharray: 283; /* 2 * PI * 45 */
+}
 
+@keyframes quiz-slide {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
 
+.animate-quiz-slide {
+  animation: quiz-slide 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
 
+.quiz-option-btn {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.quiz-option-btn:hover:not(:disabled) {
+  background-color: rgba(99, 102, 241, 0.12);
+  border-color: rgba(99, 102, 241, 0.4);
+  transform: translateY(-1px);
+}
+
+.quiz-option-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+/* Active navigation link styling */
+.nav-link-active {
+  color: #22d3ee;
+  background-color: rgba(34, 211, 238, 0.05);
+  border-color: rgba(34, 211, 238, 0.1);
+}
+
+html.light .nav-link-active {
+  color: #0891b2 !important;
+  background-color: rgba(8, 145, 178, 0.08) !important;
+  border-color: rgba(8, 145, 178, 0.15) !important;
+}
+
+/* Light mode overrides for quiz scoring ring */
+html.light .progress-ring-circle {
+  stroke: #0891b2;
+}

@@ -1,15 +1,20 @@
 import { useState, useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, Link, useLocation, useNavigate } from 'react-router-dom';
 import StatusAlerts from './components/StatusAlerts';
-import VideosCatalog from './components/VideosCatalog';
-import VideoIndexer from './components/VideoIndexer';
-import TimelineExplorer from './components/TimelineExplorer';
-import SummaryConsole from './components/SummaryConsole';
 import AuthPage from './components/AuthPage';
+
+// Import new views
+import Home from './components/Home';
+import CatalogPage from './components/CatalogPage';
+import VideoWorkspace from './components/VideoWorkspace';
+import QuizPage from './components/QuizPage';
 
 import { apiUrl } from './lib/api';
 
+function AppContent() {
+  const navigate = useNavigate();
+  const location = useLocation();
 
-export default function App() {
   const [currentUser, setCurrentUser] = useState(() => {
     try {
       const userJson = localStorage.getItem('summarix_user');
@@ -18,27 +23,12 @@ export default function App() {
       return null;
     }
   });
+
   const [videos, setVideos] = useState([]);
   const [playlists, setPlaylists] = useState([]);
-  const [selectedVideo, setSelectedVideo] = useState(null);
-  const [chapters, setChapters] = useState([]);
-  const [selectedChapter, setSelectedChapter] = useState(null);
-  const [currentTime, setCurrentTime] = useState(0);
   const [pendingAutoSelectId, setPendingAutoSelectId] = useState(() => {
     return localStorage.getItem('summarix_pending_select') || null;
   });
-
-  const handleTimeUpdate = (time) => {
-    setCurrentTime(time);
-    if (chapters && chapters.length > 0) {
-      const activeChapter = chapters.find(
-        (c) => time >= c.start_time && time < c.end_time
-      );
-      if (activeChapter && (!selectedChapter || selectedChapter.id !== activeChapter.id)) {
-        setSelectedChapter(activeChapter);
-      }
-    }
-  };
 
   // Appearance / Theme states
   const [theme, setTheme] = useState(() => {
@@ -50,14 +40,6 @@ export default function App() {
   const [indexingLoading, setIndexingLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
-  const [rightWidth, setRightWidth] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return (window.innerWidth - 48) / 2;
-    }
-    return 500;
-  });
-  const [overallSummary, setOverallSummary] = useState(null);
-  const [overallSummaryLoading, setOverallSummaryLoading] = useState(false);
 
   const showError = (msg) => {
     setErrorMsg(msg);
@@ -72,7 +54,9 @@ export default function App() {
   const fetchVideos = async () => {
     if (!currentUser) return;
     try {
-      const response = await fetch(apiUrl('/api/videos'));
+      const email = currentUser.email || 'anonymous@summarix.io';
+      const role = currentUser.role || 'user';
+      const response = await fetch(apiUrl(`/api/videos?owner_email=${encodeURIComponent(email)}&role=${role}`));
       if (!response.ok) throw new Error('Failed to fetch videos');
       const data = await response.json();
       setVideos(data);
@@ -84,7 +68,9 @@ export default function App() {
   const fetchPlaylists = async () => {
     if (!currentUser) return;
     try {
-      const response = await fetch(apiUrl('/api/playlists'));
+      const email = currentUser.email || 'anonymous@summarix.io';
+      const role = currentUser.role || 'user';
+      const response = await fetch(apiUrl(`/api/playlists?owner_email=${encodeURIComponent(email)}&role=${role}`));
       if (!response.ok) throw new Error('Failed to fetch playlists');
       const data = await response.json();
       setPlaylists(data);
@@ -92,57 +78,6 @@ export default function App() {
       showError('Could not load playlists: ' + err.message);
     }
   };
-
-  const handleSelectVideo = async (video) => {
-    setSelectedVideo(video);
-    setSelectedChapter(null);
-    setCurrentTime(0);
-    setOverallSummary(null);
-    showSuccess(null);
-    showError(null);
-
-    try {
-      const response = await fetch(apiUrl(`/api/videos/${video.id}`));
-      if (!response.ok) throw new Error('Failed to load video chapters');
-      const data = await response.json();
-      setChapters(data.chapters || []);
-      if (data.video) {
-        setSelectedVideo(data.video);
-      }
-      if (data.video && data.video.overall_summary) {
-        setOverallSummary(data.video.overall_summary);
-      }
-    } catch (err) {
-      showError('Could not load video chapters: ' + err.message);
-    }
-  };
-
-  const handleMouseDown = (e) => {
-    e.preventDefault();
-    const startX = e.clientX;
-    const startWidth = rightWidth;
-
-    const handleMouseMove = (moveEvent) => {
-      const deltaX = moveEvent.clientX - startX;
-      const maxW = window.innerWidth - 300; // protect center panel min width (300px)
-      const newWidth = Math.max(280, Math.min(maxW, startWidth - deltaX));
-      setRightWidth(newWidth);
-    };
-
-    const handleMouseUp = () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    };
-
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-  };
-
-
 
   // Apply theme class to document root
   useEffect(() => {
@@ -156,7 +91,6 @@ export default function App() {
 
   // Fetch videos list on mount or user changes
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchVideos();
     fetchPlaylists();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -186,39 +120,38 @@ export default function App() {
     const matchedVideo = videos.find((v) => v.id === pendingId);
     if (matchedVideo && matchedVideo.upload_status === 'indexed') {
       const timer = setTimeout(() => {
-        handleSelectVideo(matchedVideo);
         setPendingAutoSelectId(null);
         localStorage.removeItem('summarix_pending_select');
         showSuccess(`Video "${matchedVideo.file_name}" has finished indexing and is ready!`);
+        navigate(`/video/${matchedVideo.id}`);
       }, 1000);
       return () => clearTimeout(timer);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videos, pendingAutoSelectId]);
 
-  // Auto-dismiss success and error notifications after 2 seconds
+  // Auto-dismiss success and error notifications after 2.5 seconds
   useEffect(() => {
     if (errorMsg || successMsg) {
-      // Do not auto-dismiss active loading/progress alerts
       const isProgress = (successMsg && (successMsg.includes('Please wait') || successMsg.includes('Uploading')));
       if (isProgress) return;
 
       const timer = setTimeout(() => {
         setErrorMsg(null);
         setSuccessMsg(null);
-      }, 2000);
+      }, 2500);
       return () => clearTimeout(timer);
     }
   }, [errorMsg, successMsg]);
-
-
 
   const handleDeleteVideo = async (e, videoId) => {
     e.stopPropagation();
     if (!confirm('Are you sure you want to delete this video and all its indexed moments from the database?')) return;
 
     try {
-      const res = await fetch(apiUrl('/api/delete'), {
+      const email = currentUser?.email || 'anonymous@summarix.io';
+      const role = currentUser?.role || 'user';
+      const res = await fetch(apiUrl(`/api/delete?owner_email=${encodeURIComponent(email)}&role=${role}`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ video_id: videoId })
@@ -227,10 +160,8 @@ export default function App() {
       if (!res.ok) throw new Error(data.error || 'Failed to delete video');
 
       showSuccess('Video deleted successfully.');
-      if (selectedVideo && selectedVideo.id === videoId) {
-        setSelectedVideo(null);
-        setChapters([]);
-        setSelectedChapter(null);
+      if (location.pathname === `/video/${videoId}` || location.pathname === `/quiz/${videoId}`) {
+        navigate('/catalog');
       }
       await fetchVideos();
       await fetchPlaylists();
@@ -244,18 +175,15 @@ export default function App() {
     if (!confirm('Are you sure you want to delete this folder and all its videos from the database?')) return;
 
     try {
-      const res = await fetch(apiUrl(`/api/playlists/${playlistId}`), {
+      const email = currentUser?.email || 'anonymous@summarix.io';
+      const role = currentUser?.role || 'user';
+      const res = await fetch(apiUrl(`/api/playlists/${playlistId}?owner_email=${encodeURIComponent(email)}&role=${role}`), {
         method: 'DELETE'
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || data.error || 'Failed to delete folder');
 
       showSuccess('Folder deleted successfully.');
-      if (selectedVideo && selectedVideo.playlist_id === playlistId) {
-        setSelectedVideo(null);
-        setChapters([]);
-        setSelectedChapter(null);
-      }
       await fetchPlaylists();
       await fetchVideos();
     } catch (err) {
@@ -282,53 +210,61 @@ export default function App() {
     }
   };
 
-  const handleGenerateOverallSummary = async () => {
-    if (!selectedVideo) return;
+  if (!currentUser) {
+    return <AuthPage onAuthSuccess={(user) => setCurrentUser(user)} />;
+  }
 
-    setOverallSummaryLoading(true);
-    showError(null);
-    showSuccess('Generating overall summary with Gemini... Please wait.');
-
-    try {
-      const response = await fetch(apiUrl('/api/overall-summary'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ video_id: selectedVideo.id })
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Failed to generate overall summary');
-
-      setOverallSummary(data.overall_summary);
-      showSuccess('Overall summary generated successfully!');
-    } catch (err) {
-      showError('Failed to generate overall summary: ' + err.message);
-    } finally {
-      setOverallSummaryLoading(false);
-    }
-  };
+  // Navigation menu highlights
+  const isHomeActive = location.pathname === '/home';
+  const isCatalogActive = location.pathname === '/catalog' || location.pathname.startsWith('/video') || location.pathname.startsWith('/quiz');
 
   return (
     <div className="flex flex-col h-auto lg:h-screen lg:overflow-hidden">
       {/* Header */}
       <header className="border-b border-white/5 bg-gray-950/40 backdrop-blur-md px-8 py-3 flex items-center justify-between sticky top-0 z-50 gap-4">
-        <div className="flex items-center gap-3 shrink-0">
-          <svg className="h-9.5 w-9.5 shadow-[0_0_15px_rgba(11,46,102,0.4)] rounded-xl" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect width="100" height="100" rx="24" fill="#0b2e66" />
-            <text x="50" y="56" fontFamily="system-ui, -apple-system, sans-serif" fontWeight="800" fontSize="46" fill="#ffffff" textAnchor="middle">S</text>
-            <rect x="14" y="68" width="26" height="16" rx="8" fill="#1b4995" />
-            <rect x="28" y="68" width="24" height="16" rx="8" fill="#2e69bf" />
-            <rect x="42" y="68" width="22" height="16" rx="8" fill="#4b8bec" />
-            <rect x="54" y="68" width="20" height="16" rx="8" fill="#7eb2ff" />
-            <rect x="64" y="68" width="22" height="16" rx="8" fill="#ffffff" />
-          </svg>
-          <div>
-            <h1 className="text-xl font-bold font-display bg-gradient-to-r from-white to-indigo-300 bg-clip-text text-transparent tracking-tight logo-text">
-              Summarix
-            </h1>
-            <p className="text-xs text-cyan-400 font-semibold tracking-widest uppercase mt-0.5">
-              Video & Podcast Summary Generator
-            </p>
+        <div className="flex items-center gap-6 shrink-0">
+          {/* Logo brand */}
+          <div className="flex items-center gap-3 cursor-pointer select-none" onClick={() => navigate('/home')}>
+            <svg className="h-9.5 w-9.5 shadow-[0_0_15px_rgba(11,46,102,0.4)] rounded-xl" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect width="100" height="100" rx="24" fill="#0b2e66" />
+              <text x="50" y="56" fontFamily="system-ui, -apple-system, sans-serif" fontWeight="800" fontSize="46" fill="#ffffff" textAnchor="middle">S</text>
+              <rect x="14" y="68" width="26" height="16" rx="8" fill="#1b4995" />
+              <rect x="28" y="68" width="24" height="16" rx="8" fill="#2e69bf" />
+              <rect x="42" y="68" width="22" height="16" rx="8" fill="#4b8bec" />
+              <rect x="54" y="68" width="20" height="16" rx="8" fill="#7eb2ff" />
+              <rect x="64" y="68" width="22" height="16" rx="8" fill="#ffffff" />
+            </svg>
+            <div>
+              <h1 className="text-xl font-bold font-display bg-gradient-to-r from-white to-indigo-300 bg-clip-text text-transparent tracking-tight logo-text">
+                Summarix
+              </h1>
+              <p className="text-xs text-cyan-400 font-semibold tracking-widest uppercase mt-0.5">
+                Video & Podcast Summary Generator
+              </p>
+            </div>
           </div>
+
+          {/* Navigation Bar - Beautiful tabs (Admin Only) */}
+          {currentUser?.role === 'admin' && (
+            <nav className="flex items-center gap-1.5 bg-white/5 border border-white/5 p-1 rounded-xl select-none">
+              <Link
+                to="/home"
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all border border-transparent cursor-pointer ${
+                  isHomeActive ? 'nav-link-active font-bold shadow-[0_0_8px_rgba(34,211,238,0.06)]' : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                Dashboard
+              </Link>
+              <Link
+                to="/catalog"
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all border border-transparent cursor-pointer ${
+                  isCatalogActive ? 'nav-link-active font-bold shadow-[0_0_8px_rgba(34,211,238,0.06)]' : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                Library
+              </Link>
+            </nav>
+          )}
         </div>
 
         {/* Status Alerts Banners (Centered) */}
@@ -359,10 +295,7 @@ export default function App() {
                 onClick={() => {
                   localStorage.removeItem('summarix_user');
                   setCurrentUser(null);
-                  setSelectedVideo(null);
-                  setChapters([]);
-                  setSelectedChapter(null);
-                  setOverallSummary(null);
+                  navigate('/home');
                 }}
                 className="p-1.5 text-gray-400 hover:text-red-400 rounded-lg hover:bg-red-500/10 transition-all cursor-pointer"
                 title="Log Out"
@@ -391,7 +324,6 @@ export default function App() {
 
           {showSettings && (
             <>
-              {/* Invisible overlay backdrop to close dropdown on click outside */}
               <div 
                 className="fixed inset-0 z-40 cursor-default" 
                 onClick={() => setShowSettings(false)}
@@ -437,142 +369,81 @@ export default function App() {
               </div>
             </>
           )}
-
         </div>
       </header>
 
       {/* Main Container */}
       <div className="flex-grow flex-1 flex flex-col p-6 overflow-hidden min-h-0 w-full">
-        {!currentUser ? (
-          <AuthPage onAuthSuccess={(user) => setCurrentUser(user)} />
-        ) : !selectedVideo ? (
-          <div className="flex-grow flex-1 flex flex-col lg:flex-row gap-6 max-w-6xl mx-auto w-full min-h-0 items-stretch justify-center my-auto">
-            {/* Left Column: Catalog */}
-            <div className={`flex-1 ${currentUser.role === 'admin' ? 'max-w-xl' : 'max-w-2xl'} w-full glass-panel p-8 rounded-2xl shadow-[0_8px_32px_0_rgba(99,102,241,0.05)] border border-white/5 flex flex-col min-h-0`}>
-              <h2 className="text-xl font-bold text-center text-white mb-6 font-display flex items-center justify-center gap-2 shrink-0">
-                <svg className="w-6 h-6 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                </svg>
-                Catalog
-              </h2>
-              <VideosCatalog
+        <Routes>
+          <Route path="/home" element={
+            <Home
+              currentUser={currentUser}
+              videos={videos}
+              playlists={playlists}
+              fetchPlaylists={fetchPlaylists}
+              indexingLoading={indexingLoading}
+              pendingAutoSelectId={pendingAutoSelectId}
+              onIndexStart={() => setIndexingLoading(true)}
+              onIndexSuccess={async (videoId) => {
+                setIndexingLoading(false);
+                setPendingAutoSelectId(videoId);
+                localStorage.setItem('summarix_pending_select', videoId);
+                await fetchVideos();
+                await fetchPlaylists();
+                showSuccess("Video successfully queued for indexing! Redirecting to workspace upon completion.");
+              }}
+              onIndexError={() => setIndexingLoading(false)}
+              onDeleteVideo={handleDeleteVideo}
+              showSuccess={showSuccess}
+              showError={showError}
+            />
+          } />
+          <Route path="/catalog" element={
+            currentUser?.role === 'admin' ? (
+              <CatalogPage
                 videos={videos}
                 playlists={playlists}
-                selectedVideo={selectedVideo}
-                onSelectVideo={handleSelectVideo}
                 onDeleteVideo={handleDeleteVideo}
                 onDeletePlaylist={handleDeletePlaylist}
                 onUpdateVideoPlaylist={handleUpdateVideoPlaylist}
-                isAdmin={currentUser.role === 'admin'}
+                currentUser={currentUser}
                 fetchPlaylists={fetchPlaylists}
+                fetchVideos={fetchVideos}
               />
-            </div>
-
-            {/* Right Column: Indexer (Admin Only) */}
-            {currentUser.role === 'admin' && (
-              <div className="flex-grow glass-panel p-8 rounded-2xl shadow-[0_8px_32px_0_rgba(99,102,241,0.05)] border border-white/5 flex flex-col min-h-0">
-                <h2 className="text-xl font-bold text-center text-white mb-6 font-display flex items-center justify-center gap-2 shrink-0">
-                  <svg className="w-6 h-6 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                  </svg>
-                  Index New Video File
-                </h2>
-                <div className="flex-grow overflow-y-auto pr-1">
-                  <VideoIndexer
-                    videos={videos}
-                    indexingLoading={indexingLoading}
-                    playlists={playlists}
-                    fetchPlaylists={fetchPlaylists}
-                    pendingAutoSelectId={pendingAutoSelectId}
-                    onIndexStart={() => setIndexingLoading(true)}
-                    onIndexSuccess={async (videoId) => {
-                      setIndexingLoading(false);
-                      setPendingAutoSelectId(videoId);
-                      localStorage.setItem('summarix_pending_select', videoId);
-                      await fetchVideos();
-                      await fetchPlaylists();
-                      showSuccess("Video successfully queued for indexing! It will open automatically once summaries are generated.");
-                    }}
-                    onIndexError={() => setIndexingLoading(false)}
-                    onDeleteVideo={handleDeleteVideo}
-                    showSuccess={showSuccess}
-                    showError={showError}
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="flex-grow flex-1 flex flex-col lg:flex-row min-w-0 min-h-0 overflow-hidden relative gap-6 lg:gap-0">
-            {/* Center Panel (Timeline Explorer) */}
-            <main className="flex-grow flex-1 glass-panel p-6 rounded-2xl flex flex-col min-w-0 min-h-0">
-              <TimelineExplorer
-                key={selectedVideo?.id}
-                selectedVideo={selectedVideo}
-                chapters={chapters}
-                selectedChapter={selectedChapter}
-                onSelectChapter={setSelectedChapter}
-                currentTime={currentTime}
-                onTimeUpdate={handleTimeUpdate}
-                isAdmin={currentUser.role === 'admin'}
-                onUploadNew={() => {
-                  setSelectedVideo(null);
-                  setChapters([]);
-                  setSelectedChapter(null);
-                  setOverallSummary(null);
-                  setCurrentTime(0);
-                }}
-              />
-            </main>
-
-            {/* Interactive Splitter Divider */}
-            <div
-              onMouseDown={handleMouseDown}
-              className="hidden lg:flex items-center justify-center w-4 cursor-col-resize group select-none relative z-20 hover:scale-x-110 transition-transform"
-            >
-              {/* Splitter track visual */}
-              <div className="w-[1px] h-full bg-white/5 group-hover:bg-indigo-500/30 group-active:bg-indigo-500/50 rounded transition-colors" />
-              {/* Grab handle grip */}
-              <div className="absolute w-1.5 h-8 bg-white/10 group-hover:bg-indigo-400 group-active:bg-indigo-500 rounded-full border border-white/10 shadow-[0_0_10px_rgba(99,102,241,0.2)] flex flex-col items-center justify-center gap-1 transition-all">
-                <span className="w-0.5 h-0.5 rounded-full bg-white/40"></span>
-                <span className="w-0.5 h-0.5 rounded-full bg-white/40"></span>
-                <span className="w-0.5 h-0.5 rounded-full bg-white/40"></span>
-              </div>
-            </div>
-
-            {/* Right Sidebar (Summary Console) */}
-            <aside className="resizable-right-panel w-full lg:w-auto shrink-0 glass-panel p-5 rounded-2xl flex flex-col min-h-0">
-              <SummaryConsole
-                selectedVideo={selectedVideo}
-                selectedChapter={selectedChapter}
-                chapters={chapters}
-                onSelectChapter={setSelectedChapter}
-                showSuccess={showSuccess}
-                overallSummary={overallSummary}
-                overallSummaryLoading={overallSummaryLoading}
-                onGenerateOverallSummary={handleGenerateOverallSummary}
-                currentTime={currentTime}
-              />
-            </aside>
-
-            {/* Inline styles to drive the width responsively based on state */}
-            <style>{`
-              @media (min-width: 1024px) {
-                .resizable-right-panel {
-                  width: ${rightWidth}px !important;
-                }
-              }
-            `}</style>
-          </div>
-        )}
+            ) : (
+              <Navigate to="/home" replace />
+            )
+          } />
+          <Route path="/video/:id" element={
+            <VideoWorkspace
+              currentUser={currentUser}
+              showSuccess={showSuccess}
+              showError={showError}
+            />
+          } />
+          <Route path="/quiz/:id" element={
+            <QuizPage
+              currentUser={currentUser}
+              showSuccess={showSuccess}
+              showError={showError}
+            />
+          } />
+          <Route path="*" element={<Navigate to="/home" replace />} />
+        </Routes>
       </div>
-
-
 
       {/* Footer */}
       <footer className="border-t border-white/5 bg-gray-950/20 py-3 px-6 text-center text-[10px] text-gray-500">
         © 2026 Summarix Video & Podcast Summary Generator • Powered by Google Gemini and OpenAI Whisper
       </footer>
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AppContent />
+    </BrowserRouter>
   );
 }

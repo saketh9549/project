@@ -1235,6 +1235,26 @@ def get_quiz_endpoint(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch quiz: {e}")
 
+@app.delete("/api/quizzes")
+def delete_quiz_endpoint(
+    video_id: Optional[str] = Query(None),
+    playlist_id: Optional[str] = Query(None),
+    owner_email: str = Query(...),
+    role: str = Query("user")
+):
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden: Only admin can delete quizzes.")
+    if not video_id and not playlist_id:
+        raise HTTPException(status_code=400, detail="Either video_id or playlist_id must be provided.")
+    try:
+        quiz = db.get_quiz_by_target(catalog_id=video_id, playlist_id=playlist_id)
+        if not quiz:
+            raise HTTPException(status_code=404, detail="Quiz not found")
+        db.delete_quiz(quiz["_id"])
+        return {"success": True, "message": "Quiz deleted successfully."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete quiz: {e}")
+
 class AnswerSubmission(BaseModel):
     questionIdx: int
     selectedOptionIdx: int
