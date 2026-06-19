@@ -23,8 +23,14 @@ export default function Home({
 
   useEffect(() => {
     const loadWatched = () => {
-      const watched = JSON.parse(localStorage.getItem('summarix_watched') || '[]');
-      setWatchedList(watched);
+      try {
+        const val = localStorage.getItem('summarix_watched');
+        const watched = val ? JSON.parse(val) : [];
+        setWatchedList(Array.isArray(watched) ? watched : []);
+      } catch (e) {
+        console.error("Error loading watched list", e);
+        setWatchedList([]);
+      }
     };
     loadWatched();
     window.addEventListener('summarix_watched_change', loadWatched);
@@ -86,9 +92,9 @@ export default function Home({
 
   // Student view: LMS "Continue Learning" Cards Grid (Image 1 style)
   return (
-    <div className="flex-grow flex-1 flex flex-col max-w-5xl mx-auto w-full p-4 animate-quiz-slide justify-center my-auto">
+    <div className="max-w-5xl mx-auto w-full p-4 animate-quiz-slide">
       {/* Welcome header info card */}
-      <div className="glass-panel p-8 rounded-3xl border border-white/5 shadow-2xl relative overflow-hidden bg-gradient-to-br from-indigo-950/20 via-slate-900/10 to-cyan-950/10 text-center mb-8">
+      <div className="glass-panel p-8 rounded-3xl border border-white/5 shadow-2xl relative overflow-hidden bg-gradient-to-br from-indigo-950/20 via-slate-900/10 to-cyan-950/10 text-center mb-8 shrink-0">
         <div className="absolute top-0 right-0 w-72 h-72 bg-indigo-500/10 rounded-full blur-3xl -z-10" />
         <div className="absolute bottom-0 left-0 w-72 h-72 bg-cyan-500/10 rounded-full blur-3xl -z-10" />
 
@@ -104,7 +110,7 @@ export default function Home({
       </div>
 
       {/* Course section */}
-      <div>
+      <div className="shrink-0">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-bold font-sans text-white tracking-tight">
             Continue Learning
@@ -121,16 +127,19 @@ export default function Home({
           </div>
         </div>
 
-        {playlists.length === 0 ? (
+        {!Array.isArray(playlists) || playlists.length === 0 ? (
           <div className="text-center text-gray-500 text-xs py-12 font-mono border border-dashed border-white/5 rounded-2xl">
             No course modules currently assigned.
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {playlists.map((pl) => {
-              const folderVideos = videos.filter(v => v.playlist_id === pl.id && v.upload_status === 'indexed');
+              if (!pl) return null;
+              const folderVideos = Array.isArray(videos)
+                ? videos.filter(v => v && v.playlist_id === pl.id && v.upload_status === 'indexed')
+                : [];
               const totalLessons = folderVideos.length;
-              const watchedLessons = folderVideos.filter(v => watchedList.includes(v.id)).length;
+              const watchedLessons = folderVideos.filter(v => v && Array.isArray(watchedList) && watchedList.includes(v.id)).length;
               const progressPercent = totalLessons > 0 ? Math.round((watchedLessons / totalLessons) * 100) : 0;
 
               return (

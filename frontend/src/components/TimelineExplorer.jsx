@@ -224,7 +224,6 @@ export default function TimelineExplorer({
   useEffect(() => {
     if (subtitleCues.length === 0) {
       if (vttUrl !== '') {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
         setVttUrl('');
       }
       return;
@@ -252,7 +251,8 @@ export default function TimelineExplorer({
     return () => {
       URL.revokeObjectURL(url);
     };
-  }, [subtitleCues, vttUrl]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subtitleCues]);
 
   useEffect(() => {
     const video = videoRef.current;

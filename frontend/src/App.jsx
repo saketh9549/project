@@ -115,7 +115,16 @@ function AppContent() {
   // Auto-select pending video once it completes indexing and summary generation
   useEffect(() => {
     const pendingId = pendingAutoSelectId || localStorage.getItem('summarix_pending_select');
-    if (!pendingId || videos.length === 0) return;
+    if (!pendingId) return;
+
+    // Clear state if the user has already navigated to the target video workspace
+    if (location.pathname === `/video/${pendingId}`) {
+      setPendingAutoSelectId(null);
+      localStorage.removeItem('summarix_pending_select');
+      return;
+    }
+
+    if (videos.length === 0) return;
 
     const matchedVideo = videos.find((v) => v.id === pendingId);
     if (matchedVideo && matchedVideo.upload_status === 'indexed') {
@@ -128,7 +137,7 @@ function AppContent() {
       return () => clearTimeout(timer);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [videos, pendingAutoSelectId]);
+  }, [videos, pendingAutoSelectId, location.pathname]);
 
   // Auto-dismiss success and error notifications after 2.5 seconds
   useEffect(() => {
@@ -217,9 +226,10 @@ function AppContent() {
   // Navigation menu highlights
   const isHomeActive = location.pathname === '/home';
   const isCatalogActive = location.pathname === '/catalog' || location.pathname.startsWith('/video') || location.pathname.startsWith('/quiz');
+  const isWorkspace = location.pathname.startsWith('/video') || location.pathname.startsWith('/quiz');
 
   return (
-    <div className="flex flex-col h-auto lg:h-screen lg:overflow-hidden">
+    <div className="flex flex-col h-screen overflow-hidden">
       {/* Header */}
       <header className="border-b border-white/5 bg-gray-950/40 backdrop-blur-md px-8 py-3 flex items-center justify-between sticky top-0 z-50 gap-4">
         <div className="flex items-center gap-6 shrink-0">
@@ -373,7 +383,7 @@ function AppContent() {
       </header>
 
       {/* Main Container */}
-      <div className="flex-grow flex-1 flex flex-col p-6 overflow-hidden min-h-0 w-full">
+      <div className={`flex-grow flex-1 flex flex-col p-6 min-h-0 w-full ${isWorkspace ? 'overflow-hidden' : 'overflow-y-auto'}`}>
         <Routes>
           <Route path="/home" element={
             <Home

@@ -79,7 +79,7 @@ export default function CatalogPage({
 
   // Student view: LMS "Continue Learning" Cards Grid (Image 1 style)
   return (
-    <div className="flex-grow flex-1 flex flex-col max-w-5xl mx-auto w-full p-4 animate-quiz-slide">
+    <div className="max-w-5xl mx-auto w-full p-4 animate-quiz-slide">
       {/* Subject cards slider */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-6">
