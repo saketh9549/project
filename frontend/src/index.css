@@ -475,5 +475,22 @@ html.light .stepper-label-active {
   color: #0284c7 !important; /* sky-600 */
 }
 
+/* Custom WebVTT Native Video Subtitle Styling */
+video::cue {
+  background-color: rgba(0, 0, 0, 0.75) !important;
+  color: #ffffff !important;
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif !important;
+  font-size: 13px !important;
+  line-height: 1.5 !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8) !important;
+}
+
+@media (min-width: 768px) {
+  video::cue {
+    font-size: 15px !important;
+  }
+}
+
+
 
 

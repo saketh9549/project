@@ -97,12 +97,171 @@ export default function TimelineExplorer({
   onSelectChapter,
   onUploadNew,
   isAdmin,
+  currentTime = 0,
   onTimeUpdate
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
-
+  const [subtitleCues, setSubtitleCues] = useState([]);
+  const [ccEnabled, setCcEnabled] = useState(true);
+  const [vttUrl, setVttUrl] = useState('');
   const videoRef = useRef(null);
+  const containerRef = useRef(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [duration, setDuration] = useState(0);
+
+  const formatTime = (secs) => {
+    if (isNaN(secs) || secs === Infinity) return '00:00';
+    const date = new Date(0);
+    date.setSeconds(secs);
+    const timeStr = date.toISOString().substr(11, 8);
+    if (secs >= 3600) {
+      return timeStr;
+    }
+    return timeStr.substr(3);
+  };
+
+  const togglePlay = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (video.paused) {
+      video.play().then(() => setIsPlaying(true)).catch(err => console.warn(err));
+    } else {
+      video.pause();
+      setIsPlaying(false);
+    }
+  };
+
+  const toggleMute = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.muted = !isMuted;
+    setIsMuted(!isMuted);
+  };
+
+  const toggleFullscreen = () => {
+    if (!containerRef.current) return;
+    if (!document.fullscreenElement) {
+      containerRef.current.requestFullscreen().catch(err => console.warn(err));
+      setIsFullscreen(true);
+    } else {
+      document.exitFullscreen().catch(err => console.warn(err));
+      setIsFullscreen(false);
+    }
+  };
+
+  const handleScrubberChange = (e) => {
+    const video = videoRef.current;
+    if (!video) return;
+    const newPercent = parseFloat(e.target.value);
+    const newTime = (newPercent / 100) * (video.duration || 0);
+    video.currentTime = newTime;
+    if (onTimeUpdate) {
+      onTimeUpdate(newTime);
+    }
+  };
+
+  const handleLoadedMetadata = (e) => {
+    setDuration(e.target.duration);
+  };
+
+  const handlePlay = () => setIsPlaying(true);
+  const handlePause = () => setIsPlaying(false);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  const parseTranscriptForSubtitles = (rawText) => {
+    if (!rawText) return [];
+    return rawText.split('\n').map((line, idx) => {
+      const trimmed = line.trim();
+      if (!trimmed) return null;
+
+      const match = trimmed.match(/^\[([^\]]+)\]\s*(.*)$/);
+      if (match) {
+        const timePart = match[1];
+        const text = match[2];
+        const times = timePart.split('->').map(t => t.trim());
+        if (times.length === 2) {
+          const startStr = times[0];
+          const endStr = times[1];
+
+          const parseTimeToSeconds = (str) => {
+            const parts = str.split(':').map(Number);
+            if (parts.length === 3) {
+              return parts[0] * 3600 + parts[1] * 60 + parts[2];
+            } else if (parts.length === 2) {
+              return parts[0] * 60 + parts[1];
+            }
+            return 0;
+          };
+
+          return {
+            id: idx,
+            start: parseTimeToSeconds(startStr),
+            end: parseTimeToSeconds(endStr),
+            text
+          };
+        }
+      }
+      return null;
+    }).filter(Boolean);
+  };
+
+  useEffect(() => {
+    if (selectedVideo?.raw_transcript) {
+      const parsed = parseTranscriptForSubtitles(selectedVideo.raw_transcript);
+      setSubtitleCues(parsed);
+    } else {
+      setSubtitleCues([]);
+    }
+  }, [selectedVideo]);
+
+  useEffect(() => {
+    if (subtitleCues.length === 0) {
+      setVttUrl('');
+      return;
+    }
+
+    let vttText = "WEBVTT\n\n";
+    subtitleCues.forEach((cue, index) => {
+      const formatTime = (seconds) => {
+        const date = new Date(0);
+        date.setSeconds(seconds);
+        const ms = Math.floor((seconds % 1) * 1000).toString().padStart(3, '0');
+        const timeStr = date.toISOString().substr(11, 8);
+        return `${timeStr}.${ms}`;
+      };
+
+      vttText += `${index + 1}\n`;
+      vttText += `${formatTime(cue.start)} --> ${formatTime(cue.end)}\n`;
+      vttText += `${cue.text}\n\n`;
+    });
+
+    const blob = new Blob([vttText], { type: 'text/vtt' });
+    const url = URL.createObjectURL(blob);
+    setVttUrl(url);
+
+    return () => {
+      URL.revokeObjectURL(url);
+    };
+  }, [subtitleCues]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const tracks = video.textTracks;
+    if (tracks && tracks[0]) {
+      tracks[0].mode = ccEnabled ? "showing" : "hidden";
+    }
+  }, [ccEnabled, vttUrl]);
 
   const videoSrc = selectedVideo
     ? apiUrl(`/api/stream-local-video?video_id=${encodeURIComponent(selectedVideo.id)}`)
@@ -210,20 +369,149 @@ export default function TimelineExplorer({
 
       {/* Video Player */}
       {videoSrc && (
-        <div className="mb-4 rounded-xl overflow-hidden border border-white/10 bg-black shadow-inner shrink-0">
+        <div
+          ref={containerRef}
+          className={`mb-4 rounded-xl overflow-hidden border border-white/10 bg-black shadow-inner shrink-0 relative group ${
+            isFullscreen ? 'w-screen h-screen rounded-none border-none' : ''
+          }`}
+        >
           <video
             ref={videoRef}
             id="main-video-player"
             src={videoSrc}
-            controls
             crossOrigin="anonymous"
-            className="w-full max-h-[300px] object-contain"
+            onClick={togglePlay}
             onTimeUpdate={(e) => {
               if (onTimeUpdate) {
                 onTimeUpdate(e.target.currentTime);
               }
             }}
-          />
+            onLoadedMetadata={handleLoadedMetadata}
+            onPlay={handlePlay}
+            onPause={handlePause}
+            className={`w-full object-contain cursor-pointer ${
+              isFullscreen ? 'h-full max-h-none' : 'max-h-[300px]'
+            }`}
+          >
+            {vttUrl && (
+              <track
+                label="English"
+                kind="subtitles"
+                srcLang="en"
+                src={vttUrl}
+                default={ccEnabled}
+              />
+            )}
+          </video>
+          
+          {/* Custom Video Controls Bar */}
+          <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/95 via-black/70 to-transparent flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-20">
+            {/* Timeline Progress Bar / Scrubber */}
+            <div className="flex items-center w-full group/scrubber h-2 relative">
+              <input
+                type="range"
+                min="0"
+                max="100"
+                step="0.1"
+                value={duration ? (currentTime / duration) * 100 : 0}
+                onChange={handleScrubberChange}
+                className="w-full h-1 bg-white/20 rounded-lg appearance-none cursor-pointer accent-cyan-400 hover:h-1.5 transition-[height] focus:outline-none"
+                style={{
+                  background: `linear-gradient(to right, #22d3ee 0%, #22d3ee ${duration ? (currentTime / duration) * 100 : 0}%, rgba(255,255,255,0.2) ${duration ? (currentTime / duration) * 100 : 0}%, rgba(255,255,255,0.2) 100%)`
+                }}
+              />
+            </div>
+            
+            {/* Control Buttons row */}
+            <div className="flex items-center justify-between text-white text-xs select-none">
+              {/* Left Side Controls: Play, Time */}
+              <div className="flex items-center gap-4">
+                <button
+                  type="button"
+                  onClick={togglePlay}
+                  className="text-white hover:text-white/80 transition-colors p-1 cursor-pointer"
+                >
+                  {isPlaying ? (
+                    <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
+                      <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+                    </svg>
+                  ) : (
+                    <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
+                      <path d="M8 5v14l11-7z"/>
+                    </svg>
+                  )}
+                </button>
+                
+                <span className="font-mono text-[11px] text-gray-300">
+                  {formatTime(currentTime)} / {formatTime(duration)}
+                </span>
+              </div>
+              
+              {/* Right Side Controls: Volume, CC, Fullscreen, More */}
+              <div className="flex items-center gap-3.5">
+                {/* Volume Button */}
+                <button
+                  type="button"
+                  onClick={toggleMute}
+                  className="text-white hover:text-white/80 transition-colors p-1 cursor-pointer"
+                  title={isMuted ? "Unmute" : "Mute"}
+                >
+                  {isMuted ? (
+                    <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
+                      <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.21.05-.42.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.03a8.99 8.99 0 003.71-1.93L19.73 21 21 19.73 4.27 3zM12 4L9.91 6.09 12 8.18V4z"/>
+                    </svg>
+                  ) : (
+                    <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
+                      <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+                    </svg>
+                  )}
+                </button>
+                
+                {/* CC Subtitles Button */}
+                <button
+                  type="button"
+                  onClick={() => setCcEnabled(!ccEnabled)}
+                  className={`transition-colors p-1 cursor-pointer ${
+                    ccEnabled ? 'text-white' : 'text-white/40 hover:text-white'
+                  }`}
+                  title={ccEnabled ? "Disable Subtitles" : "Enable Subtitles"}
+                >
+                  <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
+                    <path d="M19 4H5a2 2 0 00-2 2v12a2 2 0 002 2h14a2 2 0 002-2V6a2 2 0 00-2-2zm-9 7H8.5v-.5h-2v3h2V13H10v1H5.5V9H10v2zm8 0h-1.5v-.5h-2v3h2V13H18v1h-4.5V9H18v2z"/>
+                  </svg>
+                </button>
+                
+                {/* Fullscreen Button */}
+                <button
+                  type="button"
+                  onClick={toggleFullscreen}
+                  className="text-white hover:text-white/80 transition-colors p-1 cursor-pointer"
+                  title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
+                >
+                  {isFullscreen ? (
+                    <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
+                      <path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/>
+                    </svg>
+                  ) : (
+                    <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
+                      <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>
+                    </svg>
+                  )}
+                </button>
+                
+                {/* More Options Button */}
+                <button
+                  type="button"
+                  className="text-white hover:text-white/80 transition-colors p-1 cursor-pointer"
+                  title="More Options"
+                >
+                  <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
+                    <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
