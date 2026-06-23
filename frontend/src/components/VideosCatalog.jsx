@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { apiUrl } from '../lib/api';
+import VideoIndexer from './VideoIndexer';
 
 export default function VideosCatalog({
   videos,
@@ -10,10 +11,19 @@ export default function VideosCatalog({
   onDeletePlaylist,
   onUpdateVideoPlaylist,
   isAdmin,
-  fetchPlaylists
+  fetchPlaylists,
+  fetchVideos,
+  indexingLoading,
+  pendingAutoSelectId,
+  onIndexStart,
+  onIndexSuccess,
+  onIndexError,
+  showSuccess,
+  showError
 }) {
   const [expandedPlaylists, setExpandedPlaylists] = useState({});
   const [showNewFolderForm, setShowNewFolderForm] = useState(false);
+  const [showUploadForm, setShowUploadForm] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [activeMenuVideoId, setActiveMenuVideoId] = useState(null);
@@ -211,20 +221,37 @@ export default function VideosCatalog({
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      {/* Create Folder Header/Action for Admin */}
+      {/* Create Folder & Upload Actions for Admin */}
       {isAdmin && (
-        <div className="mb-4 shrink-0">
-          {!showNewFolderForm ? (
-            <button
-              onClick={() => setShowNewFolderForm(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-400 hover:text-indigo-300 bg-indigo-500/5 hover:bg-indigo-500/10 border border-indigo-500/10 rounded-lg transition-all cursor-pointer"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
-              </svg>
-              New Folder
-            </button>
-          ) : (
+        <div className="mb-4 shrink-0 flex flex-col gap-3">
+          <div className="flex items-center gap-2">
+            {!showNewFolderForm && !showUploadForm && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setShowNewFolderForm(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-400 hover:text-indigo-300 bg-indigo-500/5 hover:bg-indigo-500/10 border border-indigo-500/10 rounded-lg transition-all cursor-pointer"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+                  </svg>
+                  New Folder
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowUploadForm(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-cyan-400 hover:text-cyan-300 bg-cyan-500/5 hover:bg-cyan-500/10 border border-cyan-500/10 rounded-lg transition-all cursor-pointer"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                  </svg>
+                  Upload Video
+                </button>
+              </>
+            )}
+          </div>
+
+          {showNewFolderForm && (
             <form onSubmit={handleCreateFolder} className="flex gap-2 items-center animate-fade-in bg-white/5 p-2 rounded-xl border border-white/5">
               <input
                 type="text"
@@ -250,6 +277,39 @@ export default function VideosCatalog({
                 Cancel
               </button>
             </form>
+          )}
+
+          {showUploadForm && (
+            <div className="animate-fade-in bg-white/5 p-4 rounded-xl border border-white/5 flex flex-col gap-3">
+              <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <svg className="w-4 h-4 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                  Index New Video File
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowUploadForm(false)}
+                  className="text-gray-400 hover:text-white text-xs px-2 py-1 bg-white/5 hover:bg-white/10 rounded-lg transition-all cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
+              <VideoIndexer
+                videos={videos}
+                indexingLoading={indexingLoading}
+                playlists={playlists}
+                fetchPlaylists={fetchPlaylists}
+                pendingAutoSelectId={pendingAutoSelectId}
+                onIndexStart={onIndexStart}
+                onIndexSuccess={onIndexSuccess}
+                onIndexError={onIndexError}
+                onDeleteVideo={onDeleteVideo}
+                showSuccess={showSuccess}
+                showError={showError}
+              />
+            </div>
           )}
         </div>
       )}

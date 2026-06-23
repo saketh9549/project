@@ -1,8 +1,11 @@
 import { useState } from 'react';
+import { apiUrl } from '../lib/api';
 
-export default function QuizCreator({ quiz, videoTitle, onSave, onDelete, onBack, onTogglePreview }) {
+export default function QuizCreator({ quiz, videoTitle, onSave, onDelete, onBack, onTogglePreview, catalogId, onReload }) {
   const [title, setTitle] = useState(quiz?.title || `Quiz: ${videoTitle}`);
   const [questions, setQuestions] = useState(quiz?.questions || []);
+  const [uploading, setUploading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
 
   // Form state for a new / editing question
   const [currentIdx, setCurrentIdx] = useState(null); // null means adding a new question, number means editing index
@@ -73,6 +76,36 @@ export default function QuizCreator({ quiz, videoTitle, onSave, onDelete, onBack
     });
   };
 
+  const handleFileUpload = async (file) => {
+    if (!file) return;
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const url = apiUrl(`/api/quizzes/upload?catalog_id=${catalogId}`);
+      const response = await fetch(url, {
+        method: 'POST',
+        body: formData
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.detail || 'Failed to upload and parse document.');
+      }
+      alert(`Quiz successfully imported with ${data.questions.length} questions!`);
+      
+      if (data.title) setTitle(data.title);
+      if (data.questions) setQuestions(data.questions);
+
+      if (onReload) {
+        await onReload();
+      }
+    } catch (err) {
+      alert('Error parsing quiz: ' + err.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return (
     <div className="flex-grow flex-1 flex flex-col gap-6 p-6 glass-panel rounded-2xl border border-white/5 shadow-2xl min-h-0 overflow-y-auto">
       {/* Header toolbar */}
@@ -127,6 +160,62 @@ export default function QuizCreator({ quiz, videoTitle, onSave, onDelete, onBack
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0">
         {/* Left Side: Create/Edit Form */}
         <div className="lg:col-span-7 flex flex-col gap-4">
+          {/* Document Import Zone */}
+          <div
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={async (e) => {
+              e.preventDefault();
+              setDragOver(false);
+              if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                await handleFileUpload(e.dataTransfer.files[0]);
+              }
+            }}
+            className={`border border-dashed rounded-2xl p-5 text-center transition-all ${
+              dragOver 
+                ? 'border-indigo-500 bg-indigo-950/20 shadow-[0_0_15px_rgba(99,102,241,0.15)]' 
+                : 'border-white/10 bg-white/2 hover:border-white/20'
+            }`}
+          >
+            <div className="flex flex-col items-center gap-2">
+              <div className="w-10 h-10 rounded-xl bg-indigo-950/40 border border-indigo-500/20 flex items-center justify-center text-indigo-400 shadow-md">
+                {uploading ? (
+                  <svg className="animate-spin h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                ) : (
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                  </svg>
+                )}
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-white">Import Quiz from Document</h4>
+                <p className="text-[10px] text-gray-400 mt-1 max-w-[280px] mx-auto leading-relaxed">
+                  Drag & drop your quiz file here, or click to browse. Supports PDF, DOCX, TXT, CSV, or JSON.
+                </p>
+              </div>
+              <input
+                type="file"
+                id="quiz-file-upload"
+                className="hidden"
+                accept=".txt,.pdf,.docx,.json,.csv"
+                onChange={async (e) => {
+                  if (e.target.files && e.target.files[0]) {
+                    await handleFileUpload(e.target.files[0]);
+                  }
+                }}
+                disabled={uploading}
+              />
+              <label
+                htmlFor="quiz-file-upload"
+                className="px-3.5 py-1.5 bg-indigo-600/10 hover:bg-indigo-600/20 border border-indigo-500/20 text-indigo-400 font-bold text-[10px] rounded-lg cursor-pointer transition-all active:scale-[0.98] mt-1"
+              >
+                {uploading ? 'Processing File...' : 'Choose File'}
+              </label>
+            </div>
+          </div>
           <div className="flex flex-col gap-1.5">
             <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Quiz Title</label>
             <input

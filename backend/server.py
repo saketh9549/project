@@ -6,7 +6,7 @@ import mimetypes
 import sys
 import asyncio
 import io
-from fastapi import FastAPI, Request, Query, HTTPException, Response
+from fastapi import FastAPI, Request, Query, HTTPException, Response, UploadFile, File
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -1218,6 +1218,87 @@ def create_quiz_endpoint(
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save quiz: {e}")
+
+@app.post("/api/quizzes/upload")
+async def upload_quiz_endpoint(
+    file: UploadFile = File(...),
+    catalog_id: Optional[str] = Query(None),
+    playlist_id: Optional[str] = Query(None),
+    owner_email: str = Query(...),
+    role: str = Query("user")
+):
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden: Only admin can upload quiz documents.")
+
+    if not catalog_id and not playlist_id:
+        raise HTTPException(status_code=400, detail="Either catalog_id or playlist_id must be provided.")
+
+    db.init_db()
+
+    try:
+        file_bytes = await file.read()
+        filename = file.filename or "quiz.txt"
+        content_type = file.content_type or "text/plain"
+        
+        # Check structured formats first
+        if filename.endswith(".json"):
+            try:
+                content_str = file_bytes.decode("utf-8")
+            except UnicodeDecodeError:
+                content_str = file_bytes.decode("latin-1")
+            from src.quiz_parser import parse_json
+            parsed_quiz = parse_json(content_str)
+        elif filename.endswith(".csv"):
+            try:
+                content_str = file_bytes.decode("utf-8")
+            except UnicodeDecodeError:
+                content_str = file_bytes.decode("latin-1")
+            from src.quiz_parser import parse_csv
+            parsed_quiz = parse_csv(content_str)
+        else:
+            api_key = os.getenv("GEMINI_API_KEY", "").strip()
+            from src.indexer import GEMINI_AVAILABLE
+            if not GEMINI_AVAILABLE or not api_key or api_key == '""' or "your_gemini_api_key_here" in api_key:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Gemini API is not configured. Cannot parse unstructured documents."
+                )
+            
+            model_name = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite").strip()
+            from src.quiz_parser import parse_unstructured_with_gemini
+            parsed_quiz = await parse_unstructured_with_gemini(
+                file_bytes=file_bytes,
+                filename=filename,
+                mime_type=content_type,
+                api_key=api_key,
+                model_name=model_name
+            )
+
+        if not parsed_quiz or "questions" not in parsed_quiz or not parsed_quiz["questions"]:
+            raise ValueError("No questions could be extracted from the uploaded document.")
+
+        quiz_id = db.save_quiz(
+            title=parsed_quiz.get("title", "Uploaded Quiz"),
+            created_by=owner_email,
+            catalog_id=catalog_id,
+            playlist_id=playlist_id,
+            questions=parsed_quiz["questions"]
+        )
+
+        return {
+            "success": True,
+            "quiz_id": quiz_id,
+            "title": parsed_quiz.get("title", "Uploaded Quiz"),
+            "questions": parsed_quiz["questions"],
+            "message": "Quiz parsed and saved successfully."
+        }
+
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to process quiz document: {e}")
 
 @app.get("/api/quizzes")
 def get_quiz_endpoint(

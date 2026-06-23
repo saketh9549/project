@@ -135,7 +135,7 @@ export default function QuizPage({ currentUser, showSuccess, showError }) {
     }
 
     return (
-      <div className="flex-grow flex-1 flex flex-col max-w-2xl mx-auto w-full min-h-0 animate-quiz-slide">
+      <div className="flex-grow flex-1 flex flex-col max-w-2xl mx-auto w-full min-h-0 max-h-full h-full animate-quiz-slide">
         {isAdmin && (
           <div className="flex justify-between items-center bg-indigo-950/10 border border-indigo-500/10 rounded-xl px-4 py-2 mb-4">
             <span className="text-[10px] text-indigo-300 font-bold uppercase tracking-wider">
@@ -160,7 +160,7 @@ export default function QuizPage({ currentUser, showSuccess, showError }) {
 
   // 2. Admin view: Creator Mode
   return (
-    <div className="flex-grow flex-1 flex flex-col max-w-3xl mx-auto w-full min-h-0 animate-quiz-slide">
+    <div className="flex-grow flex-1 flex flex-col max-w-3xl mx-auto w-full min-h-0 max-h-full h-full animate-quiz-slide">
       <QuizCreator
         quiz={quiz}
         videoTitle={videoTitle}
@@ -168,6 +168,8 @@ export default function QuizPage({ currentUser, showSuccess, showError }) {
         onDelete={handleDeleteQuiz}
         onBack={() => navigate(`/video/${id}`)}
         onTogglePreview={() => setPreviewMode(true)}
+        catalogId={id}
+        onReload={fetchQuizAndVideo}
       />
     </div>
   );

@@ -42,15 +42,6 @@ export default function Home({
   };
 
   const handleSelectFolder = (pl) => {
-    // Record that the folder has been clicked/started by the user
-    const started = JSON.parse(localStorage.getItem('summarix_started_folders') || '[]');
-    if (!started.includes(pl.id)) {
-      started.push(pl.id);
-      localStorage.setItem('summarix_started_folders', JSON.stringify(started));
-      // Dispatch a storage event to keep views in sync
-      window.dispatchEvent(new Event('summarix_started_folders_change'));
-    }
-
     const folderVideos = videos.filter(v => v.playlist_id === pl.id && v.upload_status === 'indexed');
     if (folderVideos.length > 0) {
       navigate(`/video/${folderVideos[0].id}`);
@@ -59,38 +50,7 @@ export default function Home({
     }
   };
 
-  if (isAdmin) {
-    return (
-      <div className="flex-grow flex-1 flex flex-col max-w-4xl mx-auto w-full glass-panel p-8 rounded-2xl shadow-[0_8px_32px_0_rgba(99,102,241,0.05)] border border-white/5 min-h-0 animate-quiz-slide">
-        <h2 className="text-xl font-bold text-center text-white mb-6 font-display flex items-center justify-center gap-2 shrink-0">
-          <svg className="w-6 h-6 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-          </svg>
-          Index New Video File
-        </h2>
-        <div className="flex-grow overflow-y-auto pr-1">
-          <VideoIndexer
-            videos={videos}
-            indexingLoading={indexingLoading}
-            playlists={playlists}
-            fetchPlaylists={fetchPlaylists}
-            pendingAutoSelectId={pendingAutoSelectId}
-            onIndexStart={onIndexStart}
-            onIndexSuccess={(videoId) => {
-              onIndexSuccess(videoId);
-              navigate(`/video/${videoId}`);
-            }}
-            onIndexError={onIndexError}
-            onDeleteVideo={onDeleteVideo}
-            showSuccess={showSuccess}
-            showError={showError}
-          />
-        </div>
-      </div>
-    );
-  }
-
-  // Student view: LMS "Continue Learning" Cards Grid (Image 1 style)
+  // Both Admin and Student view the same Dashboard
   return (
     <div className="max-w-5xl mx-auto w-full p-4 animate-quiz-slide">
       {/* Welcome header info card */}
@@ -116,6 +76,9 @@ export default function Home({
             Continue Learning
           </h2>
           <div className="flex items-center gap-4">
+            <span onClick={() => navigate('/catalog')} className="text-xs text-indigo-400 font-bold hover:underline cursor-pointer select-none">
+              See all
+            </span>
             <div className="flex gap-2">
               <button className="w-8 h-8 rounded-full border border-white/10 hover:bg-white/5 text-gray-400 hover:text-white flex items-center justify-center cursor-pointer transition-all select-none">
                 &lt;

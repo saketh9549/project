@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { apiUrl } from '../lib/api';
 
 function ChapterThumbnail({ videoSrc, time }) {
@@ -98,8 +99,10 @@ export default function TimelineExplorer({
   onUploadNew,
   isAdmin,
   currentTime = 0,
-  onTimeUpdate
+  onTimeUpdate,
+  onVideoEnded
 }) {
+  const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [ccEnabled, setCcEnabled] = useState(true);
@@ -348,15 +351,23 @@ export default function TimelineExplorer({
           </div>
         </div>
         {isAdmin ? (
-          <button
-            onClick={onUploadNew}
-            className="shrink-0 flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white active:scale-[0.98] font-semibold text-xs px-3.5 py-2 rounded-xl transition-all cursor-pointer shadow-md"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-            </svg>
-            Upload New
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => navigate(`/quiz/${selectedVideo.id}`)}
+              className="shrink-0 flex items-center gap-1.5 bg-blue-900/50 hover:bg-blue-900 border border-blue-500/30 text-blue-400 hover:text-white active:scale-[0.98] font-bold text-xs px-3.5 py-2.5 rounded-xl transition-all cursor-pointer shadow-md"
+            >
+              📝 Manage Quiz
+            </button>
+            <button
+              onClick={onUploadNew}
+              className="shrink-0 flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white active:scale-[0.98] font-semibold text-xs px-3.5 py-2.5 rounded-xl transition-all cursor-pointer shadow-md"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+              </svg>
+              Upload New
+            </button>
+          </div>
         ) : (
           <button
             onClick={onUploadNew}
@@ -371,9 +382,8 @@ export default function TimelineExplorer({
       {videoSrc && (
         <div
           ref={containerRef}
-          className={`mb-4 rounded-xl overflow-hidden border border-white/10 bg-black shadow-inner shrink-0 relative group ${
-            isFullscreen ? 'w-screen h-screen rounded-none border-none' : ''
-          }`}
+          className={`mb-4 rounded-xl overflow-hidden border border-white/10 bg-black shadow-inner shrink-0 relative group ${isFullscreen ? 'w-screen h-screen rounded-none border-none' : ''
+            }`}
         >
           <video
             ref={videoRef}
@@ -394,14 +404,16 @@ export default function TimelineExplorer({
                   localStorage.setItem('summarix_watched', JSON.stringify(watched));
                   window.dispatchEvent(new Event('summarix_watched_change'));
                 }
+                if (onVideoEnded) {
+                  onVideoEnded();
+                }
               }
             }}
             onLoadedMetadata={handleLoadedMetadata}
             onPlay={handlePlay}
             onPause={handlePause}
-            className={`w-full object-contain cursor-pointer ${
-              isFullscreen ? 'h-full max-h-none' : 'max-h-[300px]'
-            }`}
+            className={`w-full object-contain cursor-pointer ${isFullscreen ? 'h-full max-h-none' : 'max-h-[300px]'
+              }`}
           >
             {vttUrl && (
               <track
@@ -413,7 +425,7 @@ export default function TimelineExplorer({
               />
             )}
           </video>
-          
+
           {/* Custom Video Controls Bar */}
           <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/95 via-black/70 to-transparent flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-20">
             {/* Timeline Progress Bar / Scrubber */}
@@ -431,7 +443,7 @@ export default function TimelineExplorer({
                 }}
               />
             </div>
-            
+
             {/* Control Buttons row */}
             <div className="flex items-center justify-between text-white text-xs select-none">
               {/* Left Side Controls: Play, Time */}
@@ -443,20 +455,20 @@ export default function TimelineExplorer({
                 >
                   {isPlaying ? (
                     <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
-                      <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+                      <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
                     </svg>
                   ) : (
                     <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
-                      <path d="M8 5v14l11-7z"/>
+                      <path d="M8 5v14l11-7z" />
                     </svg>
                   )}
                 </button>
-                
+
                 <span className="font-mono text-[11px] text-gray-300">
                   {formatTime(currentTime)} / {formatTime(duration)}
                 </span>
               </div>
-              
+
               {/* Right Side Controls: Volume, CC, Fullscreen, More */}
               <div className="flex items-center gap-3.5">
                 {/* Volume Button */}
@@ -468,29 +480,28 @@ export default function TimelineExplorer({
                 >
                   {isMuted ? (
                     <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
-                      <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.21.05-.42.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.03a8.99 8.99 0 003.71-1.93L19.73 21 21 19.73 4.27 3zM12 4L9.91 6.09 12 8.18V4z"/>
+                      <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.21.05-.42.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.03a8.99 8.99 0 003.71-1.93L19.73 21 21 19.73 4.27 3zM12 4L9.91 6.09 12 8.18V4z" />
                     </svg>
                   ) : (
                     <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
-                      <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+                      <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z" />
                     </svg>
                   )}
                 </button>
-                
+
                 {/* CC Subtitles Button */}
                 <button
                   type="button"
                   onClick={() => setCcEnabled(!ccEnabled)}
-                  className={`transition-colors p-1 cursor-pointer ${
-                    ccEnabled ? 'text-white' : 'text-white/40 hover:text-white'
-                  }`}
+                  className={`transition-colors p-1 cursor-pointer ${ccEnabled ? 'text-white' : 'text-white/40 hover:text-white'
+                    }`}
                   title={ccEnabled ? "Disable Subtitles" : "Enable Subtitles"}
                 >
                   <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
-                    <path d="M19 4H5a2 2 0 00-2 2v12a2 2 0 002 2h14a2 2 0 002-2V6a2 2 0 00-2-2zm-9 7H8.5v-.5h-2v3h2V13H10v1H5.5V9H10v2zm8 0h-1.5v-.5h-2v3h2V13H18v1h-4.5V9H18v2z"/>
+                    <path d="M19 4H5a2 2 0 00-2 2v12a2 2 0 002 2h14a2 2 0 002-2V6a2 2 0 00-2-2zm-9 7H8.5v-.5h-2v3h2V13H10v1H5.5V9H10v2zm8 0h-1.5v-.5h-2v3h2V13H18v1h-4.5V9H18v2z" />
                   </svg>
                 </button>
-                
+
                 {/* Fullscreen Button */}
                 <button
                   type="button"
@@ -500,15 +511,15 @@ export default function TimelineExplorer({
                 >
                   {isFullscreen ? (
                     <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
-                      <path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/>
+                      <path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z" />
                     </svg>
                   ) : (
                     <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
-                      <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>
+                      <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" />
                     </svg>
                   )}
                 </button>
-                
+
                 {/* More Options Button */}
                 <button
                   type="button"
@@ -516,7 +527,7 @@ export default function TimelineExplorer({
                   title="More Options"
                 >
                   <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
-                    <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
+                    <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z" />
                   </svg>
                 </button>
               </div>

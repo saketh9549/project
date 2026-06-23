@@ -1,4 +1,5 @@
 import os
+import json
 import unittest
 import dotenv
 from bson.objectid import ObjectId
@@ -211,3 +212,47 @@ class TestQuiz(unittest.TestCase):
         self.assertEqual(results[1]["questionIdx"], 1)
         self.assertFalse(results[1]["isCorrect"])
         self.assertEqual(results[1]["explanation"], "Paris is the capital of France.")
+
+    def test_quiz_upload_json(self):
+        # Create a video first
+        video_id = str(ObjectId())
+        self.db.catalogs.insert_one({
+            "_id": ObjectId(video_id),
+            "filePath": "upload_test_video.mp4",
+            "ownerEmail": self.admin_email,
+            "createdAt": db.datetime.now()
+        })
+
+        # Structured JSON file to upload
+        quiz_data = {
+            "title": "Uploaded Math Quiz",
+            "questions": [
+                {
+                    "questionText": "What is 2 + 2?",
+                    "options": ["3", "4", "5", "6"],
+                    "correctAnswerIdx": 1,
+                    "explanation": "2 + 2 = 4"
+                }
+            ]
+        }
+        json_bytes = json.dumps(quiz_data).encode("utf-8")
+
+        # Post quiz file
+        response = self.client.post(
+            f"/api/quizzes/upload?catalog_id={video_id}&owner_email={self.admin_email}&role=admin",
+            files={"file": ("quiz.json", json_bytes, "application/json")}
+        )
+        self.assertEqual(response.status_code, 200)
+        res_json = response.json()
+        self.assertTrue(res_json["success"])
+        self.assertEqual(res_json["title"], "Uploaded Math Quiz")
+        self.assertEqual(len(res_json["questions"]), 1)
+        self.assertEqual(res_json["questions"][0]["questionText"], "What is 2 + 2?")
+
+        # Try posting as regular user -> forbidden
+        response = self.client.post(
+            f"/api/quizzes/upload?catalog_id={video_id}&owner_email={self.user_email}&role=user",
+            files={"file": ("quiz.json", json_bytes, "application/json")}
+        )
+        self.assertEqual(response.status_code, 403)
+

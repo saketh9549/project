@@ -56,7 +56,7 @@ export default function VideoWorkspace({ currentUser, showSuccess, showError }) 
   const [currentTime, setCurrentTime] = useState(0);
   const [overallSummary, setOverallSummary] = useState(null);
   const [overallSummaryLoading, setOverallSummaryLoading] = useState(false);
-  
+
   // Folder / playlist context
   const [folderName, setFolderName] = useState('Workspace Media');
   const [folderVideos, setFolderVideos] = useState([]);
@@ -120,12 +120,12 @@ export default function VideoWorkspace({ currentUser, showSuccess, showError }) 
     try {
       const email = currentUser?.email || 'anonymous@summarix.io';
       const role = currentUser?.role || 'user';
-      
+
       // 1. Fetch active video details
       const response = await fetch(apiUrl(`/api/videos/${videoId}?owner_email=${encodeURIComponent(email)}&role=${role}`));
       if (!response.ok) throw new Error('Failed to load video workspace');
       const data = await response.json();
-      
+
       setChapters(data.chapters || []);
       if (data.video) {
         setSelectedVideo(data.video);
@@ -140,7 +140,7 @@ export default function VideoWorkspace({ currentUser, showSuccess, showError }) 
       const allVideosRes = await fetch(apiUrl(`/api/videos?owner_email=${encodeURIComponent(email)}&role=${role}`));
       if (allVideosRes.ok) {
         const allVideos = await allVideosRes.json();
-        
+
         // Find playlist context
         const playlistId = data.video?.playlist_id;
         if (playlistId) {
@@ -171,12 +171,24 @@ export default function VideoWorkspace({ currentUser, showSuccess, showError }) 
               // Quiz not found or failed, ignore
             }
           }
+
+          // Fetch playlist-level quiz
+          try {
+            const playlistQuizRes = await fetch(apiUrl(`/api/quizzes?playlist_id=${playlistId}`));
+            if (playlistQuizRes.ok) {
+              const playlistQuizData = await playlistQuizRes.json();
+              quizList.push({ ...playlistQuizData, playlistId });
+            }
+          } catch {
+            // Quiz not found or failed, ignore
+          }
+
           setFolderQuizzes(quizList);
         } else {
           // Standalone video context
           setFolderVideos([data.video]);
           setFolderName(data.video?.file_name || 'Workspace Media');
-          
+
           // Scan for single video quiz
           try {
             const quizRes = await fetch(apiUrl(`/api/quizzes?video_id=${videoId}`));
@@ -238,6 +250,20 @@ export default function VideoWorkspace({ currentUser, showSuccess, showError }) 
       setOverallSummaryLoading(false);
     }
   };
+  const handleVideoEnded = () => {
+    if (!selectedVideo) return;
+    const matchedQuiz = folderQuizzes.find(
+      (q) => q.catalogId === selectedVideo.id || q.videoId === selectedVideo.id
+    );
+    if (matchedQuiz) {
+      showSuccess("Video completed! Loading practice quiz...");
+      setTimeout(() => {
+        setActiveContent({ type: 'quiz', id: matchedQuiz._id });
+        setQuizViewState('landing');
+      }, 1000);
+    }
+  };
+
 
   const handleMouseDown = (e) => {
     e.preventDefault();
@@ -299,6 +325,7 @@ export default function VideoWorkspace({ currentUser, showSuccess, showError }) 
             onTimeUpdate={handleTimeUpdate}
             isAdmin={true}
             onUploadNew={() => navigate('/catalog')}
+            onVideoEnded={handleVideoEnded}
           />
         </main>
 
@@ -356,14 +383,13 @@ export default function VideoWorkspace({ currentUser, showSuccess, showError }) 
           >
             <span>&larr;</span>
           </button>
-          
+
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
-            className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all cursor-pointer select-none border ${
-              sidebarOpen 
-                ? 'border-cyan-500/50 text-cyan-400 bg-cyan-950/20 shadow-[0_0_8px_rgba(34,211,238,0.15)]' 
+            className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all cursor-pointer select-none border ${sidebarOpen
+                ? 'border-cyan-500/50 text-cyan-400 bg-cyan-950/20 shadow-[0_0_8px_rgba(34,211,238,0.15)]'
                 : 'border-white/10 text-gray-400 hover:text-white hover:bg-white/5'
-            }`}
+              }`}
             title={sidebarOpen ? "Collapse Sidebar" : "Expand Sidebar"}
           >
             <svg className="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -392,147 +418,81 @@ export default function VideoWorkspace({ currentUser, showSuccess, showError }) 
 
       {/* Workspace split screen columns: Left Sidebar Accordion + Right Workspace */}
       <div className="flex-grow flex-1 flex flex-col lg:flex-row min-h-0 overflow-hidden relative gap-6">
-        
+
         {/* Left Column: LMS Course Outline Accordion (Image 2 style) */}
         {sidebarOpen && (
           <aside className="w-full lg:w-80 shrink-0 glass-panel p-4 rounded-2xl flex flex-col gap-4 min-h-0 overflow-y-auto select-none">
-          {/* Module course progress card header */}
-          <div className={`p-4 rounded-xl bg-gradient-to-br ${meta.bgGradient} border border-white/5 shadow-md flex flex-col gap-3 relative overflow-hidden`}>
-            <div className="absolute top-0 right-0 w-16 h-16 bg-white/5 rounded-full blur-xl" />
-            <div className="flex items-center gap-3">
-              <div className="min-w-0">
-                <h4 className="font-extrabold text-[11px] text-white truncate max-w-[180px]" title={folderName}>
-                  {folderName}
-                </h4>
-                <p className="text-[8px] text-cyan-400 font-bold uppercase tracking-wider mt-0.5">
-                  Course Workspace
-                </p>
+            {/* Module course progress card header */}
+            <div className={`p-4 rounded-xl bg-gradient-to-br ${meta.bgGradient} border border-white/5 shadow-md flex flex-col gap-3 relative overflow-hidden`}>
+              <div className="absolute top-0 right-0 w-16 h-16 bg-white/5 rounded-full blur-xl" />
+              <div className="flex items-center gap-3">
+                <div className="min-w-0">
+                  <h4 className="font-extrabold text-[11px] text-white truncate max-w-[180px]" title={folderName}>
+                    {folderName}
+                  </h4>
+                  <p className="text-[8px] text-cyan-400 font-bold uppercase tracking-wider mt-0.5">
+                    Course Workspace
+                  </p>
+                </div>
+              </div>
+              {/* Progress bar */}
+              <div className="flex flex-col gap-1 border-t border-white/5 pt-2.5">
+                <div className="w-full bg-black/40 rounded-full h-1.5 overflow-hidden border border-white/5">
+                  <div
+                    className="h-full bg-cyan-400 shadow-[0_0_6px_rgba(34,211,238,0.3)] transition-[width] duration-300"
+                    style={{ width: `${progressPercent}%` }}
+                  />
+                </div>
+                <div className="flex justify-between text-[8.5px] font-bold font-mono text-gray-300">
+                  <span>Course Progress</span>
+                  <span>{progressPercent}%</span>
+                </div>
               </div>
             </div>
-            {/* Progress bar */}
-            <div className="flex flex-col gap-1 border-t border-white/5 pt-2.5">
-              <div className="w-full bg-black/40 rounded-full h-1.5 overflow-hidden border border-white/5">
+
+            {/* Collapsible Accordion Items */}
+            <div className="flex-1 flex flex-col gap-2.5 overflow-y-auto pr-1">
+              {/* Accordion Item 1: Lessons & Chapters */}
+              <div className="flex flex-col border border-white/5 bg-white/3 rounded-xl p-2.5 transition-all">
                 <div
-                  className="h-full bg-cyan-400 shadow-[0_0_6px_rgba(34,211,238,0.3)] transition-[width] duration-300"
-                  style={{ width: `${progressPercent}%` }}
-                />
-              </div>
-              <div className="flex justify-between text-[8.5px] font-bold font-mono text-gray-300">
-                <span>Course Progress</span>
-                <span>{progressPercent}%</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Collapsible Accordion Items */}
-          <div className="flex-1 flex flex-col gap-2.5 overflow-y-auto pr-1">
-            {/* Accordion Item 1: Lessons & Chapters */}
-            <div className="flex flex-col border border-white/5 bg-white/3 rounded-xl p-2.5 transition-all">
-              <div
-                onClick={() => toggleAccordion('lessons')}
-                className="flex items-center justify-between p-1.5 cursor-pointer hover:bg-white/5 transition-all rounded-lg"
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-[10px] font-bold text-white uppercase tracking-wider">
-                    Video Lectures
-                  </span>
-                  <span className="text-[8.5px] text-gray-500">
-                    ({totalLessons})
-                  </span>
-                </div>
-                <svg
-                  className={`w-3.5 h-3.5 transform transition-transform ${accordionState.lessons ? 'rotate-180' : ''} text-gray-500`}
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
+                  onClick={() => toggleAccordion('lessons')}
+                  className="flex items-center justify-between p-1.5 cursor-pointer hover:bg-white/5 transition-all rounded-lg"
                 >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                </svg>
-              </div>
-
-              {accordionState.lessons && (
-                <div className="flex flex-col gap-1.5 mt-2 pl-1 border-l border-white/5 ml-2 pb-0.5">
-                  {folderVideos.map((v, index) => {
-                    const isWatched = watchedList.includes(v.id);
-                    const isActive = activeContent.type === 'video' && activeContent.id === v.id;
-                    return (
-                      <div
-                        key={v.id}
-                        onClick={() => handleSelectVideoContent(v.id)}
-                        className={`flex items-start justify-between gap-2.5 p-2 rounded-xl border text-xs cursor-pointer select-none transition-all ${
-                          isActive
-                            ? 'border-indigo-500/50 bg-indigo-950/20 text-white font-semibold'
-                            : 'border-transparent text-gray-400 hover:text-white hover:bg-white/5'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          {/* Checkmark circle icon */}
-                          {isWatched ? (
-                            <div className="w-4 h-4 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center shrink-0">
-                              <svg className="w-2.5 h-2.5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                              </svg>
-                            </div>
-                          ) : (
-                            <div className="w-4 h-4 rounded-full border border-gray-600 bg-black/20 shrink-0" />
-                          )}
-                          <span className="truncate max-w-[180px]">
-                            {index + 1}. {v.file_name}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-[10px] font-bold text-white uppercase tracking-wider">
+                      Video Lectures
+                    </span>
+                    <span className="text-[8.5px] text-gray-500">
+                      ({totalLessons})
+                    </span>
+                  </div>
+                  <svg
+                    className={`w-3.5 h-3.5 transform transition-transform ${accordionState.lessons ? 'rotate-180' : ''} text-gray-500`}
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                  </svg>
                 </div>
-              )}
-            </div>
 
-            {/* Accordion Item 2: Practice Assessments (Quizzes) */}
-            <div className="flex flex-col border border-white/5 bg-white/3 rounded-xl p-2.5 transition-all">
-              <div
-                onClick={() => toggleAccordion('quizzes')}
-                className="flex items-center justify-between p-1.5 cursor-pointer hover:bg-white/5 transition-all rounded-lg"
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-[10px] font-bold text-white uppercase tracking-wider">
-                    Assessments / Quizzes
-                  </span>
-                  <span className="text-[8.5px] text-gray-500">
-                    ({folderQuizzes.length})
-                  </span>
-                </div>
-                <svg
-                  className={`w-3.5 h-3.5 transform transition-transform ${accordionState.quizzes ? 'rotate-180' : ''} text-gray-500`}
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                </svg>
-              </div>
-
-              {accordionState.quizzes && (
-                <div className="flex flex-col gap-1.5 mt-2 pl-1 border-l border-white/5 ml-2 pb-0.5">
-                  {folderQuizzes.length === 0 ? (
-                    <div className="text-[10px] text-gray-500 italic py-1.5 pl-3">
-                      No quizzes configured.
-                    </div>
-                  ) : (
-                    folderQuizzes.map((q) => {
-                      const isDone = completedQuizzes.includes(q._id);
-                      const isActive = activeContent.type === 'quiz' && activeContent.id === q._id;
+                {accordionState.lessons && (
+                  <div className="flex flex-col gap-1.5 mt-2 pl-1 border-l border-white/5 ml-2 pb-0.5">
+                    {folderVideos.map((v, index) => {
+                      const isWatched = watchedList.includes(v.id);
+                      const isActive = activeContent.type === 'video' && activeContent.id === v.id;
                       return (
                         <div
-                          key={q._id}
-                          onClick={() => handleSelectQuizContent(q._id)}
-                          className={`flex items-start justify-between gap-2.5 p-2 rounded-xl border text-xs cursor-pointer select-none transition-all ${
-                            isActive
+                          key={v.id}
+                          onClick={() => handleSelectVideoContent(v.id)}
+                          className={`flex items-start justify-between gap-2.5 p-2 rounded-xl border text-xs cursor-pointer select-none transition-all ${isActive
                               ? 'border-indigo-500/50 bg-indigo-950/20 text-white font-semibold'
                               : 'border-transparent text-gray-400 hover:text-white hover:bg-white/5'
-                          }`}
+                            }`}
                         >
                           <div className="flex items-center gap-2 min-w-0">
-                            {isDone ? (
+                            {/* Checkmark circle icon */}
+                            {isWatched ? (
                               <div className="w-4 h-4 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center shrink-0">
                                 <svg className="w-2.5 h-2.5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
                                   <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
@@ -542,44 +502,108 @@ export default function VideoWorkspace({ currentUser, showSuccess, showError }) 
                               <div className="w-4 h-4 rounded-full border border-gray-600 bg-black/20 shrink-0" />
                             )}
                             <span className="truncate max-w-[180px]">
-                              📝 {q.title}
+                              {index + 1}. {v.file_name}
                             </span>
                           </div>
                         </div>
                       );
-                    })
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Accordion Item 3: Materials & Notes (Static Placeholders to match Image 2) */}
-            <div className="flex flex-col border border-white/5 bg-white/3 rounded-xl p-2.5 transition-all">
-              <div
-                onClick={() => toggleAccordion('notes')}
-                className="flex items-center justify-between p-1.5 cursor-pointer hover:bg-white/5 transition-all rounded-lg"
-              >
-                <span className="text-[10px] font-bold text-white uppercase tracking-wider">
-                  Materials & Notes
-                </span>
-                <svg
-                  className={`w-3.5 h-3.5 transform transition-transform ${accordionState.notes ? 'rotate-180' : ''} text-gray-500`}
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                </svg>
+                    })}
+                  </div>
+                )}
               </div>
-              {accordionState.notes && (
-                <div className="flex flex-col gap-1.5 mt-2 pl-1 border-l border-white/5 ml-2 text-[10px] text-gray-500 py-1.5 pl-3">
-                  📘 Course reference booklet (.pdf)
+
+              {/* Accordion Item 2: Practice Assessments (Quizzes) */}
+              <div className="flex flex-col border border-white/5 bg-white/3 rounded-xl p-2.5 transition-all">
+                <div
+                  onClick={() => toggleAccordion('quizzes')}
+                  className="flex items-center justify-between p-1.5 cursor-pointer hover:bg-white/5 transition-all rounded-lg"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-[10px] font-bold text-white uppercase tracking-wider">
+                      Assessments / Quizzes
+                    </span>
+                    <span className="text-[8.5px] text-gray-500">
+                      ({folderQuizzes.length})
+                    </span>
+                  </div>
+                  <svg
+                    className={`w-3.5 h-3.5 transform transition-transform ${accordionState.quizzes ? 'rotate-180' : ''} text-gray-500`}
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                  </svg>
                 </div>
-              )}
+
+                {accordionState.quizzes && (
+                  <div className="flex flex-col gap-1.5 mt-2 pl-1 border-l border-white/5 ml-2 pb-0.5">
+                    {folderQuizzes.length === 0 ? (
+                      <div className="text-[10px] text-gray-500 italic py-1.5 pl-3">
+                        No quizzes configured.
+                      </div>
+                    ) : (
+                      folderQuizzes.map((q) => {
+                        const isDone = completedQuizzes.includes(q._id);
+                        const isActive = activeContent.type === 'quiz' && activeContent.id === q._id;
+                        return (
+                          <div
+                            key={q._id}
+                            onClick={() => handleSelectQuizContent(q._id)}
+                            className={`flex items-start justify-between gap-2.5 p-2 rounded-xl border text-xs cursor-pointer select-none transition-all ${isActive
+                                ? 'border-indigo-500/50 bg-indigo-950/20 text-white font-semibold'
+                                : 'border-transparent text-gray-400 hover:text-white hover:bg-white/5'
+                              }`}
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              {isDone ? (
+                                <div className="w-4 h-4 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center shrink-0">
+                                  <svg className="w-2.5 h-2.5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                  </svg>
+                                </div>
+                              ) : (
+                                <div className="w-4 h-4 rounded-full border border-gray-600 bg-black/20 shrink-0" />
+                              )}
+                              <span className="truncate max-w-[180px]">
+                                📝 {q.title}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Accordion Item 3: Materials & Notes (Static Placeholders to match Image 2) */}
+              <div className="flex flex-col border border-white/5 bg-white/3 rounded-xl p-2.5 transition-all">
+                <div
+                  onClick={() => toggleAccordion('notes')}
+                  className="flex items-center justify-between p-1.5 cursor-pointer hover:bg-white/5 transition-all rounded-lg"
+                >
+                  <span className="text-[10px] font-bold text-white uppercase tracking-wider">
+                    Materials & Notes
+                  </span>
+                  <svg
+                    className={`w-3.5 h-3.5 transform transition-transform ${accordionState.notes ? 'rotate-180' : ''} text-gray-500`}
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
+                {accordionState.notes && (
+                  <div className="flex flex-col gap-1.5 mt-2 pl-1 border-l border-white/5 ml-2 text-[10px] text-gray-500 py-1.5 pl-3">
+                    📘 Course reference booklet (.pdf)
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        </aside>
-      )}
+          </aside>
+        )}
 
         {/* Right Column: Active Content Port (Image 2 style Workspace layout) */}
         <div className="flex-grow flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden relative">
@@ -597,6 +621,7 @@ export default function VideoWorkspace({ currentUser, showSuccess, showError }) 
                   onTimeUpdate={handleTimeUpdate}
                   isAdmin={isAdmin}
                   onUploadNew={() => navigate('/catalog')}
+                  onVideoEnded={handleVideoEnded}
                 />
               </main>
 
@@ -636,7 +661,7 @@ export default function VideoWorkspace({ currentUser, showSuccess, showError }) 
             </div>
           ) : (
             /* 2. Quiz / Assignment Workspace card (Image 2 style player) */
-            <div className="flex-grow flex-1 flex flex-col items-center justify-center p-4">
+            <div className="flex-grow flex-1 flex flex-col items-center justify-center p-4 min-h-0 h-full max-h-full w-full">
               {quizViewState === 'landing' && selectedQuiz ? (
                 /* Pre-quiz Landing Dashboard (matches screenshot) */
                 <div className="glass-panel p-8 rounded-2xl border border-white/5 shadow-2xl max-w-md w-full relative overflow-hidden bg-gradient-to-br from-indigo-950/10 to-slate-900/10 text-center animate-quiz-slide flex flex-col gap-6">

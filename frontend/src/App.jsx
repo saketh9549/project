@@ -254,27 +254,7 @@ function AppContent() {
             </div>
           </div>
 
-          {/* Navigation Bar - Beautiful tabs (Admin Only) */}
-          {currentUser?.role === 'admin' && (
-            <nav className="flex items-center gap-1.5 bg-white/5 border border-white/5 p-1 rounded-xl select-none">
-              <Link
-                to="/home"
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all border border-transparent cursor-pointer ${
-                  isHomeActive ? 'nav-link-active font-bold shadow-[0_0_8px_rgba(34,211,238,0.06)]' : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                Dashboard
-              </Link>
-              <Link
-                to="/catalog"
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all border border-transparent cursor-pointer ${
-                  isCatalogActive ? 'nav-link-active font-bold shadow-[0_0_8px_rgba(34,211,238,0.06)]' : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                Library
-              </Link>
-            </nav>
-          )}
+          {/* Navigation tabs removed - replaced by Sidebar */}
         </div>
 
         {/* Status Alerts Banners (Centered) */}
@@ -382,8 +362,63 @@ function AppContent() {
         </div>
       </header>
 
-      {/* Main Container */}
-      <div className={`flex-grow flex-1 flex flex-col p-6 min-h-0 w-full ${isWorkspace ? 'overflow-hidden' : 'overflow-y-auto'}`}>
+      {/* Main Container holding Sidebar and Content */}
+      <div className="flex-grow flex-1 flex flex-row min-h-0 w-full overflow-hidden">
+        {/* Sidebar Navigation */}
+        {currentUser?.role === 'admin' && (
+          <aside className="w-64 border-r border-white/5 bg-gray-950/40 backdrop-blur-md flex flex-col p-5 shrink-0 select-none glass-panel justify-between">
+            <div className="flex flex-col gap-2">
+              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-3 mb-2">
+                Navigation
+              </div>
+              <Link
+                to="/home"
+                className={`flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-semibold tracking-wide transition-all border border-transparent cursor-pointer group ${
+                  isHomeActive
+                    ? 'nav-link-active font-bold shadow-[0_0_8px_rgba(34,211,238,0.06)]'
+                    : 'text-gray-400 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                <svg className="w-4 h-4 transition-transform group-hover:scale-110" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2H6a2 2 0 01-2-2v-4zM14 16a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2v-4z" />
+                </svg>
+                Dashboard
+              </Link>
+              <Link
+                to="/catalog"
+                className={`flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-semibold tracking-wide transition-all border border-transparent cursor-pointer group ${
+                  isCatalogActive
+                    ? 'nav-link-active font-bold shadow-[0_0_8px_rgba(34,211,238,0.06)]'
+                    : 'text-gray-400 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                <svg className="w-4 h-4 transition-transform group-hover:scale-110" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 4H6a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-2m-4-1v8m0 0l3-3m-3 3L9 8m-5 5h2.586a1 1 0 01.707.293l2.414 2.414a1 1 0 00.707.293h3.172a1 1 0 00.707-.293l2.414-2.414a1 1 0 01.707-.293H20" />
+                </svg>
+                Library
+              </Link>
+            </div>
+            {/* Quick status summary at the bottom of sidebar */}
+            <div className="border-t border-white/5 pt-4 mt-auto flex flex-col gap-2">
+              <div className="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-3">
+                Overview
+              </div>
+              <div className="flex flex-col gap-1 px-3">
+                <div className="flex items-center justify-between text-[11px] text-gray-400">
+                  <span>Total Items</span>
+                  <span className="font-semibold text-white">{videos.length}</span>
+                </div>
+                <div className="flex items-center justify-between text-[11px] text-gray-400">
+                  <span>Folders</span>
+                  <span className="font-semibold text-white">{playlists.length}</span>
+                </div>
+              </div>
+            </div>
+          </aside>
+        )}
+
+        {/* Content Area */}
+        <div className={`flex-grow flex-1 flex flex-col p-6 min-h-0 ${isWorkspace ? 'overflow-hidden' : 'overflow-y-auto'}`}>
         <Routes>
           <Route path="/home" element={
             <Home
@@ -419,6 +454,20 @@ function AppContent() {
                 currentUser={currentUser}
                 fetchPlaylists={fetchPlaylists}
                 fetchVideos={fetchVideos}
+                indexingLoading={indexingLoading}
+                pendingAutoSelectId={pendingAutoSelectId}
+                onIndexStart={() => setIndexingLoading(true)}
+                onIndexSuccess={async (videoId) => {
+                  setIndexingLoading(false);
+                  setPendingAutoSelectId(videoId);
+                  localStorage.setItem('summarix_pending_select', videoId);
+                  await fetchVideos();
+                  await fetchPlaylists();
+                  showSuccess("Video successfully queued for indexing! Redirecting to workspace upon completion.");
+                }}
+                onIndexError={() => setIndexingLoading(false)}
+                showSuccess={showSuccess}
+                showError={showError}
               />
             ) : (
               <Navigate to="/home" replace />
@@ -440,6 +489,7 @@ function AppContent() {
           } />
           <Route path="*" element={<Navigate to="/home" replace />} />
         </Routes>
+        </div>
       </div>
 
       {/* Footer */}
