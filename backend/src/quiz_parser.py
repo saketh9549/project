@@ -172,19 +172,41 @@ async def parse_unstructured_with_gemini(
     )
     content_parts.append(prompt)
     
-    try:
-        response = client.models.generate_content(
-            model=model_name,
-            contents=content_parts,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=QuizModel,
-                temperature=0.1
-            )
-        )
-        
-        parsed_result = json.loads(response.text.strip())
-        return parsed_result
-    except Exception as e:
-        print(f"[Gemini Quiz Parser Error] {e}")
-        raise ValueError(f"Gemini failed to parse the document as a quiz: {str(e)}")
+    # Fallback model list if the primary configured model fails or is overloaded
+    models_to_try = [model_name]
+    for fallback in ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-3.1-flash-lite"]:
+        if fallback != model_name:
+            models_to_try.append(fallback)
+            
+    import asyncio
+    
+    last_exception = None
+    for model in models_to_try:
+        max_retries = 3
+        delay = 1.5
+        for attempt in range(max_retries):
+            try:
+                print(f"[Gemini Quiz Parser] Attempting parse with model={model} (attempt {attempt + 1}/{max_retries})")
+                response = client.models.generate_content(
+                    model=model,
+                    contents=content_parts,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        response_schema=QuizModel,
+                        temperature=0.1
+                    )
+                )
+                parsed_result = json.loads(response.text.strip())
+                print(f"[Gemini Quiz Parser] Successfully parsed quiz using model={model}")
+                return parsed_result
+            except Exception as e:
+                last_exception = e
+                print(f"[Gemini Quiz Parser] Attempt {attempt + 1} with model={model} failed: {e}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(delay)
+                    delay *= 2
+                else:
+                    break
+                    
+    raise ValueError(f"Gemini failed to parse the document as a quiz: {str(last_exception)}")
+

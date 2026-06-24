@@ -386,21 +386,13 @@ export default function VideoWorkspace({ currentUser, showSuccess, showError }) 
 
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
-            className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all cursor-pointer select-none border ${sidebarOpen
+            className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all cursor-pointer select-none border font-bold text-xs ${sidebarOpen
                 ? 'border-cyan-500/50 text-cyan-400 bg-cyan-950/20 shadow-[0_0_8px_rgba(34,211,238,0.15)]'
                 : 'border-white/10 text-gray-400 hover:text-white hover:bg-white/5'
               }`}
             title={sidebarOpen ? "Collapse Sidebar" : "Expand Sidebar"}
           >
-            <svg className="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <rect x="3" y="3" width="18" height="18" rx="3.5" />
-              <path strokeLinecap="round" d="M9 3v18" />
-              {sidebarOpen ? (
-                <path strokeLinecap="round" strokeLinejoin="round" d="M16 14l-2.5-2.5 2.5-2.5" />
-              ) : (
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 9.5l2.5 2.5-2.5 2.5" />
-              )}
-            </svg>
+            {sidebarOpen ? '<' : '>'}
           </button>
 
           <div className="flex gap-4 ml-2">

@@ -8,9 +8,15 @@ from fastapi.testclient import TestClient
 # Load environment variables
 dotenv.load_dotenv(".env")
 
-# Set local MongoDB URI for testing if not already specified
-if "MONGODB_URI" not in os.environ:
-    os.environ["MONGODB_URI"] = "mongodb://127.0.0.1:27017/summarix_test"
+# Re-route MONGODB_URI to test suite database to avoid wiping live/development data
+import urllib.parse
+uri = os.getenv("MONGODB_URI", "mongodb://127.0.0.1:27017/summarix_test")
+parsed = urllib.parse.urlparse(uri)
+if parsed.scheme:
+    new_uri = f"{parsed.scheme}://{parsed.netloc}/summarix_test_suite"
+    if parsed.query:
+        new_uri += f"?{parsed.query}"
+    os.environ["MONGODB_URI"] = new_uri
 
 import src.database as db
 from server import app

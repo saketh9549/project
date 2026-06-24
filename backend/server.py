@@ -436,10 +436,15 @@ def get_local_files():
 
 
 @app.get("/api/videos")
-def list_videos(owner_email: str = Query(...), role: str = Query("user")):
+def list_videos(
+    owner_email: Optional[str] = Query(None),
+    role: str = Query("user"),
+    all_videos: bool = Query(False, alias="all")
+):
     db.init_db()
     try:
-        videos = db.list_videos(owner_email, role)
+        email = "" if all_videos else (owner_email or "")
+        videos = db.list_videos(email, role)
         video_list = []
         for v in videos:
             video_list.append({
@@ -1127,10 +1132,15 @@ class PlaylistCreateRequest(BaseModel):
     name: str
 
 @app.get("/api/playlists")
-def list_playlists(owner_email: str = Query(...), role: str = Query("user")):
+def list_playlists(
+    owner_email: Optional[str] = Query(None),
+    role: str = Query("user"),
+    all_playlists: bool = Query(False, alias="all")
+):
     db.init_db()
     try:
-        return db.list_playlists(owner_email, role)
+        email = "" if all_playlists else (owner_email or "")
+        return db.list_playlists(email, role)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to list playlists: {e}")
 
@@ -1313,6 +1323,8 @@ def get_quiz_endpoint(
         if not quiz:
             raise HTTPException(status_code=404, detail="Quiz not found for the specified video or playlist.")
         return quiz
+    except HTTPException as he:
+        raise he
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch quiz: {e}")
 

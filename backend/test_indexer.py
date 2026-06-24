@@ -122,7 +122,7 @@ class TestDatabaseOperations(unittest.TestCase):
         # Connect using MONGODB_URI or default to local mongodb
         uri = os.getenv("MONGODB_URI", "mongodb://127.0.0.1:27017/summarix")
         self.client = MongoClient(uri)
-        self.test_db = self.client["summarix_test"]
+        self.test_db = self.client["summarix_test_suite"]
         
         self.patcher = patch("src.database.get_db")
         self.mock_get_db = self.patcher.start()

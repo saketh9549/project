@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import VideoIndexer from './VideoIndexer';
+import { apiUrl } from '../lib/api';
 
 export default function Home({
   currentUser,
@@ -20,6 +21,8 @@ export default function Home({
   const isAdmin = currentUser?.role === 'admin';
 
   const [watchedList, setWatchedList] = useState([]);
+  const [allPlaylists, setAllPlaylists] = useState([]);
+  const [allVideos, setAllVideos] = useState([]);
 
   useEffect(() => {
     const loadWatched = () => {
@@ -37,12 +40,34 @@ export default function Home({
     return () => window.removeEventListener('summarix_watched_change', loadWatched);
   }, []);
 
+  useEffect(() => {
+    if (!isAdmin) return;
+    const fetchAllData = async () => {
+      try {
+        const plRes = await fetch(apiUrl('/api/playlists?all=true'));
+        if (plRes.ok) {
+          const plData = await plRes.json();
+          setAllPlaylists(plData);
+        }
+        const vidRes = await fetch(apiUrl('/api/videos?all=true'));
+        if (vidRes.ok) {
+          const vidData = await vidRes.json();
+          setAllVideos(vidData);
+        }
+      } catch (err) {
+        console.error("Failed to fetch admin all data:", err);
+      }
+    };
+    fetchAllData();
+  }, [isAdmin, videos, playlists]);
+
   const handleSelectVideo = (video) => {
     navigate(`/video/${video.id}`);
   };
 
   const handleSelectFolder = (pl) => {
-    const folderVideos = videos.filter(v => v.playlist_id === pl.id && v.upload_status === 'indexed');
+    const targetVideos = isAdmin ? allVideos : videos;
+    const folderVideos = targetVideos.filter(v => v.playlist_id === pl.id && v.upload_status === 'indexed');
     if (folderVideos.length > 0) {
       navigate(`/video/${folderVideos[0].id}`);
     } else {
@@ -50,7 +75,9 @@ export default function Home({
     }
   };
 
-  // Both Admin and Student view the same Dashboard
+  const displayPlaylists = isAdmin ? allPlaylists : playlists;
+
+  // Both Admin and Student view the same Dashboard structure but scoped differently
   return (
     <div className="max-w-5xl mx-auto w-full p-4 animate-quiz-slide">
       {/* Welcome header info card */}
@@ -59,13 +86,15 @@ export default function Home({
         <div className="absolute bottom-0 left-0 w-72 h-72 bg-cyan-500/10 rounded-full blur-3xl -z-10" />
 
         <span className="inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold tracking-widest uppercase bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 mb-4 font-mono">
-          Student Workspace
+          {isAdmin ? "Admin Workspace" : "Student Workspace"}
         </span>
         <h2 className="text-2xl font-extrabold font-display text-white mb-2 tracking-tight">
           Welcome back, <span className="bg-gradient-to-r from-cyan-400 to-indigo-300 bg-clip-text text-transparent">{currentUser?.username || currentUser?.email}</span>
         </h2>
         <p className="text-gray-400 text-xs max-w-md mx-auto leading-relaxed">
-          Access course chapters, timestamps summaries, and evaluate your knowledge with custom module quizzes.
+          {isAdmin 
+            ? "View and navigate through all course modules present in the database."
+            : "Access course chapters, timestamps summaries, and evaluate your knowledge with custom module quizzes."}
         </p>
       </div>
 
@@ -73,7 +102,7 @@ export default function Home({
       <div className="shrink-0">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-bold font-sans text-white tracking-tight">
-            Continue Learning
+            {isAdmin ? "All Course Modules" : "Continue Learning"}
           </h2>
           <div className="flex items-center gap-4">
             <span onClick={() => navigate('/catalog')} className="text-xs text-indigo-400 font-bold hover:underline cursor-pointer select-none">
@@ -90,16 +119,17 @@ export default function Home({
           </div>
         </div>
 
-        {!Array.isArray(playlists) || playlists.length === 0 ? (
+        {!Array.isArray(displayPlaylists) || displayPlaylists.length === 0 ? (
           <div className="text-center text-gray-500 text-xs py-12 font-mono border border-dashed border-white/5 rounded-2xl">
             No course modules currently assigned.
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {playlists.map((pl) => {
+            {displayPlaylists.map((pl) => {
               if (!pl) return null;
-              const folderVideos = Array.isArray(videos)
-                ? videos.filter(v => v && v.playlist_id === pl.id && v.upload_status === 'indexed')
+              const targetVideos = isAdmin ? allVideos : videos;
+              const folderVideos = Array.isArray(targetVideos)
+                ? targetVideos.filter(v => v && v.playlist_id === pl.id && v.upload_status === 'indexed')
                 : [];
               const totalLessons = folderVideos.length;
               const watchedLessons = folderVideos.filter(v => v && Array.isArray(watchedList) && watchedList.includes(v.id)).length;
@@ -141,18 +171,24 @@ export default function Home({
                     </div>
 
                     {/* Progress details */}
-                    <div className="flex flex-col gap-1.5">
-                      <div className="w-full bg-white/5 rounded-full h-1.5 overflow-hidden border border-white/5">
-                        <div
-                          className="h-full bg-cyan-400 shadow-[0_0_6px_rgba(34,211,238,0.3)] transition-[width] duration-500 ease-out"
-                          style={{ width: `${progressPercent}%` }}
-                        />
+                    {isAdmin ? (
+                      <div className="flex justify-between text-[10px] font-bold font-mono text-gray-500 mt-2">
+                        <span>{totalLessons} {totalLessons === 1 ? 'Lesson' : 'Lessons'}</span>
                       </div>
-                      <div className="flex justify-between text-[10px] font-bold font-mono">
-                        <span className="text-cyan-400">{progressPercent}%</span>
-                        <span className="text-gray-500">{watchedLessons}/{totalLessons} Lessons</span>
+                    ) : (
+                      <div className="flex flex-col gap-1.5">
+                        <div className="w-full bg-white/5 rounded-full h-1.5 overflow-hidden border border-white/5">
+                          <div
+                            className="h-full bg-cyan-400 shadow-[0_0_6px_rgba(34,211,238,0.3)] transition-[width] duration-500 ease-out"
+                            style={{ width: `${progressPercent}%` }}
+                          />
+                        </div>
+                        <div className="flex justify-between text-[10px] font-bold font-mono">
+                          <span className="text-cyan-400">{progressPercent}%</span>
+                          <span className="text-gray-500">{watchedLessons}/{totalLessons} Lessons</span>
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 </div>
               );
