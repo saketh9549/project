@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import VideosCatalog from './VideosCatalog';
 
 export default function CatalogPage({
@@ -20,6 +20,9 @@ export default function CatalogPage({
   showError
 }) {
   const navigate = useNavigate();
+  const location = useLocation();
+  const initialOpenUpload = location.state?.openUpload || false;
+  const initialPlaylistId = location.state?.playlistId || '';
   const isAdmin = currentUser?.role === 'admin';
 
   // State to re-evaluate watched progress on change
@@ -77,6 +80,8 @@ export default function CatalogPage({
             onIndexError={onIndexError}
             showSuccess={showSuccess}
             showError={showError}
+            initialOpenUpload={initialOpenUpload}
+            initialPlaylistId={initialPlaylistId}
           />
         </div>
       </div>

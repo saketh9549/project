@@ -344,7 +344,7 @@ export default function VideoWorkspace({ currentUser, showSuccess, showError }) 
             currentTime={currentTime}
             onTimeUpdate={handleTimeUpdate}
             isAdmin={true}
-            onUploadNew={() => navigate('/catalog')}
+            onUploadNew={() => navigate('/catalog', { state: { openUpload: true, playlistId: selectedVideo?.playlist_id } })}
             onVideoEnded={handleVideoEnded}
             onPrevVideo={handlePrevVideo}
             onNextVideo={handleNextVideo}
@@ -636,7 +636,7 @@ export default function VideoWorkspace({ currentUser, showSuccess, showError }) 
                   currentTime={currentTime}
                   onTimeUpdate={handleTimeUpdate}
                   isAdmin={isAdmin}
-                  onUploadNew={() => navigate('/catalog')}
+                  onUploadNew={() => navigate('/catalog', { state: { openUpload: true, playlistId: selectedVideo?.playlist_id } })}
                   onVideoEnded={handleVideoEnded}
                   onPrevVideo={handlePrevVideo}
                   onNextVideo={handleNextVideo}

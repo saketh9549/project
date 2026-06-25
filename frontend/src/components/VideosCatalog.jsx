@@ -19,11 +19,13 @@ export default function VideosCatalog({
   onIndexSuccess,
   onIndexError,
   showSuccess,
-  showError
+  showError,
+  initialOpenUpload = false,
+  initialPlaylistId = ''
 }) {
   const [expandedPlaylists, setExpandedPlaylists] = useState({});
   const [showNewFolderForm, setShowNewFolderForm] = useState(false);
-  const [showUploadForm, setShowUploadForm] = useState(false);
+  const [showUploadForm, setShowUploadForm] = useState(initialOpenUpload);
   const [newFolderName, setNewFolderName] = useState('');
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [activeMenuVideoId, setActiveMenuVideoId] = useState(null);
@@ -308,6 +310,7 @@ export default function VideosCatalog({
                 onDeleteVideo={onDeleteVideo}
                 showSuccess={showSuccess}
                 showError={showError}
+                initialPlaylistId={initialPlaylistId}
               />
             </div>
           )}

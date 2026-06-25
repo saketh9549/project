@@ -265,11 +265,16 @@ export default function VideoIndexer({
   showError,
   videos = [],
   onDeleteVideo,
-  pendingAutoSelectId = null
+  pendingAutoSelectId = null,
+  initialPlaylistId = ''
 }) {
   const [dragActive, setDragActive] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState([]);
-  const [selectedPlaylistId, setSelectedPlaylistId] = useState('');
+  const [selectedPlaylistId, setSelectedPlaylistId] = useState(initialPlaylistId);
+
+  useEffect(() => {
+    setSelectedPlaylistId(initialPlaylistId);
+  }, [initialPlaylistId]);
   const [newPlaylistName, setNewPlaylistName] = useState('');
   const [creatingPlaylist, setCreatingPlaylist] = useState(false);
 
