@@ -281,7 +281,9 @@ def chunk_semantically_with_gemini(
                 break
                 
         if response is None:
-            raise last_exception
+            if isinstance(last_exception, Exception):
+                raise last_exception
+            raise RuntimeError("Gemini boundary analysis failed with no models successfully queried.")
 
         
         raw_text = response.text.strip()
