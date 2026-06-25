@@ -196,13 +196,13 @@ class TestAuthAndRoles(unittest.TestCase):
         res_get_detail_other_bad = self.client.get(f"/api/videos/{video_other_id}?owner_email={self.test_email_user}&role=user")
         self.assertEqual(res_get_detail_other_bad.status_code, 404)
 
-        # 6. Admin A attempting to get Admin B's video details (should FAIL with 404)
+        # 6. Admin A attempting to get Admin B's video details (should succeed with 200)
         res_admin_a_get_b = self.client.get(f"/api/videos/{video_admin_b_id}?owner_email={self.test_email_admin}&role=admin")
-        self.assertEqual(res_admin_a_get_b.status_code, 404)
+        self.assertEqual(res_admin_a_get_b.status_code, 200)
 
-        # 7. Admin A attempting to get regular User's video details (should FAIL with 404)
+        # 7. Admin A attempting to get regular User's video details (should succeed with 200)
         res_admin_a_get_user = self.client.get(f"/api/videos/{video_user_id}?owner_email={self.test_email_admin}&role=admin")
-        self.assertEqual(res_admin_a_get_user.status_code, 404)
+        self.assertEqual(res_admin_a_get_user.status_code, 200)
 
     def test_endpoint_restrictions(self):
         """Test that regular users are blocked from upload, index, and delete endpoints."""
