@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { apiUrl } from '../lib/api';
 
-export default function QuizCreator({ quiz, videoTitle, onSave, onDelete, onBack, onTogglePreview, catalogId, onReload }) {
+export default function QuizCreator({ quiz, videoTitle, onSave, onDelete, onBack, catalogId, onReload }) {
   const [title, setTitle] = useState(quiz?.title || `Quiz: ${videoTitle}`);
   const [questions, setQuestions] = useState(quiz?.questions || []);
   const [uploading, setUploading] = useState(false);
@@ -129,14 +129,6 @@ export default function QuizCreator({ quiz, videoTitle, onSave, onDelete, onBack
         </div>
 
         <div className="flex items-center gap-2">
-          {quiz && (
-            <button
-              onClick={onTogglePreview}
-              className="px-3.5 py-1.5 bg-cyan-950/20 text-cyan-400 hover:bg-cyan-950/40 border border-cyan-500/20 font-bold text-xs rounded-xl cursor-pointer transition-all active:scale-[0.98]"
-            >
-              Preview Player
-            </button>
-          )}
           <button
             onClick={handleSave}
             className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white font-bold text-xs rounded-xl cursor-pointer transition-all active:scale-[0.98] shadow-md shadow-indigo-500/10"

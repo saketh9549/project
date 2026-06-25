@@ -12,7 +12,6 @@ export default function QuizPage({ currentUser, showSuccess, showError }) {
   const [quiz, setQuiz] = useState(null);
   const [videoTitle, setVideoTitle] = useState('');
   const [loading, setLoading] = useState(true);
-  const [previewMode, setPreviewMode] = useState(false);
 
   const fetchQuizAndVideo = async () => {
     setLoading(true);
@@ -70,8 +69,8 @@ export default function QuizPage({ currentUser, showSuccess, showError }) {
       if (!response.ok) throw new Error(data.detail || 'Failed to save quiz');
 
       showSuccess('Quiz saved successfully!');
-      // Reload quiz data
-      await fetchQuizAndVideo();
+      // Redirect back to the video workspace
+      navigate(`/video/${id}`);
     } catch (err) {
       showError('Save failed: ' + err.message);
     }
@@ -110,8 +109,8 @@ export default function QuizPage({ currentUser, showSuccess, showError }) {
     );
   }
 
-  // 1. User view: Player Mode (or admin preview mode)
-  if (!isAdmin || previewMode) {
+  // 1. User view: Player Mode
+  if (!isAdmin) {
     if (!quiz) {
       return (
         <div className="flex-grow flex-1 flex flex-col items-center justify-center text-center p-8 max-w-md mx-auto my-auto animate-quiz-slide">
@@ -136,19 +135,6 @@ export default function QuizPage({ currentUser, showSuccess, showError }) {
 
     return (
       <div className="flex-grow flex-1 flex flex-col max-w-2xl mx-auto w-full min-h-0 max-h-full h-full animate-quiz-slide">
-        {isAdmin && (
-          <div className="flex justify-between items-center bg-indigo-950/10 border border-indigo-500/10 rounded-xl px-4 py-2 mb-4">
-            <span className="text-[10px] text-indigo-300 font-bold uppercase tracking-wider">
-              Preview Mode Active
-            </span>
-            <button
-              onClick={() => setPreviewMode(false)}
-              className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[10px] rounded-lg cursor-pointer transition-all"
-            >
-              Exit Preview
-            </button>
-          </div>
-        )}
         <QuizPlayer
           quiz={quiz}
           videoTitle={videoTitle}
@@ -167,7 +153,6 @@ export default function QuizPage({ currentUser, showSuccess, showError }) {
         onSave={handleSaveQuiz}
         onDelete={handleDeleteQuiz}
         onBack={() => navigate(`/video/${id}`)}
-        onTogglePreview={() => setPreviewMode(true)}
         catalogId={id}
         onReload={fetchQuizAndVideo}
       />
