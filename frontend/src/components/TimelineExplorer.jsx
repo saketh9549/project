@@ -351,7 +351,7 @@ export default function TimelineExplorer({
           </div>
         </div>
         {isAdmin ? (
-          <div className="flex gap-2">
+          <div className="flex gap-2 shrink-0">
             <button
               onClick={() => navigate(`/quiz/${selectedVideo.id}`)}
               className="shrink-0 flex items-center gap-1.5 bg-blue-800 hover:bg-blue-700 border border-blue-700/50 text-white active:scale-[0.98] font-bold text-xs px-3.5 py-2.5 rounded-xl transition-all cursor-pointer shadow-md"

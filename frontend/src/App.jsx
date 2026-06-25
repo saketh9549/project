@@ -41,6 +41,15 @@ function AppContent() {
   const [errorMsg, setErrorMsg] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
 
+  // Sidebar navigation collapse state
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    return localStorage.getItem('summarix_sidebar_collapsed') === 'true';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('summarix_sidebar_collapsed', sidebarCollapsed);
+  }, [sidebarCollapsed]);
+
   const showError = (msg) => {
     setErrorMsg(msg);
     if (msg) setSuccessMsg(null);
@@ -366,53 +375,92 @@ function AppContent() {
       <div className="flex-grow flex-1 flex flex-row min-h-0 w-full overflow-hidden">
         {/* Sidebar Navigation */}
         {currentUser?.role === 'admin' && (
-          <aside className="w-64 border-r border-white/5 bg-gray-950/40 backdrop-blur-md flex flex-col p-5 shrink-0 select-none glass-panel justify-between">
+          <aside className={`border-r border-white/5 bg-gray-950/40 backdrop-blur-md flex flex-col shrink-0 select-none glass-panel justify-between transition-all duration-300 ${
+            sidebarCollapsed ? 'w-20 p-3' : 'w-64 p-5'
+          }`}>
             <div className="flex flex-col gap-2">
-              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-3 mb-2">
-                Navigation
+              <div className={`flex items-center justify-between text-[10px] font-bold text-gray-400 uppercase tracking-widest px-3 mb-2 ${sidebarCollapsed ? 'justify-center px-0' : ''}`}>
+                {!sidebarCollapsed && <span>Navigation</span>}
+                <button
+                  type="button"
+                  onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                  className={`p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition-all cursor-pointer ${sidebarCollapsed ? 'w-full flex justify-center' : ''}`}
+                  title={sidebarCollapsed ? "Expand Navigation" : "Collapse Navigation"}
+                >
+                  {sidebarCollapsed ? (
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+                    </svg>
+                  ) : (
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+                    </svg>
+                  )}
+                </button>
               </div>
               <Link
                 to="/home"
                 className={`flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-semibold tracking-wide transition-all border border-transparent cursor-pointer group ${
+                  sidebarCollapsed ? 'justify-center px-0' : ''
+                } ${
                   isHomeActive
                     ? 'nav-link-active font-bold shadow-[0_0_8px_rgba(34,211,238,0.06)]'
                     : 'text-gray-400 hover:text-white hover:bg-white/5'
                 }`}
+                title={sidebarCollapsed ? "Dashboard" : undefined}
               >
-                <svg className="w-4 h-4 transition-transform group-hover:scale-110" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="w-4 h-4 transition-transform group-hover:scale-110 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2H6a2 2 0 01-2-2v-4zM14 16a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2v-4z" />
                 </svg>
-                Dashboard
+                {!sidebarCollapsed && <span>Dashboard</span>}
               </Link>
               <Link
                 to="/catalog"
                 className={`flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-semibold tracking-wide transition-all border border-transparent cursor-pointer group ${
+                  sidebarCollapsed ? 'justify-center px-0' : ''
+                } ${
                   isCatalogActive
                     ? 'nav-link-active font-bold shadow-[0_0_8px_rgba(34,211,238,0.06)]'
                     : 'text-gray-400 hover:text-white hover:bg-white/5'
                 }`}
+                title={sidebarCollapsed ? "Library" : undefined}
               >
-                <svg className="w-4 h-4 transition-transform group-hover:scale-110" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="w-4 h-4 transition-transform group-hover:scale-110 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 4H6a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-2m-4-1v8m0 0l3-3m-3 3L9 8m-5 5h2.586a1 1 0 01.707.293l2.414 2.414a1 1 0 00.707.293h3.172a1 1 0 00.707-.293l2.414-2.414a1 1 0 01.707-.293H20" />
                 </svg>
-                Library
+                {!sidebarCollapsed && <span>Library</span>}
               </Link>
             </div>
             {/* Quick status summary at the bottom of sidebar */}
             <div className="border-t border-white/5 pt-4 mt-auto flex flex-col gap-2">
-              <div className="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-3">
-                Overview
-              </div>
-              <div className="flex flex-col gap-1 px-3">
-                <div className="flex items-center justify-between text-[11px] text-gray-400">
-                  <span>Total Items</span>
-                  <span className="font-semibold text-white">{videos.length}</span>
+              {!sidebarCollapsed ? (
+                <>
+                  <div className="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-3">
+                    Overview
+                  </div>
+                  <div className="flex flex-col gap-1 px-3">
+                    <div className="flex items-center justify-between text-[11px] text-gray-400">
+                      <span>Total Items</span>
+                      <span className="font-semibold text-white">{videos.length}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-[11px] text-gray-400">
+                      <span>Folders</span>
+                      <span className="font-semibold text-white">{playlists.length}</span>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="flex flex-col items-center gap-3 text-[10px] text-gray-400 pt-2" title={`Overview:\nTotal Items: ${videos.length}\nFolders: ${playlists.length}`}>
+                  <div className="flex flex-col items-center bg-white/5 px-2 py-1.5 rounded-lg border border-white/5 w-full text-center">
+                    <span className="text-[8px] uppercase tracking-wider text-gray-500 font-bold">Items</span>
+                    <span className="font-semibold text-white text-xs">{videos.length}</span>
+                  </div>
+                  <div className="flex flex-col items-center bg-white/5 px-2 py-1.5 rounded-lg border border-white/5 w-full text-center">
+                    <span className="text-[8px] uppercase tracking-wider text-gray-500 font-bold">Flds</span>
+                    <span className="font-semibold text-white text-xs">{playlists.length}</span>
+                  </div>
                 </div>
-                <div className="flex items-center justify-between text-[11px] text-gray-400">
-                  <span>Folders</span>
-                  <span className="font-semibold text-white">{playlists.length}</span>
-                </div>
-              </div>
+              )}
             </div>
           </aside>
         )}
