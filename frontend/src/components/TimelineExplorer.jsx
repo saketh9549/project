@@ -100,7 +100,11 @@ export default function TimelineExplorer({
   isAdmin,
   currentTime = 0,
   onTimeUpdate,
-  onVideoEnded
+  onVideoEnded,
+  onPrevVideo,
+  onNextVideo,
+  hasPrevVideo = false,
+  hasNextVideo = false
 }) {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
@@ -536,30 +540,53 @@ export default function TimelineExplorer({
         </div>
       )}
 
-      {/* Search Bar */}
-      <div className="relative mb-4 shrink-0">
-        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-          <svg className="h-4 w-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
-        </div>
-        <input
-          type="text"
-          placeholder="Search transcript for keywords..."
-          value={searchQuery}
-          onChange={handleSearch}
-          className="w-full bg-gray-900/40 border border-white/5 rounded-xl pl-9 pr-8 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500 transition-all placeholder-gray-500"
-        />
-        {searchQuery && (
-          <button
-            onClick={() => { setSearchQuery(''); setSearchResults([]); }}
-            className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-500 hover:text-white transition-colors cursor-pointer"
-          >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+      {/* Search Bar & Video Navigation Controls */}
+      <div className="flex items-center gap-2 mb-4 shrink-0">
+        <div className="relative flex-grow">
+          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+            <svg className="h-4 w-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
+          </div>
+          <input
+            type="text"
+            placeholder="Search transcript..."
+            value={searchQuery}
+            onChange={handleSearch}
+            className="w-full bg-gray-900/40 border border-white/5 rounded-xl pl-9 pr-8 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 transition-all placeholder-gray-500"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => { setSearchQuery(''); setSearchResults([]); }}
+              className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-500 hover:text-white transition-colors cursor-pointer"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+        </div>
+
+        <div className="flex gap-1.5 shrink-0">
+          <button
+            type="button"
+            onClick={onPrevVideo}
+            disabled={!hasPrevVideo}
+            className="px-3 py-2 text-[10px] font-bold text-white bg-blue-600 border border-blue-600 rounded-xl hover:bg-blue-700 hover:border-blue-700 active:scale-[0.98] disabled:opacity-30 disabled:pointer-events-none transition-all cursor-pointer"
+            title="Previous Video"
+          >
+            Prev
           </button>
-        )}
+          <button
+            type="button"
+            onClick={onNextVideo}
+            disabled={!hasNextVideo}
+            className="px-3 py-2 text-[10px] font-bold text-white bg-blue-600 border border-blue-600 rounded-xl hover:bg-blue-700 hover:border-blue-700 active:scale-[0.98] disabled:opacity-30 disabled:pointer-events-none transition-all cursor-pointer"
+            title="Next Video"
+          >
+            Next
+          </button>
+        </div>
       </div>
 
       {/* Chapters List */}

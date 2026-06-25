@@ -431,37 +431,7 @@ function AppContent() {
                 {!sidebarCollapsed && <span>Library</span>}
               </Link>
             </div>
-            {/* Quick status summary at the bottom of sidebar */}
-            <div className="border-t border-white/5 pt-4 mt-auto flex flex-col gap-2">
-              {!sidebarCollapsed ? (
-                <>
-                  <div className="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-3">
-                    Overview
-                  </div>
-                  <div className="flex flex-col gap-1 px-3">
-                    <div className="flex items-center justify-between text-[11px] text-gray-400">
-                      <span>Total Items</span>
-                      <span className="font-semibold text-white">{videos.length}</span>
-                    </div>
-                    <div className="flex items-center justify-between text-[11px] text-gray-400">
-                      <span>Folders</span>
-                      <span className="font-semibold text-white">{playlists.length}</span>
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <div className="flex flex-col items-center gap-3 text-[10px] text-gray-400 pt-2" title={`Overview:\nTotal Items: ${videos.length}\nFolders: ${playlists.length}`}>
-                  <div className="flex flex-col items-center bg-white/5 px-2 py-1.5 rounded-lg border border-white/5 w-full text-center">
-                    <span className="text-[8px] uppercase tracking-wider text-gray-500 font-bold">Items</span>
-                    <span className="font-semibold text-white text-xs">{videos.length}</span>
-                  </div>
-                  <div className="flex flex-col items-center bg-white/5 px-2 py-1.5 rounded-lg border border-white/5 w-full text-center">
-                    <span className="text-[8px] uppercase tracking-wider text-gray-500 font-bold">Flds</span>
-                    <span className="font-semibold text-white text-xs">{playlists.length}</span>
-                  </div>
-                </div>
-              )}
-            </div>
+
           </aside>
         )}
 

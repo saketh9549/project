@@ -216,6 +216,26 @@ export default function VideoWorkspace({ currentUser, showSuccess, showError }) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, currentUser]);
 
+  const currentIndex = selectedVideo && folderVideos.length > 0
+    ? folderVideos.findIndex(v => v.id === selectedVideo.id)
+    : -1;
+  const hasPrevVideo = currentIndex > 0;
+  const hasNextVideo = currentIndex !== -1 && currentIndex < folderVideos.length - 1;
+
+  const handlePrevVideo = () => {
+    if (hasPrevVideo) {
+      const prevVideo = folderVideos[currentIndex - 1];
+      navigate(`/video/${prevVideo.id}`);
+    }
+  };
+
+  const handleNextVideo = () => {
+    if (hasNextVideo) {
+      const nextVideo = folderVideos[currentIndex + 1];
+      navigate(`/video/${nextVideo.id}`);
+    }
+  };
+
   const handleSelectVideoContent = (videoId) => {
     setActiveContent({ type: 'video', id: videoId });
     setQuizViewState('landing');
@@ -326,6 +346,10 @@ export default function VideoWorkspace({ currentUser, showSuccess, showError }) 
             isAdmin={true}
             onUploadNew={() => navigate('/catalog')}
             onVideoEnded={handleVideoEnded}
+            onPrevVideo={handlePrevVideo}
+            onNextVideo={handleNextVideo}
+            hasPrevVideo={hasPrevVideo}
+            hasNextVideo={hasNextVideo}
           />
         </main>
 
@@ -614,6 +638,10 @@ export default function VideoWorkspace({ currentUser, showSuccess, showError }) 
                   isAdmin={isAdmin}
                   onUploadNew={() => navigate('/catalog')}
                   onVideoEnded={handleVideoEnded}
+                  onPrevVideo={handlePrevVideo}
+                  onNextVideo={handleNextVideo}
+                  hasPrevVideo={hasPrevVideo}
+                  hasNextVideo={hasNextVideo}
                 />
               </main>
 
