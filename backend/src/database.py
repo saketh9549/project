@@ -282,7 +282,7 @@ def get_video(video_id: str, owner_email: str = "", role: str = "user") -> Optio
         except InvalidId:
             query = {"_id": video_id}
             
-        if owner_email:
+        if owner_email and role != "admin":
             query.update(_build_owner_filter(owner_email, role))
         doc = db.catalogs.find_one(query)
         return _map_catalog_to_sqlite_style(doc) if doc else None
@@ -631,7 +631,7 @@ def get_playlist(playlist_id: str, owner_email: str = "", role: str = "user") ->
         except InvalidId:
             query = {"_id": playlist_id}
             
-        if owner_email:
+        if owner_email and role != "admin":
             query.update(_build_owner_filter(owner_email, role))
             
         doc = db.playlists.find_one(query)
