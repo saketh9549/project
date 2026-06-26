@@ -39,43 +39,32 @@ def run_pipeline_task(video_id: str, payload_dict: dict, owner_email: str):
     try:
         # Option A: AWS S3
         if s3_key:
-            from src.s3 import get_s3_client
-            from src.config import get_temp_dir
-            import uuid
+            from src.s3 import generate_s3_download_url
             
-            s3_client = get_s3_client()
             bucket = s3_bucket if s3_bucket else os.getenv("AWS_S3_BUCKET")
             if not bucket:
                 raise ValueError("S3 bucket configuration is missing")
                 
-            temp_dir = get_temp_dir()
             safe_filename = os.path.basename(s3_key)
-            unique_id = str(uuid.uuid4())[:8]
-            temp_video_path = os.path.join(temp_dir, f"temp_{unique_id}_{safe_filename}")
+            print(f"[Queue Worker] Generating secure download URL for S3 key '{s3_key}'...")
             
-            print(f"[Queue Worker] Buffering S3 file '{s3_key}' to temp path: {temp_video_path} ...")
-            try:
-                s3_client.download_file(bucket, s3_key, temp_video_path)
-            except Exception as e:
+            # Generate a temporary URL valid for 1 hour (3600 seconds)
+            video_url = generate_s3_download_url(s3_key, expires_in=3600)
+            if not video_url:
                 db.update_upload_status(video_id, "failed_uploading")
-                raise ValueError(f"S3 file not found or download failed: {e}")
+                raise ValueError("Failed to generate S3 pre-signed URL for video streaming.")
                 
-            try:
-                print(f"[Queue Worker] Indexing S3 video: {s3_key} ...")
-                index_video(
-                    temp_video_path,
-                    language=language,
-                    owner_email=owner_email,
-                    original_filename=safe_filename,
-                    s3_key=s3_key,
-                    s3_bucket=bucket,
-                    playlist_id=playlist_id,
-                    upload_status="indexing"
-                )
-            finally:
-                if os.path.exists(temp_video_path):
-                    os.remove(temp_video_path)
-                    print(f"[Queue Worker] Cleaned up temporary video file: {temp_video_path}")
+            print(f"[Queue Worker] Indexing S3 video via direct streaming: {s3_key} ...")
+            index_video(
+                video_url,
+                language=language,
+                owner_email=owner_email,
+                original_filename=safe_filename,
+                s3_key=s3_key,
+                s3_bucket=bucket,
+                playlist_id=playlist_id,
+                upload_status="indexing"
+            )
                     
         # Option B: GridFS
         elif grid_fs_id:
