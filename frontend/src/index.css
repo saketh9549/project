@@ -623,3 +623,18 @@ html.light .bg-gray-900\/80 {
   background-color: rgba(241, 245, 249, 0.8) !important;
 }
 
+/* Ensure custom video controls elements remain white/visible on the dark overlay in light mode */
+.video-controls-bar,
+.video-controls-bar *,
+html.light .video-controls-bar,
+html.light .video-controls-bar * {
+  color: #ffffff !important;
+  fill: currentColor !important;
+}
+
+/* Maintain dark hover transparency on control buttons */
+.video-controls-bar button:hover,
+html.light .video-controls-bar button:hover {
+  color: rgba(255, 255, 255, 0.8) !important;
+}
+

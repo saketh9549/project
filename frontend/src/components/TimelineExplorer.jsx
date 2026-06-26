@@ -431,7 +431,7 @@ export default function TimelineExplorer({
           </video>
 
           {/* Custom Video Controls Bar */}
-          <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/95 via-black/70 to-transparent flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-20">
+          <div className="video-controls-bar absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/95 via-black/70 to-transparent flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-20">
             {/* Timeline Progress Bar / Scrubber */}
             <div className="flex items-center w-full group/scrubber h-2 relative">
               <input
