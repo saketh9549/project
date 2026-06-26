@@ -19,6 +19,7 @@ FRONTEND_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 import src.database as db
+from src.database import VideoCancelledException
 from src.indexer import index_video, analyse_video
 from main import format_timestamp
 import queue
@@ -148,6 +149,8 @@ def run_pipeline_task(video_id: str, payload_dict: dict, owner_email: str):
             
         db.update_upload_status(video_id, "indexed")
         
+    except VideoCancelledException as vce:
+        raise vce
     except Exception as e:
         print(f"[Queue Worker Error] Failed to complete background indexing pipeline for video {video_id}: {e}")
         # Only overwrite to general 'failed' if not already set to a granular stage-specific failure status
@@ -163,6 +166,13 @@ def queue_worker():
                 break
             
             video_id, payload_dict, owner_email = task
+            
+            # Check if video was cancelled/deleted from database before starting
+            db.init_db()
+            if not db.get_video(video_id, owner_email):
+                print(f"[Queue Worker] Video {video_id} was deleted/cancelled before starting. Skipping.")
+                continue
+                
             print(f"[Queue Worker] Starting background processing for video: {video_id} ...")
             
             # Update status to indexing
@@ -172,6 +182,8 @@ def queue_worker():
             run_pipeline_task(video_id, payload_dict, owner_email)
             
             print(f"[Queue Worker] Completed processing for video: {video_id}")
+        except VideoCancelledException as vce:
+            print(f"[Queue Worker Info] Processing of video {video_id} was cancelled by user: {vce}")
         except Exception as e:
             print(f"[Queue Worker Error] Error processing task: {e}")
         finally:

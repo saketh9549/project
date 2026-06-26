@@ -32,7 +32,7 @@ function AppContent() {
 
   // Appearance / Theme states
   const [theme, setTheme] = useState(() => {
-    return localStorage.getItem('summarix_theme') || 'dark';
+    return localStorage.getItem('summarix_theme') || 'light';
   });
   const [showSettings, setShowSettings] = useState(false);
 
@@ -164,7 +164,12 @@ function AppContent() {
 
   const handleDeleteVideo = async (e, videoId) => {
     e.stopPropagation();
-    if (!confirm('Are you sure you want to delete this video and all its indexed moments from the database?')) return;
+    const video = videos.find(v => v.id === videoId);
+    const isProcessing = video && video.upload_status !== 'indexed';
+    const confirmMessage = isProcessing
+      ? 'Are you sure you want to stop processing and delete this video?'
+      : 'Are you sure you want to delete this video and all its indexed moments from the database?';
+    if (!confirm(confirmMessage)) return;
 
     try {
       const email = currentUser?.email || 'anonymous@summarix.io';

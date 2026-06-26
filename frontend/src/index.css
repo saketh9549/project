@@ -543,3 +543,83 @@ html.light .nav-link-active {
 html.light .progress-ring-circle {
   stroke: #0891b2;
 }
+
+/* Maintain white text on buttons/components with explicit dark backgrounds in light mode */
+html.light button.bg-indigo-600,
+html.light button.bg-indigo-600 *,
+html.light button.bg-indigo-700,
+html.light button.bg-indigo-700 *,
+html.light button.bg-blue-600,
+html.light button.bg-blue-600 *,
+html.light button.bg-blue-700,
+html.light button.bg-blue-700 *,
+html.light button.bg-blue-800,
+html.light button.bg-blue-800 *,
+html.light button.bg-cyan-500,
+html.light button.bg-cyan-500 *,
+html.light button.bg-gradient-to-r,
+html.light button.bg-gradient-to-r *,
+html.light button.bg-linear-to-r,
+html.light button.bg-linear-to-r *,
+html.light .bg-indigo-600,
+html.light .bg-indigo-600 *,
+html.light .bg-indigo-700,
+html.light .bg-indigo-700 *,
+html.light .bg-blue-600,
+html.light .bg-blue-600 *,
+html.light .bg-blue-700,
+html.light .bg-blue-700 *,
+html.light .bg-blue-800,
+html.light .bg-blue-800 *,
+html.light .bg-cyan-500,
+html.light .bg-cyan-500 *,
+html.light .bg-cyan-600,
+html.light .bg-cyan-600 *,
+html.light .bg-red-500,
+html.light .bg-red-500 *,
+html.light .bg-red-600,
+html.light .bg-red-600 *,
+html.light .bg-emerald-600,
+html.light .bg-emerald-600 *,
+html.light .bg-emerald-700,
+html.light .bg-emerald-700 *,
+html.light .bg-gradient-to-r,
+html.light .bg-gradient-to-r *,
+html.light .bg-linear-to-r,
+html.light .bg-linear-to-r * {
+  color: #ffffff !important;
+}
+
+/* Base text-white override for generic elements */
+html.light .text-white {
+  color: #0f172a !important;
+}
+
+/* Ensure hovered white text remains dark/readable */
+html.light .hover\:text-white:hover {
+  color: #0f172a !important;
+}
+
+/* Form elements & placeholders readability */
+html.light input,
+html.light textarea {
+  color: #0f172a !important;
+}
+
+html.light input::placeholder,
+html.light textarea::placeholder,
+html.light ::placeholder {
+  color: #64748b !important; /* slate-500 */
+}
+
+/* Indigo-300 overrides for readable selection text */
+html.light .text-indigo-300,
+html.light .hover\:text-indigo-300:hover {
+  color: #4338ca !important; /* indigo-700 */
+}
+
+/* Additional utility opacity background overrides */
+html.light .bg-gray-900\/80 {
+  background-color: rgba(241, 245, 249, 0.8) !important;
+}
+

@@ -7,7 +7,12 @@ from datetime import datetime
 from pymongo import MongoClient
 from bson.objectid import ObjectId
 from bson.errors import InvalidId
+class VideoCancelledException(Exception):
+    """Custom exception raised when video processing is cancelled/deleted."""
+    pass
+
 from src.config import get_mongodb_uri
+
 
 _client = None
 
@@ -752,14 +757,19 @@ def update_upload_status(video_id: str, status: str) -> bool:
         except InvalidId:
             oid = video_id
             
-        db.catalogs.update_one(
+        result = db.catalogs.update_one(
             {"_id": oid},
             {"$set": {
                 "uploadStatus": status,
                 "updatedAt": datetime.now()
             }}
         )
+        if result.matched_count == 0:
+            raise VideoCancelledException("Video record has been deleted or processing cancelled.")
         return True
+    except VideoCancelledException as e:
+        print(f"[DB Info] Video cancellation detected for ID {video_id}: {e}")
+        raise e
     except Exception as e:
         print(f"[DB Error] Failed to update upload status: {e}")
         return False
