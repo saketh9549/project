@@ -104,21 +104,31 @@ def extract_audio(video_path: str) -> str:
         FileNotFoundError: If the video_path does not exist.
         subprocess.CalledProcessError: If the ffmpeg command fails.
     """
-    video_path_obj = Path(video_path).resolve()
-    if not video_path_obj.exists():
-        raise FileNotFoundError(f"Video file not found: {video_path}")
+    is_url = video_path.startswith("http://") or video_path.startswith("https://")
+    
+    if not is_url:
+        video_path_obj = Path(video_path).resolve()
+        if not video_path_obj.exists():
+            raise FileNotFoundError(f"Video file not found: {video_path}")
+        input_src = str(video_path_obj)
+        display_name = video_path_obj.name
+        stem_name = video_path_obj.stem
+    else:
+        input_src = video_path
+        display_name = video_path.split("?")[0].split("/")[-1]
+        stem_name = Path(display_name).stem
         
     ffmpeg_bin = check_ffmpeg()
     
     # Generate unique output filename in temp folder based on input path hash
     import hashlib
-    path_hash = hashlib.sha256(str(video_path_obj).encode('utf-8')).hexdigest()[:12]
-    audio_filename = f"{path_hash}_{video_path_obj.stem}.mp3"
+    path_hash = hashlib.sha256(video_path.encode('utf-8')).hexdigest()[:12]
+    audio_filename = f"{path_hash}_{stem_name}.mp3"
     output_path = get_temp_dir() / audio_filename
     
     # ffmpeg command to extract audio:
     # -y: overwrite output
-    # -i: input file
+    # -i: input file (or URL)
     # -vn: disable video recording
     # -acodec libmp3lame: MP3 codec
     # -ar 16000: set audio sampling rate to 16kHz
@@ -126,7 +136,7 @@ def extract_audio(video_path: str) -> str:
     cmd = [
         ffmpeg_bin,
         "-y",
-        "-i", str(video_path_obj),
+        "-i", input_src,
         "-vn",
         "-acodec", "libmp3lame",
         "-ar", "16000",
@@ -134,7 +144,7 @@ def extract_audio(video_path: str) -> str:
         str(output_path)
     ]
     
-    print(f"[Extractor] Extracting audio from {video_path_obj.name}...")
+    print(f"[Extractor] Extracting audio from {display_name}...")
     
     # Run ffmpeg command
     result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)

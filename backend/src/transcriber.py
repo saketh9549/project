@@ -9,7 +9,8 @@ class WhisperInitializationError(Exception):
 def transcribe_audio(
     audio_path: str, 
     model_name: str = "base", 
-    language: str = "en"
+    language: str = "en",
+    check_cancelled = None
 ) -> Dict[str, Any]:
     """Transcribes local audio using a local native faster-whisper WhisperModel on CPU.
     
@@ -17,6 +18,7 @@ def transcribe_audio(
         audio_path: Absolute path to the local audio file.
         model_name: Name of the model to use (default: "base").
         language: ISO-639-1 language code (optional, e.g. "en").
+        check_cancelled: Optional callback function that returns True if processing has been cancelled.
         
     Returns:
         The transcription response containing segments with timestamps.
@@ -27,6 +29,10 @@ def transcribe_audio(
     """
     if not os.path.exists(audio_path):
         raise FileNotFoundError(f"Audio file not found: {audio_path}")
+        
+    if check_cancelled and check_cancelled():
+        from src.database import VideoCancelledException
+        raise VideoCancelledException("Video indexing was cancelled/deleted by the user.")
         
     print(f"[Transcriber] Initializing local Whisper model '{model_name}' on CPU (int8)...")
     
@@ -42,6 +48,9 @@ def transcribe_audio(
         # Evaluate generator and map response to dictionary schema expected by indexer
         mapped_segments = []
         for s in segments:
+            if check_cancelled and check_cancelled():
+                from src.database import VideoCancelledException
+                raise VideoCancelledException("Video indexing was cancelled/deleted by the user.")
             mapped_segments.append({
                 "start": float(s.start),
                 "end": float(s.end),
@@ -52,6 +61,10 @@ def transcribe_audio(
         return {"segments": mapped_segments}
         
     except Exception as e:
+        # Prevent wrapping VideoCancelledException inside WhisperInitializationError
+        from src.database import VideoCancelledException
+        if isinstance(e, VideoCancelledException):
+            raise e
         raise WhisperInitializationError(
             f"Local Whisper transcription failed: {e}\n"
             "Please ensure faster-whisper is installed properly and model files can be downloaded."

@@ -328,9 +328,13 @@ def build_transcript_string(segments: List[Dict[str, Any]]) -> str:
 
 def index_video(video_path: str, language: str = "en", owner_email: str = "", grid_fs_id: str = None, original_filename: str = None, s3_key: str = None, s3_bucket: str = None, playlist_id: str = None, upload_status: str = "indexed") -> Tuple[str, List[Dict[str, Any]]]:
     """Runs the full pipeline to extract, transcribe, chunk semantically, and index a video file."""
-    abs_path = os.path.abspath(video_path)
-    if not os.path.exists(abs_path):
-        raise FileNotFoundError(f"Video file not found: {abs_path}")
+    is_url = video_path.startswith("http://") or video_path.startswith("https://")
+    if not is_url:
+        abs_path = os.path.abspath(video_path)
+        if not os.path.exists(abs_path):
+            raise FileNotFoundError(f"Video file not found: {abs_path}")
+    else:
+        abs_path = video_path
         
     if original_filename:
         file_name = original_filename
@@ -358,12 +362,25 @@ def index_video(video_path: str, language: str = "en", owner_email: str = "", gr
             video_id = hashlib.sha256(fingerprint.encode('utf-8')).hexdigest()[:24]
         else:
             video_id = generate_video_id(abs_path, owner_email=owner_email)
+            
+    # Check if the placeholder video document already exists in the database
+    # (i.e. was queued or pre-inserted by the API server)
+    was_queued = db.get_video(video_id, owner_email) is not None
     
     print(f"[Indexer] Processing video: {file_name} (ID: {video_id})")
     
     # 1. Initialize database collections
     db.init_db()
     audio_path = ""
+    
+    def check_cancelled():
+        if was_queued:
+            return db.get_video(video_id, owner_email) is None
+        return False
+        
+    if check_cancelled():
+        from src.database import VideoCancelledException
+        raise VideoCancelledException("Video indexing was cancelled/deleted by the user.")
     
     try:
         db.update_upload_status(video_id, "Extracting Audio (15%)")
@@ -372,14 +389,20 @@ def index_video(video_path: str, language: str = "en", owner_email: str = "", gr
         # 3. Extract audio
         audio_path = extract_audio(abs_path)
     except Exception as e:
+        from src.database import VideoCancelledException
+        if isinstance(e, VideoCancelledException):
+            raise e
         db.update_upload_status(video_id, "failed_indexing")
         raise e
         
     try:
         # 4. Transcribe audio
         db.update_upload_status(video_id, "Transcribing Audio (45%)")
-        transcription_result = transcribe_audio(audio_path, language=language)
+        transcription_result = transcribe_audio(audio_path, language=language, check_cancelled=check_cancelled)
     except Exception as e:
+        from src.database import VideoCancelledException
+        if isinstance(e, VideoCancelledException):
+            raise e
         db.update_upload_status(video_id, "failed_extracting")
         if audio_path and os.path.exists(audio_path):
             try:
@@ -389,6 +412,10 @@ def index_video(video_path: str, language: str = "en", owner_email: str = "", gr
         raise e
         
     try:
+        if check_cancelled():
+            from src.database import VideoCancelledException
+            raise VideoCancelledException("Video indexing was cancelled/deleted by the user.")
+            
         # 5. Extract timed segments
         segments = extract_segments(transcription_result)
         
@@ -425,6 +452,9 @@ def index_video(video_path: str, language: str = "en", owner_email: str = "", gr
         print(f"[Indexer] Successfully indexed {len(blocks)} blocks for video {file_name} in MongoDB!")
         return video_id, blocks
     except Exception as e:
+        from src.database import VideoCancelledException
+        if isinstance(e, VideoCancelledException):
+            raise e
         db.update_upload_status(video_id, "failed_indexing")
         raise e
     finally:
