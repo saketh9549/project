@@ -8,6 +8,7 @@ import Home from './components/Home';
 import CatalogPage from './components/CatalogPage';
 import VideoWorkspace from './components/VideoWorkspace';
 import QuizPage from './components/QuizPage';
+import QuizAnalytics from './components/QuizAnalytics';
 
 import { apiUrl } from './lib/api';
 
@@ -239,8 +240,9 @@ function AppContent() {
 
   // Navigation menu highlights
   const isHomeActive = location.pathname === '/home';
-  const isCatalogActive = location.pathname === '/catalog' || location.pathname.startsWith('/video') || location.pathname.startsWith('/quiz');
-  const isWorkspace = location.pathname.startsWith('/video') || location.pathname.startsWith('/quiz');
+  const isCatalogActive = location.pathname === '/catalog' || location.pathname.startsWith('/video') || (location.pathname.startsWith('/quiz') && !location.pathname.startsWith('/quiz-analytics'));
+  const isAnalyticsActive = location.pathname === '/quiz-analytics';
+  const isWorkspace = location.pathname.startsWith('/video') || (location.pathname.startsWith('/quiz') && !location.pathname.startsWith('/quiz-analytics'));
 
   return (
     <div className="flex flex-col h-screen overflow-hidden">
@@ -259,7 +261,7 @@ function AppContent() {
               <rect x="64" y="68" width="22" height="16" rx="8" fill="#ffffff" />
             </svg>
             <div>
-              <h1 className="text-xl font-bold font-display bg-gradient-to-r from-white to-indigo-300 bg-clip-text text-transparent tracking-tight logo-text">
+              <h1 className="text-xl font-bold font-display text-black dark:text-white tracking-tight logo-text">
                 Summarix
               </h1>
               <p className="text-xs text-cyan-400 font-semibold tracking-widest uppercase mt-0.5">
@@ -288,9 +290,8 @@ function AppContent() {
                 <span className="text-xs text-white font-medium truncate max-w-[150px]" title={currentUser.username || currentUser.email}>
                   {currentUser.username || currentUser.email}
                 </span>
-                <span className={`text-[9px] font-bold uppercase tracking-wider ${
-                  currentUser.role === 'admin' ? 'text-indigo-400' : 'text-cyan-400'
-                }`}>
+                <span className={`text-[9px] font-bold uppercase tracking-wider ${currentUser.role === 'admin' ? 'text-indigo-400' : 'text-cyan-400'
+                  }`}>
                   {currentUser.role}
                 </span>
               </div>
@@ -315,9 +316,8 @@ function AppContent() {
           <button
             type="button"
             onClick={() => setShowSettings(!showSettings)}
-            className={`p-2 text-gray-400 hover:text-white rounded-lg hover:bg-white/5 transition-all cursor-pointer group ${
-              showSettings ? 'text-white bg-white/5' : ''
-            }`}
+            className={`p-2 text-gray-400 hover:text-white rounded-lg hover:bg-white/5 transition-all cursor-pointer group ${showSettings ? 'text-white bg-white/5' : ''
+              }`}
             title="Settings"
           >
             <svg className="w-4.5 h-4.5 group-hover:rotate-45 transition-transform duration-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -328,8 +328,8 @@ function AppContent() {
 
           {showSettings && (
             <>
-              <div 
-                className="fixed inset-0 z-40 cursor-default" 
+              <div
+                className="fixed inset-0 z-40 cursor-default"
                 onClick={() => setShowSettings(false)}
               />
               <div className="absolute right-0 top-12 w-48 bg-gray-950/95 border border-white/10 rounded-xl p-3 shadow-2xl flex flex-col gap-2 z-50 animate-fade-in">
@@ -342,11 +342,10 @@ function AppContent() {
                     setTheme('light');
                     setShowSettings(false);
                   }}
-                  className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all text-left cursor-pointer ${
-                    theme === 'light'
-                      ? 'bg-indigo-500/10 text-indigo-300 font-semibold'
-                      : 'text-gray-300 hover:bg-white/5 hover:text-white'
-                  }`}
+                  className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all text-left cursor-pointer ${theme === 'light'
+                    ? 'bg-indigo-500/10 text-indigo-300 font-semibold'
+                    : 'text-gray-300 hover:bg-white/5 hover:text-white'
+                    }`}
                 >
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 3v1m0 16v1m9-9h-1M4 9H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707m0-12.728l.707.707m12.728 12.728l.707-.707M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -359,11 +358,10 @@ function AppContent() {
                     setTheme('dark');
                     setShowSettings(false);
                   }}
-                  className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all text-left cursor-pointer ${
-                    theme === 'dark'
-                      ? 'bg-indigo-500/10 text-indigo-300 font-semibold'
-                      : 'text-gray-300 hover:bg-white/5 hover:text-white'
-                  }`}
+                  className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all text-left cursor-pointer ${theme === 'dark'
+                    ? 'bg-indigo-500/10 text-indigo-300 font-semibold'
+                    : 'text-gray-300 hover:bg-white/5 hover:text-white'
+                    }`}
                 >
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
@@ -380,9 +378,8 @@ function AppContent() {
       <div className="flex-grow flex-1 flex flex-row min-h-0 w-full overflow-hidden">
         {/* Sidebar Navigation */}
         {currentUser?.role === 'admin' && (
-          <aside className={`border-r border-white/5 bg-gray-950/40 backdrop-blur-md flex flex-col shrink-0 select-none glass-panel justify-between transition-all duration-300 ${
-            sidebarCollapsed ? 'w-20 p-3' : 'w-64 p-5'
-          }`}>
+          <aside className={`border-r border-white/5 bg-gray-950/40 backdrop-blur-md flex flex-col shrink-0 select-none glass-panel justify-between transition-all duration-300 ${sidebarCollapsed ? 'w-20 p-3' : 'w-64 p-5'
+            }`}>
             <div className="flex flex-col gap-2">
               <div className={`flex items-center justify-between text-[10px] font-bold text-gray-400 uppercase tracking-widest px-3 mb-2 ${sidebarCollapsed ? 'justify-center px-0' : ''}`}>
                 {!sidebarCollapsed && <span>Navigation</span>}
@@ -405,13 +402,11 @@ function AppContent() {
               </div>
               <Link
                 to="/home"
-                className={`flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-semibold tracking-wide transition-all border border-transparent cursor-pointer group ${
-                  sidebarCollapsed ? 'justify-center px-0' : ''
-                } ${
-                  isHomeActive
+                className={`flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-semibold tracking-wide transition-all border border-transparent cursor-pointer group ${sidebarCollapsed ? 'justify-center px-0' : ''
+                  } ${isHomeActive
                     ? 'nav-link-active font-bold shadow-[0_0_8px_rgba(34,211,238,0.06)]'
                     : 'text-gray-400 hover:text-white hover:bg-white/5'
-                }`}
+                  }`}
                 title={sidebarCollapsed ? "Dashboard" : undefined}
               >
                 <svg className="w-4 h-4 transition-transform group-hover:scale-110 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -421,19 +416,31 @@ function AppContent() {
               </Link>
               <Link
                 to="/catalog"
-                className={`flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-semibold tracking-wide transition-all border border-transparent cursor-pointer group ${
-                  sidebarCollapsed ? 'justify-center px-0' : ''
-                } ${
-                  isCatalogActive
+                className={`flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-semibold tracking-wide transition-all border border-transparent cursor-pointer group ${sidebarCollapsed ? 'justify-center px-0' : ''
+                  } ${isCatalogActive
                     ? 'nav-link-active font-bold shadow-[0_0_8px_rgba(34,211,238,0.06)]'
                     : 'text-gray-400 hover:text-white hover:bg-white/5'
-                }`}
+                  }`}
                 title={sidebarCollapsed ? "Library" : undefined}
               >
                 <svg className="w-4 h-4 transition-transform group-hover:scale-110 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 4H6a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-2m-4-1v8m0 0l3-3m-3 3L9 8m-5 5h2.586a1 1 0 01.707.293l2.414 2.414a1 1 0 00.707.293h3.172a1 1 0 00.707-.293l2.414-2.414a1 1 0 01.707-.293H20" />
                 </svg>
                 {!sidebarCollapsed && <span>Library</span>}
+              </Link>
+              <Link
+                to="/quiz-analytics"
+                className={`flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-semibold tracking-wide transition-all border border-transparent cursor-pointer group ${sidebarCollapsed ? 'justify-center px-0' : ''
+                  } ${isAnalyticsActive
+                    ? 'nav-link-active font-bold shadow-[0_0_8px_rgba(34,211,238,0.06)]'
+                    : 'text-gray-400 hover:text-white hover:bg-white/5'
+                  }`}
+                title={sidebarCollapsed ? "Quiz Analytics" : undefined}
+              >
+                <svg className="w-4 h-4 transition-transform group-hover:scale-110 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 002 2h2a2 2 0 002-2" />
+                </svg>
+                {!sidebarCollapsed && <span>Quiz Analytics</span>}
               </Link>
             </div>
 
@@ -442,41 +449,13 @@ function AppContent() {
 
         {/* Content Area */}
         <div className={`flex-grow flex-1 flex flex-col p-6 min-h-0 ${isWorkspace ? 'overflow-hidden' : 'overflow-y-auto'}`}>
-        <Routes>
-          <Route path="/home" element={
-            <Home
-              currentUser={currentUser}
-              videos={videos}
-              playlists={playlists}
-              fetchPlaylists={fetchPlaylists}
-              indexingLoading={indexingLoading}
-              pendingAutoSelectId={pendingAutoSelectId}
-              onIndexStart={() => setIndexingLoading(true)}
-              onIndexSuccess={async (videoId) => {
-                setIndexingLoading(false);
-                setPendingAutoSelectId(videoId);
-                localStorage.setItem('summarix_pending_select', videoId);
-                await fetchVideos();
-                await fetchPlaylists();
-                showSuccess("Video successfully queued for indexing! Redirecting to workspace upon completion.");
-              }}
-              onIndexError={() => setIndexingLoading(false)}
-              onDeleteVideo={handleDeleteVideo}
-              showSuccess={showSuccess}
-              showError={showError}
-            />
-          } />
-          <Route path="/catalog" element={
-            currentUser?.role === 'admin' ? (
-              <CatalogPage
+          <Routes>
+            <Route path="/home" element={
+              <Home
+                currentUser={currentUser}
                 videos={videos}
                 playlists={playlists}
-                onDeleteVideo={handleDeleteVideo}
-                onDeletePlaylist={handleDeletePlaylist}
-                onUpdateVideoPlaylist={handleUpdateVideoPlaylist}
-                currentUser={currentUser}
                 fetchPlaylists={fetchPlaylists}
-                fetchVideos={fetchVideos}
                 indexingLoading={indexingLoading}
                 pendingAutoSelectId={pendingAutoSelectId}
                 onIndexStart={() => setIndexingLoading(true)}
@@ -489,29 +468,68 @@ function AppContent() {
                   showSuccess("Video successfully queued for indexing! Redirecting to workspace upon completion.");
                 }}
                 onIndexError={() => setIndexingLoading(false)}
+                onDeleteVideo={handleDeleteVideo}
                 showSuccess={showSuccess}
                 showError={showError}
               />
-            ) : (
-              <Navigate to="/home" replace />
-            )
-          } />
-          <Route path="/video/:id" element={
-            <VideoWorkspace
-              currentUser={currentUser}
-              showSuccess={showSuccess}
-              showError={showError}
-            />
-          } />
-          <Route path="/quiz/:id" element={
-            <QuizPage
-              currentUser={currentUser}
-              showSuccess={showSuccess}
-              showError={showError}
-            />
-          } />
-          <Route path="*" element={<Navigate to="/home" replace />} />
-        </Routes>
+            } />
+            <Route path="/catalog" element={
+              currentUser?.role === 'admin' ? (
+                <CatalogPage
+                  videos={videos}
+                  playlists={playlists}
+                  onDeleteVideo={handleDeleteVideo}
+                  onDeletePlaylist={handleDeletePlaylist}
+                  onUpdateVideoPlaylist={handleUpdateVideoPlaylist}
+                  currentUser={currentUser}
+                  fetchPlaylists={fetchPlaylists}
+                  fetchVideos={fetchVideos}
+                  indexingLoading={indexingLoading}
+                  pendingAutoSelectId={pendingAutoSelectId}
+                  onIndexStart={() => setIndexingLoading(true)}
+                  onIndexSuccess={async (videoId) => {
+                    setIndexingLoading(false);
+                    setPendingAutoSelectId(videoId);
+                    localStorage.setItem('summarix_pending_select', videoId);
+                    await fetchVideos();
+                    await fetchPlaylists();
+                    showSuccess("Video successfully queued for indexing! Redirecting to workspace upon completion.");
+                  }}
+                  onIndexError={() => setIndexingLoading(false)}
+                  showSuccess={showSuccess}
+                  showError={showError}
+                />
+              ) : (
+                <Navigate to="/home" replace />
+              )
+            } />
+            <Route path="/quiz-analytics" element={
+              currentUser?.role === 'admin' ? (
+                <QuizAnalytics
+                  currentUser={currentUser}
+                  showSuccess={showSuccess}
+                  showError={showError}
+                />
+              ) : (
+                <Navigate to="/home" replace />
+              )
+            } />
+            <Route path="/video/:id" element={
+              <VideoWorkspace
+                currentUser={currentUser}
+                showSuccess={showSuccess}
+                showError={showError}
+              />
+            } />
+            <Route path="/quiz/:id" element={
+              <QuizPage
+                currentUser={currentUser}
+                showSuccess={showSuccess}
+                showError={showError}
+              />
+            } />
+            <Route path="*" element={<Navigate to="/home" replace />} />
+          </Routes>
         </div>
       </div>
 

@@ -860,5 +860,89 @@ def delete_quiz(quiz_id: str) -> bool:
         print(f"[DB Error] Failed to delete quiz: {e}")
         return False
 
+def save_quiz_attempt(quiz_id: str, quiz_title: str, catalog_id: Optional[str], playlist_id: Optional[str], user_email: str, username: str, score: float, correct_count: int, total_count: int, results: list) -> str:
+    """Saves a quiz attempt in the quiz_attempts collection."""
+    db = get_db()
+    try:
+        from bson.objectid import ObjectId
+        from bson.errors import InvalidId
+        
+        try:
+            q_oid = ObjectId(quiz_id)
+        except InvalidId:
+            q_oid = quiz_id
+            
+        cat_oid = None
+        if catalog_id:
+            try:
+                cat_oid = ObjectId(catalog_id)
+            except InvalidId:
+                cat_oid = catalog_id
+                
+        play_oid = None
+        if playlist_id:
+            try:
+                play_oid = ObjectId(playlist_id)
+            except InvalidId:
+                play_oid = playlist_id
+                
+        doc = {
+            "quizId": q_oid,
+            "quizTitle": quiz_title,
+            "catalogId": cat_oid,
+            "playlistId": play_oid,
+            "userEmail": user_email.strip().lower() if user_email else "anonymous",
+            "username": username.strip() if username else "Anonymous",
+            "score": score,
+            "correctCount": correct_count,
+            "totalCount": total_count,
+            "results": results,
+            "submittedAt": datetime.now()
+        }
+        res = db.quiz_attempts.insert_one(doc)
+        return str(res.inserted_id)
+    except Exception as e:
+        print(f"[DB Error] Failed to save quiz attempt: {e}")
+        return ""
+
+def get_quiz_attempts(quiz_id: str = None, user_email: str = None) -> list:
+    """Retrieves quiz attempts, sorted by submission date descending."""
+    db = get_db()
+    try:
+        from bson.objectid import ObjectId
+        from bson.errors import InvalidId
+        
+        query = {}
+        if quiz_id:
+            try:
+                query["quizId"] = ObjectId(quiz_id)
+            except InvalidId:
+                query["quizId"] = quiz_id
+        if user_email:
+            query["userEmail"] = user_email.strip().lower()
+            
+        cursor = db.quiz_attempts.find(query).sort("submittedAt", -1)
+        attempts = []
+        for doc in cursor:
+            attempts.append({
+                "id": str(doc["_id"]),
+                "quizId": str(doc["quizId"]),
+                "quizTitle": doc.get("quizTitle", "Untitled Quiz"),
+                "catalogId": str(doc["catalogId"]) if doc.get("catalogId") else None,
+                "playlistId": str(doc["playlistId"]) if doc.get("playlistId") else None,
+                "userEmail": doc.get("userEmail", ""),
+                "username": doc.get("username", ""),
+                "score": doc.get("score", 0.0),
+                "correctCount": doc.get("correctCount", 0),
+                "totalCount": doc.get("totalCount", 0),
+                "results": doc.get("results", []),
+                "submittedAt": doc.get("submittedAt", datetime.now()).isoformat() if isinstance(doc.get("submittedAt"), datetime) else str(doc.get("submittedAt", ""))
+            })
+        return attempts
+    except Exception as e:
+        print(f"[DB Error] Failed to get quiz attempts: {e}")
+        return []
+
+
 
 

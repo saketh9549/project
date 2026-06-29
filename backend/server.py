@@ -1358,7 +1358,11 @@ class QuizSubmitRequest(BaseModel):
     answers: List[AnswerSubmission]
 
 @app.post("/api/quizzes/submit")
-def submit_quiz_endpoint(payload: QuizSubmitRequest):
+def submit_quiz_endpoint(
+    payload: QuizSubmitRequest,
+    owner_email: Optional[str] = Query(None),
+    role: Optional[str] = Query(None)
+):
     from bson.objectid import ObjectId
     from bson.errors import InvalidId
     db_conn = db.get_db()
@@ -1404,6 +1408,30 @@ def submit_quiz_endpoint(payload: QuizSubmitRequest):
             })
 
         score_percentage = round((correct_count / total_questions) * 100, 2)
+
+        # Resolve username
+        username = "Anonymous"
+        if owner_email:
+            user_doc = db_conn.users.find_one({"email": owner_email.strip().lower()})
+            if user_doc:
+                username = user_doc.get("username", owner_email.split('@')[0])
+            else:
+                username = owner_email.split('@')[0]
+
+        # Persist the attempt in DB
+        db.save_quiz_attempt(
+            quiz_id=str(quiz["_id"]),
+            quiz_title=quiz.get("title", "Untitled Quiz"),
+            catalog_id=str(quiz.get("catalogId")) if quiz.get("catalogId") else None,
+            playlist_id=str(quiz.get("playlistId")) if quiz.get("playlistId") else None,
+            user_email=owner_email or "anonymous",
+            username=username,
+            score=score_percentage,
+            correct_count=correct_count,
+            total_count=total_questions,
+            results=results
+        )
+
         return {
             "score": score_percentage,
             "correctCount": correct_count,
@@ -1414,6 +1442,57 @@ def submit_quiz_endpoint(payload: QuizSubmitRequest):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to submit quiz: {e}")
+
+
+@app.get("/api/quizzes/analytics")
+def get_quiz_analytics_endpoint(
+    owner_email: str = Query(...),
+    role: str = Query("user")
+):
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden: Only admin can view quiz analytics.")
+    
+    try:
+        attempts = db.get_quiz_attempts()
+        total_attempts = len(attempts)
+        
+        if total_attempts > 0:
+            average_score = round(sum(a["score"] for a in attempts) / total_attempts, 2)
+            passing_attempts = sum(1 for a in attempts if a["score"] >= 50.0)
+            pass_rate = round((passing_attempts / total_attempts) * 100, 2)
+        else:
+            average_score = 0.0
+            pass_rate = 0.0
+            
+        # Group stats by quiz title
+        quiz_stats = {}
+        for a in attempts:
+            title = a["quizTitle"]
+            if title not in quiz_stats:
+                quiz_stats[title] = {"attemptsCount": 0, "totalScore": 0.0}
+            quiz_stats[title]["attemptsCount"] += 1
+            quiz_stats[title]["totalScore"] += a["score"]
+            
+        quiz_stats_list = []
+        for title, stat in quiz_stats.items():
+            quiz_stats_list.append({
+                "quizTitle": title,
+                "attemptsCount": stat["attemptsCount"],
+                "averageScore": round(stat["totalScore"] / stat["attemptsCount"], 2)
+            })
+            
+        return {
+            "attempts": attempts,
+            "stats": {
+                "totalAttempts": total_attempts,
+                "averageScore": average_score,
+                "passRate": pass_rate,
+                "quizStats": quiz_stats_list
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch quiz analytics: {e}")
+
 
 
 if __name__ == "__main__":

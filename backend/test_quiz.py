@@ -35,12 +35,14 @@ class TestQuiz(unittest.TestCase):
         self.db.playlists.delete_many({"ownerEmail": {"$in": [self.admin_email, self.user_email]}})
         self.db.catalogs.delete_many({"ownerEmail": {"$in": [self.admin_email, self.user_email]}})
         self.db.quizzes.delete_many({"createdBy": {"$in": [self.admin_email, self.user_email]}})
+        self.db.quiz_attempts.delete_many({"userEmail": {"$in": [self.admin_email, self.user_email]}})
 
     def tearDown(self):
         # Clean up
         self.db.playlists.delete_many({"ownerEmail": {"$in": [self.admin_email, self.user_email]}})
         self.db.catalogs.delete_many({"ownerEmail": {"$in": [self.admin_email, self.user_email]}})
         self.db.quizzes.delete_many({"createdBy": {"$in": [self.admin_email, self.user_email]}})
+        self.db.quiz_attempts.delete_many({"userEmail": {"$in": [self.admin_email, self.user_email]}})
 
     def test_database_crud(self):
         # 1. Create a dummy catalog video
@@ -261,4 +263,75 @@ class TestQuiz(unittest.TestCase):
             files={"file": ("quiz.json", json_bytes, "application/json")}
         )
         self.assertEqual(response.status_code, 403)
+
+    def test_quiz_attempts_and_analytics(self):
+        # 1. Create a dummy quiz
+        video_id = str(ObjectId())
+        self.db.catalogs.insert_one({
+            "_id": ObjectId(video_id),
+            "filePath": "analytics_test_video.mp4",
+            "ownerEmail": self.admin_email,
+            "createdAt": db.datetime.now()
+        })
+        
+        quiz_id = db.save_quiz(
+            title="Analytics Math Quiz",
+            created_by=self.admin_email,
+            catalog_id=video_id,
+            questions=[{"questionText": "What is 1+1?", "options": ["1", "2"], "correctAnswerIdx": 1}]
+        )
+        
+        # Create a user record so username lookup works
+        self.db.users.delete_many({"email": self.user_email})
+        self.db.users.insert_one({
+            "email": self.user_email,
+            "username": "TestStudent",
+            "role": "user",
+            "createdAt": db.datetime.now()
+        })
+
+        # 2. Submit a quiz attempt from student
+        submit_payload = {
+            "quizId": quiz_id,
+            "answers": [{"questionIdx": 0, "selectedOptionIdx": 1}] # Correct answer
+        }
+        response = self.client.post(
+            f"/api/quizzes/submit?owner_email={self.user_email}&role=user",
+            json=submit_payload
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["score"], 100.0)
+
+        # 3. Retrieve analytics as student -> forbidden
+        response = self.client.get(f"/api/quizzes/analytics?owner_email={self.user_email}&role=user")
+        self.assertEqual(response.status_code, 403)
+
+        # 4. Retrieve analytics as admin -> success
+        response = self.client.get(f"/api/quizzes/analytics?owner_email={self.admin_email}&role=admin")
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertIn("attempts", data)
+        self.assertIn("stats", data)
+        
+        # Filter to isolate this test's attempt
+        attempts = [a for a in data["attempts"] if a["userEmail"] == self.user_email]
+        self.assertEqual(len(attempts), 1)
+        self.assertEqual(attempts[0]["userEmail"], self.user_email)
+        self.assertEqual(attempts[0]["username"], "TestStudent")
+        self.assertEqual(attempts[0]["score"], 100.0)
+        self.assertEqual(attempts[0]["quizTitle"], "Analytics Math Quiz")
+        
+        stats = data["stats"]
+        self.assertTrue(stats["totalAttempts"] >= 1)
+        
+        # Find stats for our specific quiz title
+        quiz_stats = [qs for qs in stats["quizStats"] if qs["quizTitle"] == "Analytics Math Quiz"]
+        self.assertEqual(len(quiz_stats), 1)
+        self.assertEqual(quiz_stats[0]["attemptsCount"], 1)
+        self.assertEqual(quiz_stats[0]["averageScore"], 100.0)
+
+        # Clean up test user
+        self.db.users.delete_many({"email": self.user_email})
+
 
