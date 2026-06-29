@@ -325,11 +325,18 @@ class TestQuiz(unittest.TestCase):
         stats = data["stats"]
         self.assertTrue(stats["totalAttempts"] >= 1)
         
-        # Find stats for our specific quiz title
-        quiz_stats = [qs for qs in stats["quizStats"] if qs["quizTitle"] == "Analytics Math Quiz"]
-        self.assertEqual(len(quiz_stats), 1)
-        self.assertEqual(quiz_stats[0]["attemptsCount"], 1)
-        self.assertEqual(quiz_stats[0]["averageScore"], 100.0)
+        # Verify the course grouping for our specific quiz title
+        self.assertIn("courses", data)
+        courses = data["courses"]
+        found_quiz = False
+        for c in courses:
+            for q in c["quizzes"]:
+                if q["quizTitle"] == "Analytics Math Quiz":
+                    self.assertEqual(q["attemptsCount"], 1)
+                    self.assertEqual(q["averageScore"], 100.0)
+                    found_quiz = True
+                    break
+        self.assertTrue(found_quiz, "Should find the math quiz inside courses list")
 
         # Clean up test user
         self.db.users.delete_many({"email": self.user_email})

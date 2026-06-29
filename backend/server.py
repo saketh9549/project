@@ -1418,12 +1418,19 @@ def submit_quiz_endpoint(
             else:
                 username = owner_email.split('@')[0]
 
+        # Resolve playlist_id from catalog if missing on quiz
+        playlist_id = quiz.get("playlistId")
+        if not playlist_id and quiz.get("catalogId"):
+            cat_doc = db_conn.catalogs.find_one({"_id": quiz.get("catalogId")})
+            if cat_doc:
+                playlist_id = cat_doc.get("playlistId")
+
         # Persist the attempt in DB
         db.save_quiz_attempt(
             quiz_id=str(quiz["_id"]),
             quiz_title=quiz.get("title", "Untitled Quiz"),
             catalog_id=str(quiz.get("catalogId")) if quiz.get("catalogId") else None,
-            playlist_id=str(quiz.get("playlistId")) if quiz.get("playlistId") else None,
+            playlist_id=str(playlist_id) if playlist_id else None,
             user_email=owner_email or "anonymous",
             username=username,
             score=score_percentage,
@@ -1453,7 +1460,68 @@ def get_quiz_analytics_endpoint(
         raise HTTPException(status_code=403, detail="Forbidden: Only admin can view quiz analytics.")
     
     try:
-        attempts = db.get_quiz_attempts()
+        from bson.objectid import ObjectId
+        db_conn = db.get_db()
+        
+        clean_email = owner_email.strip().lower()
+        
+        # Load courses (playlists) owned by this admin
+        playlists = list(db_conn.playlists.find({"ownerEmail": clean_email}))
+        playlist_map = {str(p["_id"]): p.get("name", "Untitled Course") for p in playlists}
+        playlist_ids = set(playlist_map.keys())
+        
+        # Load catalog (videos) owned by this admin to resolve playlist mapping
+        catalogs = list(db_conn.catalogs.find({"ownerEmail": clean_email}))
+        catalog_to_playlist = {str(c["_id"]): str(c["playlistId"]) if c.get("playlistId") else None for c in catalogs}
+        catalog_ids = set(catalog_to_playlist.keys())
+        
+        # Load quizzes associated with this admin (created by them, or linked to their playlist/catalog)
+        quizzes_query = {
+            "$or": [
+                {"createdBy": clean_email}
+            ]
+        }
+        if playlist_ids:
+            quizzes_query["$or"].append({"playlistId": {"$in": [ObjectId(pid) for pid in playlist_ids]}})
+        if catalog_ids:
+            quizzes_query["$or"].append({"catalogId": {"$in": [ObjectId(cid) for cid in catalog_ids]}})
+            
+        quizzes = list(db_conn.quizzes.find(quizzes_query))
+        quiz_id_to_course = {}
+        quiz_id_to_title = {}
+        for q in quizzes:
+            q_id = str(q["_id"])
+            p_id = str(q["playlistId"]) if q.get("playlistId") else None
+            if not p_id and q.get("catalogId"):
+                p_id = catalog_to_playlist.get(str(q["catalogId"]))
+            quiz_id_to_course[q_id] = p_id
+            quiz_id_to_title[q_id] = q.get("title", "Untitled Quiz")
+
+        # Load and filter attempts to only those for this admin's content
+        all_attempts = db.get_quiz_attempts()
+        attempts = []
+        for a in all_attempts:
+            q_id = a["quizId"]
+            p_id = a.get("playlistId")
+            if not p_id and a.get("catalogId"):
+                p_id = catalog_to_playlist.get(a.get("catalogId"))
+            
+            # Scoping: playlist is owned by admin, or catalog is owned by admin, or quiz is owned by admin
+            is_owned_playlist = p_id in playlist_ids
+            is_owned_catalog = a.get("catalogId") in catalog_ids
+            is_owned_quiz = q_id in quiz_id_to_course
+            
+            if is_owned_playlist or is_owned_catalog or is_owned_quiz:
+                a["playlistId"] = p_id
+                a["courseName"] = playlist_map.get(p_id, "Individual Videos")
+                attempts.append(a)
+
+                # Fallback mappings for title and course if quiz is deleted/unlisted
+                if q_id not in quiz_id_to_course:
+                    quiz_id_to_course[q_id] = p_id
+                if q_id not in quiz_id_to_title:
+                    quiz_id_to_title[q_id] = a.get("quizTitle", "Untitled Quiz")
+
         total_attempts = len(attempts)
         
         if total_attempts > 0:
@@ -1463,31 +1531,66 @@ def get_quiz_analytics_endpoint(
         else:
             average_score = 0.0
             pass_rate = 0.0
-            
-        # Group stats by quiz title
-        quiz_stats = {}
+
+        # Group attempts by quiz
+        quiz_attempts_map = {}
         for a in attempts:
-            title = a["quizTitle"]
-            if title not in quiz_stats:
-                quiz_stats[title] = {"attemptsCount": 0, "totalScore": 0.0}
-            quiz_stats[title]["attemptsCount"] += 1
-            quiz_stats[title]["totalScore"] += a["score"]
+            q_id = a["quizId"]
+            if q_id not in quiz_attempts_map:
+                quiz_attempts_map[q_id] = []
+            quiz_attempts_map[q_id].append(a)
+
+        # Build course structures
+        course_groups = {}
+        for p_id, p_name in playlist_map.items():
+            course_groups[p_id] = {
+                "id": p_id,
+                "name": p_name,
+                "quizzes": []
+            }
+        course_groups["individual"] = {
+            "id": "individual",
+            "name": "Individual Videos",
+            "quizzes": []
+        }
+
+        for q_id, p_id in quiz_id_to_course.items():
+            q_title = quiz_id_to_title.get(q_id, "Untitled Quiz")
+            q_attempts = quiz_attempts_map.get(q_id, [])
             
-        quiz_stats_list = []
-        for title, stat in quiz_stats.items():
-            quiz_stats_list.append({
-                "quizTitle": title,
-                "attemptsCount": stat["attemptsCount"],
-                "averageScore": round(stat["totalScore"] / stat["attemptsCount"], 2)
-            })
+            attempts_count = len(q_attempts)
+            if attempts_count > 0:
+                avg_score = round(sum(a["score"] for a in q_attempts) / attempts_count, 2)
+            else:
+                avg_score = 0.0
+                
+            quiz_data = {
+                "quizId": q_id,
+                "quizTitle": q_title,
+                "attemptsCount": attempts_count,
+                "averageScore": avg_score,
+                "attempts": q_attempts
+            }
             
+            target_p_id = p_id if p_id in course_groups else "individual"
+            course_groups[target_p_id]["quizzes"].append(quiz_data)
+
+        # Combine into courses_list
+        courses_list = []
+        for p_id in playlist_map.keys():
+            if p_id in course_groups and len(course_groups[p_id]["quizzes"]) > 0:
+                courses_list.append(course_groups[p_id])
+                
+        if "individual" in course_groups and len(course_groups["individual"]["quizzes"]) > 0:
+            courses_list.append(course_groups["individual"])
+
         return {
             "attempts": attempts,
+            "courses": courses_list,
             "stats": {
                 "totalAttempts": total_attempts,
                 "averageScore": average_score,
-                "passRate": pass_rate,
-                "quizStats": quiz_stats_list
+                "passRate": pass_rate
             }
         }
     except Exception as e:

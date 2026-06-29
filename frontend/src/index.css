@@ -2,6 +2,8 @@
 
 @import "tailwindcss";
 
+@custom-variant dark (&:where(html:not(.light) *, html:not(.light)));
+
 :root {
   --font-sans: 'Plus Jakarta Sans', system-ui, sans-serif;
   --font-display: 'Outfit', system-ui, sans-serif;
@@ -583,11 +585,19 @@ html.light .bg-emerald-600,
 html.light .bg-emerald-600 *,
 html.light .bg-emerald-700,
 html.light .bg-emerald-700 *,
-html.light .bg-gradient-to-r,
-html.light .bg-gradient-to-r *,
-html.light .bg-linear-to-r,
-html.light .bg-linear-to-r * {
+html.light .bg-gradient-to-r:not(.bg-clip-text):not(.text-transparent),
+html.light .bg-gradient-to-r:not(.bg-clip-text):not(.text-transparent) *,
+html.light .bg-linear-to-r:not(.bg-clip-text):not(.text-transparent),
+html.light .bg-linear-to-r:not(.bg-clip-text):not(.text-transparent) * {
   color: #ffffff !important;
+}
+
+html.light .text-emerald-400 {
+  color: #059669 !important; /* emerald-600 */
+}
+
+html.light .text-amber-400 {
+  color: #d97706 !important; /* amber-600 */
 }
 
 /* Base text-white override for generic elements */

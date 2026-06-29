@@ -5,11 +5,28 @@ export default function QuizAnalytics({ currentUser, showSuccess, showError }) {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState({
     attempts: [],
-    stats: { totalAttempts: 0, averageScore: 0, passRate: 0, quizStats: [] }
+    courses: [],
+    stats: { totalAttempts: 0, averageScore: 0, passRate: 0 }
   });
   const [searchTerm, setSearchTerm] = useState('');
   const [scoreFilter, setScoreFilter] = useState('all'); // all, pass, fail
   const [selectedAttempt, setSelectedAttempt] = useState(null);
+  const [expandedCourses, setExpandedCourses] = useState({});
+  const [expandedQuizzes, setExpandedQuizzes] = useState({});
+
+  const toggleCourse = (courseId) => {
+    setExpandedCourses(prev => ({
+      ...prev,
+      [courseId]: !prev[courseId]
+    }));
+  };
+
+  const toggleQuiz = (quizId) => {
+    setExpandedQuizzes(prev => ({
+      ...prev,
+      [quizId]: !prev[quizId]
+    }));
+  };
 
   const fetchAnalytics = async () => {
     setLoading(true);
@@ -31,6 +48,14 @@ export default function QuizAnalytics({ currentUser, showSuccess, showError }) {
   useEffect(() => {
     fetchAnalytics();
   }, []);
+
+  useEffect(() => {
+    if (data.courses && data.courses.length > 0) {
+      // Auto-expand the first course by default
+      const firstCourseId = data.courses[0].id;
+      setExpandedCourses({ [firstCourseId]: true });
+    }
+  }, [data.courses]);
 
   // Filter attempts based on search and score dropdown
   const filteredAttempts = data.attempts.filter((attempt) => {
@@ -67,6 +92,8 @@ export default function QuizAnalytics({ currentUser, showSuccess, showError }) {
       return isoString;
     }
   };
+
+  const uniqueQuizzesCount = data.courses ? data.courses.reduce((acc, course) => acc + course.quizzes.length, 0) : 0;
 
   return (
     <div className="max-w-5xl mx-auto w-full p-4 animate-quiz-slide flex flex-col gap-8">
@@ -148,7 +175,7 @@ export default function QuizAnalytics({ currentUser, showSuccess, showError }) {
             <div className="glass-panel p-5 rounded-2xl border border-white/5 flex flex-row justify-between items-center relative overflow-hidden transition-all duration-300">
               <div className="flex flex-col gap-1">
                 <span className="text-gray-500 text-[10px] uppercase font-bold tracking-wider">Unique Quizzes</span>
-                <span className="text-3xl font-extrabold font-display text-white">{data.stats.quizStats.length}</span>
+                <span className="text-3xl font-extrabold font-display text-white">{uniqueQuizzesCount}</span>
                 <span className="text-[10px] text-gray-400">attempted</span>
               </div>
               <div className="w-11 h-11 rounded-full bg-amber-500/10 flex items-center justify-center text-amber-500 dark:text-amber-400 shrink-0">
@@ -159,42 +186,152 @@ export default function QuizAnalytics({ currentUser, showSuccess, showError }) {
             </div>
           </div>
 
-          {/* Quiz-level breakdown list */}
-          <div>
-            <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-4 tracking-tight flex items-center gap-2">
+          {/* Course-Grouped Quiz Performance Section */}
+          <div className="flex flex-col gap-4">
+            <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-2 tracking-tight flex items-center gap-2">
               <svg className="w-4 h-4 text-indigo-500 dark:text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
               </svg>
-              Module Quiz Summary
+              Course Curriculum Performance
             </h3>
-            {data.stats.quizStats.length === 0 ? (
+            
+            {(!data.courses || data.courses.length === 0) ? (
               <div className="text-center text-xs text-gray-500 font-mono py-8 border border-black/5 dark:border-white/5 rounded-2xl bg-black/[0.01] dark:bg-slate-950/20">
-                No quiz performance summaries available.
+                No course performance metrics available.
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {data.stats.quizStats.map((qs, i) => (
-                  <div key={i} className="glass-panel p-4 rounded-xl flex flex-col justify-between gap-3 shadow-md">
-                    <div>
-                      <h4 className="font-bold text-xs text-slate-800 dark:text-white leading-normal truncate" title={qs.quizTitle}>
-                        {qs.quizTitle}
-                      </h4>
-                      <p className="text-[9px] text-gray-500 font-semibold mt-0.5">
-                        Performance aggregates
-                      </p>
+              <div className="flex flex-col gap-4">
+                {data.courses.map((course) => {
+                  const isExpanded = !!expandedCourses[course.id];
+                  const totalQuizzes = course.quizzes.length;
+                  const totalAttemptsInCourse = course.quizzes.reduce((acc, q) => acc + q.attemptsCount, 0);
+                  
+                  return (
+                    <div key={course.id} className="glass-panel rounded-2xl overflow-hidden shadow-md border border-black/5 dark:border-white/5 transition-all">
+                      {/* Course Header Bar */}
+                      <button
+                        onClick={() => toggleCourse(course.id)}
+                        className="w-full text-left p-5 flex items-center justify-between gap-4 hover:bg-black/[0.01] dark:hover:bg-white/[0.02] cursor-pointer transition-colors"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-xl bg-indigo-500/10 flex items-center justify-center text-indigo-500 dark:text-indigo-400 shrink-0">
+                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.168.477 4 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4 1.253" />
+                            </svg>
+                          </div>
+                          <div>
+                            <h4 className="font-extrabold text-sm text-slate-800 dark:text-white capitalize">
+                              {course.name}
+                            </h4>
+                            <div className="flex gap-2 text-[10px] text-gray-500 dark:text-gray-400 font-medium mt-0.5">
+                              <span>{totalQuizzes} {totalQuizzes === 1 ? 'Quiz' : 'Quizzes'}</span>
+                              <span>•</span>
+                              <span>{totalAttemptsInCourse} {totalAttemptsInCourse === 1 ? 'Attempt' : 'Attempts'}</span>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <svg
+                          className={`w-4 h-4 text-gray-500 dark:text-gray-400 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
+                          fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+                      
+                      {/* Expanded Course content */}
+                      {isExpanded && (
+                        <div className="px-5 pb-5 border-t border-black/5 dark:border-white/5 flex flex-col gap-3 bg-black/[0.005] dark:bg-slate-950/10 pt-4 animate-fade-in">
+                          {course.quizzes.map((quiz) => {
+                            const isQuizExpanded = !!expandedQuizzes[quiz.quizId];
+                            return (
+                              <div key={quiz.quizId} className="border border-black/5 dark:border-white/5 rounded-xl overflow-hidden bg-white/50 dark:bg-slate-900/30">
+                                {/* Quiz Accordion Header */}
+                                <button
+                                  onClick={() => toggleQuiz(quiz.quizId)}
+                                  className="w-full text-left px-4 py-3 flex items-center justify-between gap-4 hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer transition-all"
+                                >
+                                  <div>
+                                    <h5 className="font-bold text-xs text-slate-800 dark:text-white">
+                                      {quiz.quizTitle}
+                                    </h5>
+                                    <div className="flex gap-3 text-[9px] text-gray-500 uppercase font-mono mt-1">
+                                      <span>Attempts: <strong>{quiz.attemptsCount}</strong></span>
+                                      <span>Avg Score: <strong className="text-cyan-600 dark:text-cyan-400">{quiz.averageScore}%</strong></span>
+                                    </div>
+                                  </div>
+                                  <svg
+                                    className={`w-3.5 h-3.5 text-gray-400 transition-transform duration-200 ${isQuizExpanded ? 'rotate-180' : ''}`}
+                                    fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5"
+                                  >
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                                  </svg>
+                                </button>
+                                
+                                {/* Expanded Quiz Attempts Table */}
+                                {isQuizExpanded && (
+                                  <div className="border-t border-black/5 dark:border-white/5 bg-black/[0.01] dark:bg-slate-950/20 px-4 py-3 animate-fade-in">
+                                    {quiz.attempts.length === 0 ? (
+                                      <div className="text-center text-[10px] text-gray-500 font-mono py-4">
+                                        No submissions recorded for this quiz yet.
+                                      </div>
+                                    ) : (
+                                      <div className="overflow-x-auto w-full">
+                                        <table className="w-full text-left border-collapse">
+                                          <thead>
+                                            <tr className="border-b border-black/5 dark:border-white/5 text-[9px] uppercase tracking-widest text-gray-500 dark:text-gray-400 font-mono">
+                                              <th className="py-2 px-3">Student</th>
+                                              <th className="py-2 px-3 text-center">Score</th>
+                                              <th className="py-2 px-3 text-center">Outcome</th>
+                                              <th className="py-2 px-3">Date</th>
+                                              <th className="py-2 px-3 text-right">Action</th>
+                                            </tr>
+                                          </thead>
+                                          <tbody className="divide-y divide-black/5 dark:divide-white/5 text-[11px]">
+                                            {quiz.attempts.map((att) => (
+                                              <tr key={att.id} className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+                                                <td className="py-2.5 px-3">
+                                                  <div className="font-semibold text-slate-800 dark:text-white">{att.username}</div>
+                                                  <div className="text-[9px] text-gray-500 dark:text-gray-400 font-mono">{att.userEmail}</div>
+                                                </td>
+                                                <td className="py-2.5 px-3 text-center font-mono font-bold text-slate-800 dark:text-white">
+                                                  {att.score}%
+                                                  <span className="block text-[8px] text-gray-500 dark:text-gray-400 font-normal">
+                                                    {att.correctCount}/{att.totalCount} correct
+                                                  </span>
+                                                </td>
+                                                <td className="py-2.5 px-3 text-center">
+                                                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-wider ${getScoreBadgeClass(att.score)}`}>
+                                                    {getScoreBadgeText(att.score)}
+                                                  </span>
+                                                </td>
+                                                <td className="py-2.5 px-3 text-gray-500 dark:text-gray-400 font-mono text-[10px]">
+                                                  {formatDate(att.submittedAt)}
+                                                </td>
+                                                <td className="py-2.5 px-3 text-right">
+                                                  <button
+                                                    onClick={() => setSelectedAttempt(att)}
+                                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider text-indigo-500 dark:text-indigo-400 hover:text-white bg-indigo-500/10 hover:bg-indigo-500/40 border border-indigo-500/20 hover:border-indigo-500/40 cursor-pointer transition-all"
+                                                  >
+                                                    Inspect
+                                                  </button>
+                                                </td>
+                                              </tr>
+                                            ))}
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
-                    <div className="flex justify-between items-center bg-black/5 dark:bg-white/5 rounded-lg px-3 py-2 border border-black/5 dark:border-white/5">
-                      <div className="flex flex-col">
-                        <span className="text-[9px] text-gray-500 uppercase font-mono">Attempts</span>
-                        <span className="text-xs font-extrabold text-slate-800 dark:text-white">{qs.attemptsCount}</span>
-                      </div>
-                      <div className="flex flex-col items-end">
-                        <span className="text-[9px] text-gray-500 uppercase font-mono">Avg Score</span>
-                        <span className="text-xs font-extrabold text-cyan-505 dark:text-cyan-400">{qs.averageScore}%</span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

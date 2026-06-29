@@ -15,7 +15,8 @@ export default function Home({
   onIndexError,
   onDeleteVideo,
   showSuccess,
-  showError
+  showError,
+  myWorkspaceMode = false
 }) {
   const navigate = useNavigate();
   const isAdmin = currentUser?.role === 'admin';
@@ -66,7 +67,10 @@ export default function Home({
   };
 
   const handleSelectFolder = (pl) => {
-    const targetVideos = isAdmin ? allVideos : videos;
+    let targetVideos = isAdmin ? allVideos : videos;
+    if (myWorkspaceMode && currentUser?.email) {
+      targetVideos = targetVideos.filter(v => v.owner_email === currentUser.email || v.ownerEmail === currentUser.email);
+    }
     const folderVideos = targetVideos.filter(v => v.playlist_id === pl.id && v.upload_status === 'indexed');
     if (folderVideos.length > 0) {
       navigate(`/video/${folderVideos[0].id}`);
@@ -75,7 +79,9 @@ export default function Home({
     }
   };
 
-  const displayPlaylists = isAdmin ? allPlaylists : playlists;
+  const displayPlaylists = myWorkspaceMode && currentUser?.email
+    ? (isAdmin ? allPlaylists : playlists).filter(pl => pl.owner_email === currentUser.email || pl.ownerEmail === currentUser.email)
+    : (isAdmin ? allPlaylists : playlists);
 
   // Both Admin and Student view the same Dashboard structure but scoped differently
   return (
@@ -86,15 +92,17 @@ export default function Home({
         <div className="absolute bottom-0 left-0 w-72 h-72 bg-cyan-500/10 rounded-full blur-3xl -z-10" />
 
         <span className="inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold tracking-widest uppercase bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 mb-4 font-mono">
-          {isAdmin ? "Admin Workspace" : "Student Workspace"}
+          {myWorkspaceMode ? "My Workspace" : (isAdmin ? "Admin Workspace" : "Student Workspace")}
         </span>
         <h2 className="text-2xl font-extrabold font-display text-white mb-2 tracking-tight">
           Welcome back, <span className="bg-gradient-to-r from-cyan-400 to-indigo-300 bg-clip-text text-transparent">{currentUser?.username || currentUser?.email}</span>
         </h2>
         <p className="text-gray-400 text-xs max-w-md mx-auto leading-relaxed">
-          {isAdmin 
-            ? "View and navigate through all course modules present in the database."
-            : "Access course chapters, timestamps summaries, and evaluate your knowledge with custom module quizzes."}
+          {myWorkspaceMode 
+            ? "Manage and access course modules and directories created by you."
+            : (isAdmin 
+                ? "View and navigate through all course modules present in the database."
+                : "Access course chapters, timestamps summaries, and evaluate your knowledge with custom module quizzes.")}
         </p>
       </div>
 
@@ -102,7 +110,7 @@ export default function Home({
       <div className="shrink-0">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-bold font-sans text-white tracking-tight">
-            {isAdmin ? "All Course Modules" : "Continue Learning"}
+            {myWorkspaceMode ? "My Course Modules" : (isAdmin ? "All Course Modules" : "Continue Learning")}
           </h2>
           <div className="flex items-center gap-4">
             <span onClick={() => navigate('/catalog')} className="text-xs text-indigo-400 font-bold hover:underline cursor-pointer select-none">

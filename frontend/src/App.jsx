@@ -240,6 +240,7 @@ function AppContent() {
 
   // Navigation menu highlights
   const isHomeActive = location.pathname === '/home';
+  const isWorkspaceActive = location.pathname === '/my-workspace';
   const isCatalogActive = location.pathname === '/catalog' || location.pathname.startsWith('/video') || (location.pathname.startsWith('/quiz') && !location.pathname.startsWith('/quiz-analytics'));
   const isAnalyticsActive = location.pathname === '/quiz-analytics';
   const isWorkspace = location.pathname.startsWith('/video') || (location.pathname.startsWith('/quiz') && !location.pathname.startsWith('/quiz-analytics'));
@@ -415,18 +416,32 @@ function AppContent() {
                 {!sidebarCollapsed && <span>Dashboard</span>}
               </Link>
               <Link
+                to="/my-workspace"
+                className={`flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-semibold tracking-wide transition-all border border-transparent cursor-pointer group ${sidebarCollapsed ? 'justify-center px-0' : ''
+                  } ${isWorkspaceActive
+                    ? 'nav-link-active font-bold shadow-[0_0_8px_rgba(34,211,238,0.06)]'
+                    : 'text-gray-400 hover:text-white hover:bg-white/5'
+                  }`}
+                title={sidebarCollapsed ? "My Workspace" : undefined}
+              >
+                <svg className="w-4 h-4 transition-transform group-hover:scale-110 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                </svg>
+                {!sidebarCollapsed && <span>My Workspace</span>}
+              </Link>
+              <Link
                 to="/catalog"
                 className={`flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-semibold tracking-wide transition-all border border-transparent cursor-pointer group ${sidebarCollapsed ? 'justify-center px-0' : ''
                   } ${isCatalogActive
                     ? 'nav-link-active font-bold shadow-[0_0_8px_rgba(34,211,238,0.06)]'
                     : 'text-gray-400 hover:text-white hover:bg-white/5'
                   }`}
-                title={sidebarCollapsed ? "Library" : undefined}
+                title={sidebarCollapsed ? "Upload" : undefined}
               >
                 <svg className="w-4 h-4 transition-transform group-hover:scale-110 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 4H6a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-2m-4-1v8m0 0l3-3m-3 3L9 8m-5 5h2.586a1 1 0 01.707.293l2.414 2.414a1 1 0 00.707.293h3.172a1 1 0 00.707-.293l2.414-2.414a1 1 0 01.707-.293H20" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                 </svg>
-                {!sidebarCollapsed && <span>Library</span>}
+                {!sidebarCollapsed && <span>Upload</span>}
               </Link>
               <Link
                 to="/quiz-analytics"
@@ -471,6 +486,30 @@ function AppContent() {
                 onDeleteVideo={handleDeleteVideo}
                 showSuccess={showSuccess}
                 showError={showError}
+              />
+            } />
+            <Route path="/my-workspace" element={
+              <Home
+                currentUser={currentUser}
+                videos={videos}
+                playlists={playlists}
+                fetchPlaylists={fetchPlaylists}
+                indexingLoading={indexingLoading}
+                pendingAutoSelectId={pendingAutoSelectId}
+                onIndexStart={() => setIndexingLoading(true)}
+                onIndexSuccess={async (videoId) => {
+                  setIndexingLoading(false);
+                  setPendingAutoSelectId(videoId);
+                  localStorage.setItem('summarix_pending_select', videoId);
+                  await fetchVideos();
+                  await fetchPlaylists();
+                  showSuccess("Video successfully queued for indexing! Redirecting to workspace upon completion.");
+                }}
+                onIndexError={() => setIndexingLoading(false)}
+                onDeleteVideo={handleDeleteVideo}
+                showSuccess={showSuccess}
+                showError={showError}
+                myWorkspaceMode={true}
               />
             } />
             <Route path="/catalog" element={
