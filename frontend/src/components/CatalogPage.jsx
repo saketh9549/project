@@ -43,12 +43,7 @@ export default function CatalogPage({
   };
 
   const handleSelectFolder = (pl) => {
-    const folderVideos = videos.filter(v => v.playlist_id === pl.id && v.upload_status === 'indexed');
-    if (folderVideos.length > 0) {
-      navigate(`/video/${folderVideos[0].id}`, { state: { from: '/catalog' } });
-    } else {
-      alert("This folder is empty or contains no indexed videos yet.");
-    }
+    navigate(`/course/${pl.id}`, { state: { from: '/catalog' } });
   };
 
   // If Admin, show the standard folder catalog with folder builder and delete actions

@@ -158,6 +158,7 @@ export default function QuizPage({ currentUser, showSuccess, showError }) {
         onBack={() => navigate(`/video/${id}`, { state: location.state })}
         catalogId={id}
         onReload={fetchQuizAndVideo}
+        currentUser={currentUser}
       />
     </div>
   );

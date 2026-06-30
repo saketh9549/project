@@ -9,6 +9,7 @@ import CatalogPage from './components/CatalogPage';
 import VideoWorkspace from './components/VideoWorkspace';
 import QuizPage from './components/QuizPage';
 import QuizAnalytics from './components/QuizAnalytics';
+import CourseSyllabusPage from './components/CourseSyllabusPage';
 
 import { apiUrl } from './lib/api';
 
@@ -241,9 +242,11 @@ function AppContent() {
   }
 
   // Navigation menu highlights
-  const isHomeActive = location.pathname === '/home' || (location.pathname.startsWith('/video') && location.state?.from === '/home') || (location.pathname.startsWith('/quiz') && location.state?.from === '/home' && !location.pathname.startsWith('/quiz-analytics'));
-  const isWorkspaceActive = location.pathname === '/my-workspace' || (location.pathname.startsWith('/video') && location.state?.from === '/my-workspace') || (location.pathname.startsWith('/quiz') && location.state?.from === '/my-workspace' && !location.pathname.startsWith('/quiz-analytics'));
-  const isCatalogActive = location.pathname === '/catalog' || (location.pathname.startsWith('/video') && (location.state?.from === '/catalog' || !location.state?.from)) || (location.pathname.startsWith('/quiz') && (location.state?.from === '/catalog' || !location.state?.from) && !location.pathname.startsWith('/quiz-analytics'));
+  // Navigation menu highlights
+  const activeFrom = location.state?.originalFrom || location.state?.from || '';
+  const isHomeActive = location.pathname === '/home' || (location.pathname.startsWith('/course') && location.state?.from === '/home') || (location.pathname.startsWith('/video') && (location.state?.from === '/home' || activeFrom === '/home')) || (location.pathname.startsWith('/quiz') && (location.state?.from === '/home' || activeFrom === '/home') && !location.pathname.startsWith('/quiz-analytics'));
+  const isWorkspaceActive = location.pathname === '/my-workspace' || (location.pathname.startsWith('/course') && location.state?.from === '/my-workspace') || (location.pathname.startsWith('/video') && (location.state?.from === '/my-workspace' || activeFrom === '/my-workspace')) || (location.pathname.startsWith('/quiz') && (location.state?.from === '/my-workspace' || activeFrom === '/my-workspace') && !location.pathname.startsWith('/quiz-analytics'));
+  const isCatalogActive = location.pathname === '/catalog' || (location.pathname.startsWith('/course') && location.state?.from === '/catalog') || (location.pathname.startsWith('/video') && (location.state?.from === '/catalog' || activeFrom === '/catalog' || !location.state?.from)) || (location.pathname.startsWith('/quiz') && (location.state?.from === '/catalog' || activeFrom === '/catalog' || !location.state?.from) && !location.pathname.startsWith('/quiz-analytics'));
   const isAnalyticsActive = location.pathname === '/quiz-analytics';
   const isWorkspace = location.pathname.startsWith('/video') || (location.pathname.startsWith('/quiz') && !location.pathname.startsWith('/quiz-analytics'));
 
@@ -512,6 +515,13 @@ function AppContent() {
                 showSuccess={showSuccess}
                 showError={showError}
                 myWorkspaceMode={true}
+              />
+            } />
+            <Route path="/course/:playlistId" element={
+              <CourseSyllabusPage
+                videos={videos}
+                playlists={playlists}
+                currentUser={currentUser}
               />
             } />
             <Route path="/catalog" element={
