@@ -267,7 +267,8 @@ export default function VideoIndexer({
   videos = [],
   onDeleteVideo,
   pendingAutoSelectId = null,
-  initialPlaylistId = ''
+  initialPlaylistId = '',
+  currentUser
 }) {
   const [dragActive, setDragActive] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState([]);
@@ -287,7 +288,9 @@ export default function VideoIndexer({
     setCreatingPlaylist(true);
     showError(null);
     try {
-      const res = await fetch(apiUrl('/api/playlists'), {
+      const email = currentUser?.email || 'anonymous@summarix.io';
+      const role = currentUser?.role || 'user';
+      const res = await fetch(apiUrl(`/api/playlists?owner_email=${encodeURIComponent(email)}&role=${role}`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newPlaylistName.trim() })
@@ -385,7 +388,9 @@ export default function VideoIndexer({
         setTasks(prev => prev.map(t => t.id === taskId ? { ...t, progress: 100, statusText: 'Queuing...' } : t));
       }
 
-      const response = await fetch(apiUrl('/api/index'), {
+      const email = currentUser?.email || 'anonymous@summarix.io';
+      const role = currentUser?.role || 'user';
+      const response = await fetch(apiUrl(`/api/index?owner_email=${encodeURIComponent(email)}&role=${role}`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

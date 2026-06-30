@@ -45,12 +45,14 @@ export default function Home({
     if (!isAdmin) return;
     const fetchAllData = async () => {
       try {
-        const plRes = await fetch(apiUrl('/api/playlists?all=true'));
+        const email = currentUser?.email || 'anonymous@summarix.io';
+        const role = currentUser?.role || 'user';
+        const plRes = await fetch(apiUrl(`/api/playlists?all=true&owner_email=${encodeURIComponent(email)}&role=${role}`));
         if (plRes.ok) {
           const plData = await plRes.json();
           setAllPlaylists(plData);
         }
-        const vidRes = await fetch(apiUrl('/api/videos?all=true'));
+        const vidRes = await fetch(apiUrl(`/api/videos?all=true&owner_email=${encodeURIComponent(email)}&role=${role}`));
         if (vidRes.ok) {
           const vidData = await vidRes.json();
           setAllVideos(vidData);
@@ -60,10 +62,10 @@ export default function Home({
       }
     };
     fetchAllData();
-  }, [isAdmin, videos, playlists]);
+  }, [isAdmin, videos, playlists, currentUser]);
 
   const handleSelectVideo = (video) => {
-    navigate(`/video/${video.id}`);
+    navigate(`/video/${video.id}`, { state: { from: myWorkspaceMode ? '/my-workspace' : '/home' } });
   };
 
   const handleSelectFolder = (pl) => {
@@ -73,7 +75,7 @@ export default function Home({
     }
     const folderVideos = targetVideos.filter(v => v.playlist_id === pl.id && v.upload_status === 'indexed');
     if (folderVideos.length > 0) {
-      navigate(`/video/${folderVideos[0].id}`);
+      navigate(`/video/${folderVideos[0].id}`, { state: { from: myWorkspaceMode ? '/my-workspace' : '/home' } });
     } else {
       alert("This folder is empty or contains no indexed videos yet.");
     }

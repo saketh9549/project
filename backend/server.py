@@ -458,6 +458,7 @@ def list_videos(
                 "timeline_index": v.get("timeline_index", []),
                 "duration": v["duration"],
                 "duration_str": format_timestamp(v["duration"]),
+                "owner_email": v.get("owner_email", ""),
                 "created_at": v["created_at"]
             })
         return video_list
@@ -498,6 +499,7 @@ def get_video(video_id: str, owner_email: str = Query(...), role: str = Query("u
                 "timeline_index": video.get("timeline_index", []),
                 "duration": video["duration"],
                 "duration_str": format_timestamp(video["duration"]),
+                "owner_email": video.get("owner_email", ""),
                 "overall_summary": video.get("overall_summary", ""),
                 "raw_transcript": video.get("raw_transcript", "")
             },
@@ -1526,7 +1528,7 @@ def get_quiz_analytics_endpoint(
         
         if total_attempts > 0:
             average_score = round(sum(a["score"] for a in attempts) / total_attempts, 2)
-            passing_attempts = sum(1 for a in attempts if a["score"] >= 50.0)
+            passing_attempts = sum(1 for a in attempts if a["score"] >= 75.0)
             pass_rate = round((passing_attempts / total_attempts) * 100, 2)
         else:
             average_score = 0.0

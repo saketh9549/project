@@ -13,12 +13,19 @@ export default function QuizAnalytics({ currentUser, showSuccess, showError }) {
   const [selectedAttempt, setSelectedAttempt] = useState(null);
   const [expandedCourses, setExpandedCourses] = useState({});
   const [expandedQuizzes, setExpandedQuizzes] = useState({});
+  const [selectedCourseId, setSelectedCourseId] = useState(null);
 
   const toggleCourse = (courseId) => {
-    setExpandedCourses(prev => ({
-      ...prev,
-      [courseId]: !prev[courseId]
-    }));
+    setExpandedCourses(prev => {
+      const isCurrentlyExpanded = !!prev[courseId];
+      if (!isCurrentlyExpanded) {
+        setSelectedCourseId(courseId);
+        return { [courseId]: true };
+      } else {
+        setSelectedCourseId(null);
+        return {};
+      }
+    });
   };
 
   const toggleQuiz = (quizId) => {
@@ -31,7 +38,9 @@ export default function QuizAnalytics({ currentUser, showSuccess, showError }) {
   const fetchAnalytics = async () => {
     setLoading(true);
     try {
-      const response = await fetch(apiUrl('/api/quizzes/analytics'));
+      const email = currentUser?.email || 'anonymous@summarix.io';
+      const role = currentUser?.role || 'user';
+      const response = await fetch(apiUrl(`/api/quizzes/analytics?owner_email=${encodeURIComponent(email)}&role=${role}`));
       if (!response.ok) {
         const errData = await response.json();
         throw new Error(errData.detail || 'Failed to fetch analytics');
@@ -47,40 +56,89 @@ export default function QuizAnalytics({ currentUser, showSuccess, showError }) {
 
   useEffect(() => {
     fetchAnalytics();
-  }, []);
+  }, [currentUser]);
 
   useEffect(() => {
     if (data.courses && data.courses.length > 0) {
       // Auto-expand the first course by default
       const firstCourseId = data.courses[0].id;
       setExpandedCourses({ [firstCourseId]: true });
+      setSelectedCourseId(firstCourseId);
     }
   }, [data.courses]);
 
+  // Lock parent page scrolling when inspect modal is open to keep page layout constant
+  useEffect(() => {
+    const parentContainer = document.querySelector('.overflow-y-auto');
+    if (selectedAttempt) {
+      document.body.style.overflow = 'hidden';
+      if (parentContainer) {
+        parentContainer.style.overflowY = 'hidden';
+      }
+    } else {
+      document.body.style.overflow = '';
+      if (parentContainer) {
+        parentContainer.style.overflowY = '';
+      }
+    }
+    return () => {
+      document.body.style.overflow = '';
+      if (parentContainer) {
+        parentContainer.style.overflowY = '';
+      }
+    };
+  }, [selectedAttempt]);
+
+  const roundToTwo = (num) => Math.round((num + Number.EPSILON) * 100) / 100;
+
+  // Filter attempts and calculate stats dynamically on basis of folder/course selection
+  const selectedCourseQuizzes = selectedCourseId
+    ? (data.courses.find(c => c.id === selectedCourseId)?.quizzes || [])
+    : [];
+
+  const selectedCourseAttempts = selectedCourseId
+    ? data.attempts.filter(a => a.playlistId === selectedCourseId)
+    : data.attempts;
+
+  const totalAttempts = selectedCourseAttempts.length;
+  
+  const averageScore = selectedCourseAttempts.length > 0
+    ? roundToTwo(selectedCourseAttempts.reduce((acc, val) => acc + val.score, 0) / selectedCourseAttempts.length)
+    : 0.0;
+
+  const passingAttempts = selectedCourseAttempts.filter(a => a.score >= 75.0).length;
+  const passRate = selectedCourseAttempts.length > 0
+    ? roundToTwo((passingAttempts / selectedCourseAttempts.length) * 100)
+    : 0.0;
+
+  const uniqueQuizzesCount = selectedCourseId
+    ? selectedCourseQuizzes.length
+    : (data.courses ? data.courses.reduce((acc, course) => acc + course.quizzes.length, 0) : 0);
+
   // Filter attempts based on search and score dropdown
-  const filteredAttempts = data.attempts.filter((attempt) => {
+  const filteredAttempts = selectedCourseAttempts.filter((attempt) => {
     const matchesSearch =
       attempt.userEmail.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      attempt.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (attempt.username && attempt.username.toLowerCase().includes(searchTerm.toLowerCase())) ||
       attempt.quizTitle.toLowerCase().includes(searchTerm.toLowerCase());
 
     if (scoreFilter === 'pass') {
-      return matchesSearch && attempt.score >= 50.0;
+      return matchesSearch && attempt.score >= 75.0;
     } else if (scoreFilter === 'fail') {
-      return matchesSearch && attempt.score < 50.0;
+      return matchesSearch && attempt.score < 75.0;
     }
     return matchesSearch;
   });
 
   const getScoreBadgeClass = (score) => {
     if (score >= 80) return 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
-    if (score >= 50) return 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20';
+    if (score >= 75) return 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20';
     return 'bg-amber-500/10 text-amber-400 border border-amber-500/20';
   };
 
   const getScoreBadgeText = (score) => {
     if (score >= 80) return 'High Pass';
-    if (score >= 50) return 'Pass';
+    if (score >= 75) return 'Pass';
     return 'Fail';
   };
 
@@ -93,11 +151,10 @@ export default function QuizAnalytics({ currentUser, showSuccess, showError }) {
     }
   };
 
-  const uniqueQuizzesCount = data.courses ? data.courses.reduce((acc, course) => acc + course.quizzes.length, 0) : 0;
-
   return (
-    <div className="max-w-5xl mx-auto w-full p-4 animate-quiz-slide flex flex-col gap-8">
-      {/* Header Banner */}
+    <div className="max-w-5xl mx-auto w-full p-4 flex flex-col gap-8">
+      <div className="animate-quiz-slide flex flex-col gap-8 flex-grow">
+        {/* Header Banner */}
       <div className="glass-panel p-8 rounded-3xl border border-white/5 shadow-2xl relative overflow-hidden bg-gradient-to-br from-indigo-950/20 via-slate-900/10 to-cyan-950/10 shrink-0">
         <div className="absolute top-0 right-0 w-72 h-72 bg-indigo-500/10 rounded-full blur-3xl -z-10" />
         <div className="absolute bottom-0 left-0 w-72 h-72 bg-cyan-500/10 rounded-full blur-3xl -z-10" />
@@ -125,6 +182,27 @@ export default function QuizAnalytics({ currentUser, showSuccess, showError }) {
         </div>
       ) : (
         <>
+          {/* Selected Folder Filter Banner */}
+          {selectedCourseId && (
+            <div className="flex items-center justify-between px-5 py-3 rounded-2xl border border-indigo-500/20 bg-indigo-500/[0.03] dark:bg-indigo-500/[0.01] text-xs text-indigo-700 dark:text-indigo-300 font-semibold shadow-[0_4px_12px_rgba(99,102,241,0.02)] shrink-0 animate-fade-in">
+              <div className="flex items-center gap-2">
+                <svg className="w-4 h-4 text-indigo-500 dark:text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                </svg>
+                <span>Showing analytics for folder: <strong className="text-slate-800 dark:text-slate-200 capitalize">{data.courses.find(c => c.id === selectedCourseId)?.name || 'Selected Folder'}</strong></span>
+              </div>
+              <button
+                onClick={() => {
+                  setSelectedCourseId(null);
+                  setExpandedCourses({});
+                }}
+                className="px-3 py-1 bg-indigo-500/10 hover:bg-indigo-500/20 text-[10px] font-extrabold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 rounded-lg transition-all border border-indigo-500/20 cursor-pointer"
+              >
+                Clear Filter
+              </button>
+            </div>
+          )}
+
           {/* Stats Cards Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
 
@@ -132,7 +210,7 @@ export default function QuizAnalytics({ currentUser, showSuccess, showError }) {
             <div className="glass-panel p-5 rounded-2xl border border-white/5 flex flex-row justify-between items-center relative overflow-hidden transition-all duration-300">
               <div className="flex flex-col gap-1">
                 <span className="text-gray-500 text-[10px] uppercase font-bold tracking-wider">Total Attempts</span>
-                <span className="text-3xl font-extrabold font-display text-white">{data.stats.totalAttempts}</span>
+                <span className="text-3xl font-extrabold font-display text-white">{totalAttempts}</span>
                 <span className="text-[10px] text-gray-400">submissions</span>
               </div>
               <div className="w-11 h-11 rounded-full bg-indigo-500/10 flex items-center justify-center text-indigo-500 dark:text-indigo-400 shrink-0">
@@ -146,7 +224,7 @@ export default function QuizAnalytics({ currentUser, showSuccess, showError }) {
             <div className="glass-panel p-5 rounded-2xl border border-white/5 flex flex-row justify-between items-center relative overflow-hidden transition-all duration-300">
               <div className="flex flex-col gap-1">
                 <span className="text-gray-500 text-[10px] uppercase font-bold tracking-wider">Average Score</span>
-                <span className="text-3xl font-extrabold font-display bg-gradient-to-r from-cyan-500 to-indigo-500 dark:from-cyan-400 dark:to-indigo-300 bg-clip-text text-transparent">{data.stats.averageScore}%</span>
+                <span className="text-3xl font-extrabold font-display bg-gradient-to-r from-cyan-500 to-indigo-500 dark:from-cyan-400 dark:to-indigo-300 bg-clip-text text-transparent">{averageScore}%</span>
                 <span className="text-[10px] text-gray-400">graded average</span>
               </div>
               <div className="w-11 h-11 rounded-full bg-cyan-500/10 flex items-center justify-center text-cyan-500 dark:text-cyan-400 shrink-0">
@@ -161,8 +239,8 @@ export default function QuizAnalytics({ currentUser, showSuccess, showError }) {
             <div className="glass-panel p-5 rounded-2xl border border-white/5 flex flex-row justify-between items-center relative overflow-hidden transition-all duration-300">
               <div className="flex flex-col gap-1">
                 <span className="text-gray-500 text-[10px] uppercase font-bold tracking-wider">Pass Rate</span>
-                <span className="text-3xl font-extrabold font-display text-white">{data.stats.passRate}%</span>
-                <span className="text-[10px] text-emerald-500 font-bold">&gt;= 50% score</span>
+                <span className="text-3xl font-extrabold font-display text-white">{passRate}%</span>
+                <span className="text-[10px] text-emerald-500 font-bold">&gt;= 75% score</span>
               </div>
               <div className="w-11 h-11 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500 dark:text-emerald-400 shrink-0">
                 <svg className="w-5.5 h-5.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
@@ -206,8 +284,10 @@ export default function QuizAnalytics({ currentUser, showSuccess, showError }) {
                   const totalQuizzes = course.quizzes.length;
                   const totalAttemptsInCourse = course.quizzes.reduce((acc, q) => acc + q.attemptsCount, 0);
                   
+                  const isSelected = selectedCourseId === course.id;
+                  
                   return (
-                    <div key={course.id} className="glass-panel rounded-2xl overflow-hidden shadow-md border border-black/5 dark:border-white/5 transition-all">
+                    <div key={course.id} className={`glass-panel rounded-2xl overflow-hidden shadow-md transition-all duration-300 ${isSelected ? 'border-indigo-500/40 dark:border-indigo-500/40 bg-indigo-500/[0.02] shadow-[0_8px_24px_rgba(99,102,241,0.06)]' : 'border-black/5 dark:border-white/5'}`}>
                       {/* Course Header Bar */}
                       <button
                         onClick={() => toggleCourse(course.id)}
@@ -220,9 +300,17 @@ export default function QuizAnalytics({ currentUser, showSuccess, showError }) {
                             </svg>
                           </div>
                           <div>
-                            <h4 className="font-extrabold text-sm text-slate-800 dark:text-white capitalize">
-                              {course.name}
-                            </h4>
+                            <div className="flex items-center gap-2">
+                              <h4 className="font-extrabold text-sm text-slate-800 dark:text-white capitalize">
+                                {course.name}
+                              </h4>
+                              {isSelected && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[8px] font-extrabold uppercase tracking-wider bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 shrink-0">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
+                                  Selected
+                                </span>
+                              )}
+                            </div>
                             <div className="flex gap-2 text-[10px] text-gray-500 dark:text-gray-400 font-medium mt-0.5">
                               <span>{totalQuizzes} {totalQuizzes === 1 ? 'Quiz' : 'Quizzes'}</span>
                               <span>•</span>
@@ -462,84 +550,93 @@ export default function QuizAnalytics({ currentUser, showSuccess, showError }) {
           </div>
         </>
       )}
+      </div>
 
       {/* Drill-down Modal */}
       {selectedAttempt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-950/80 backdrop-blur-sm animate-fade-in">
-          <div className="glass-panel w-full max-w-2xl max-h-[85vh] rounded-3xl border border-black/10 dark:border-white/5 bg-slate-50 dark:bg-slate-900 shadow-2xl flex flex-col overflow-hidden relative">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-950/80 backdrop-blur-md animate-fade-in">
+          <div className="w-full max-w-2xl max-h-[85vh] rounded-3xl border border-slate-200/50 dark:border-white/10 bg-white/95 dark:bg-slate-900/95 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.18)] dark:shadow-[0_32px_64px_-16px_rgba(0,0,0,0.4)] backdrop-blur-xl flex flex-col overflow-hidden relative animate-quiz-slide">
+            
+            {/* Top gradient glowing bar */}
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-indigo-500 via-cyan-400 to-emerald-500 z-10" />
 
             {/* Modal Header */}
-            <div className="p-6 border-b border-black/5 dark:border-white/5 flex items-start justify-between bg-black/[0.02] dark:bg-slate-950/40">
-              <div>
-                <span className="inline-flex items-center px-2 py-0.5 rounded bg-black/5 dark:bg-white/5 text-[9px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest font-mono mb-2">
+            <div className="p-6 border-b border-slate-200/40 dark:border-white/5 flex items-start justify-between bg-slate-50/50 dark:bg-slate-950/40 pt-7">
+              <div className="min-w-0 flex-grow">
+                <span className="inline-flex items-center px-2 py-0.5 rounded bg-indigo-500/10 dark:bg-white/5 text-[9px] font-extrabold text-indigo-600 dark:text-gray-400 uppercase tracking-widest font-mono mb-2">
                   Attempt Breakdown
                 </span>
-                <h3 className="text-md font-bold text-slate-800 dark:text-white truncate max-w-md" title={selectedAttempt.quizTitle}>
+                <h3 className="text-base font-extrabold bg-gradient-to-r from-slate-900 to-indigo-950 dark:from-white dark:to-slate-200 bg-clip-text text-transparent truncate max-w-[90%]" title={selectedAttempt.quizTitle}>
                   {selectedAttempt.quizTitle}
                 </h3>
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-[11px] text-gray-500 dark:text-gray-400">
-                  <span>Student: <strong className="text-slate-800 dark:text-white">{selectedAttempt.username}</strong> ({selectedAttempt.userEmail})</span>
-                  <span className="text-gray-600">•</span>
-                  <span>Date: <span className="font-mono">{formatDate(selectedAttempt.submittedAt)}</span></span>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-[11px] text-slate-500 dark:text-gray-400 font-medium">
+                  <span>Student: <strong className="text-slate-800 dark:text-slate-200">{selectedAttempt.username}</strong> ({selectedAttempt.userEmail})</span>
+                  <span className="text-slate-300 dark:text-slate-700">•</span>
+                  <span>Date: <span className="font-mono font-semibold">{formatDate(selectedAttempt.submittedAt)}</span></span>
                 </div>
               </div>
 
               {/* Close button */}
               <button
                 onClick={() => setSelectedAttempt(null)}
-                className="p-1.5 rounded-lg text-gray-500 hover:text-slate-800 dark:text-gray-400 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 transition-all cursor-pointer"
+                className="p-2 rounded-full text-slate-400 hover:text-slate-600 dark:text-gray-400 dark:hover:text-white bg-slate-100 hover:bg-slate-200 dark:bg-white/5 dark:hover:bg-white/10 hover:scale-105 transition-all cursor-pointer shadow-sm border border-slate-200/30 dark:border-white/5"
                 title="Close"
               >
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
             </div>
 
             {/* Modal Stats Bar */}
-            <div className="px-6 py-3 bg-black/[0.01] dark:bg-slate-950/20 border-b border-black/5 dark:border-white/5 flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] font-mono text-gray-500 uppercase">Submissions Score:</span>
-                <span className="text-sm font-extrabold text-slate-800 dark:text-white">{selectedAttempt.score}%</span>
-                <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${getScoreBadgeClass(selectedAttempt.score)}`}>
+            <div className="px-6 py-4 bg-slate-50/20 dark:bg-slate-950/20 border-b border-slate-200/40 dark:border-white/5 flex flex-wrap items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Submissions Score:</span>
+                <span className="text-base font-extrabold bg-gradient-to-r from-indigo-600 to-cyan-500 dark:from-indigo-400 dark:to-cyan-400 bg-clip-text text-transparent px-3 py-1 bg-indigo-50/50 dark:bg-white/5 rounded-xl border border-indigo-100/50 dark:border-white/5 shadow-sm">
+                  {selectedAttempt.score}%
+                </span>
+                <span className={`text-[9px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider ${getScoreBadgeClass(selectedAttempt.score)}`}>
                   {getScoreBadgeText(selectedAttempt.score)}
                 </span>
               </div>
-              <div className="text-xs font-mono text-gray-500 dark:text-gray-400">
-                <strong>{selectedAttempt.correctCount}</strong> / {selectedAttempt.totalCount} Correct Questions
+              <div className="text-xs font-semibold text-slate-600 dark:text-gray-400 bg-slate-100/50 dark:bg-white/5 px-3 py-1 rounded-xl border border-slate-200/30 dark:border-white/5">
+                <span className="text-indigo-600 dark:text-cyan-400 font-extrabold">{selectedAttempt.correctCount}</span>
+                <span className="text-slate-400 dark:text-gray-500 font-normal"> / {selectedAttempt.totalCount} Correct</span>
               </div>
             </div>
 
             {/* Modal Content - Scrollable list of questions */}
-            <div className="p-6 overflow-y-auto flex flex-col gap-6 flex-grow">
+            <div className="p-6 overflow-y-auto flex flex-col gap-6 flex-grow bg-white/20 dark:bg-slate-900/10">
               {selectedAttempt.results.map((res, qIdx) => {
                 const hasSelected = res.selectedOptionIdx !== -1;
                 const isCorrect = res.isCorrect;
                 return (
                   <div
                     key={qIdx}
-                    className={`p-4 rounded-2xl border ${isCorrect
-                      ? 'border-emerald-500/20 bg-emerald-500/[0.02] dark:bg-emerald-500/[0.01]'
-                      : 'border-amber-500/20 bg-amber-500/[0.02] dark:bg-amber-500/[0.01]'
-                      } flex flex-col gap-3`}
+                    className={`p-5 rounded-2xl border transition-all duration-300 hover:translate-y-[-1px] ${isCorrect
+                      ? 'border-emerald-500/20 bg-emerald-500/[0.015] dark:bg-emerald-500/[0.01] shadow-[0_4px_12px_rgba(16,185,129,0.02)]'
+                      : 'border-rose-500/20 bg-rose-500/[0.015] dark:bg-rose-500/[0.01] shadow-[0_4px_12px_rgba(244,63,94,0.02)]'
+                      } flex flex-col gap-4`}
                   >
                     {/* Question text & correct marker */}
                     <div className="flex items-start justify-between gap-3">
-                      <div className="flex gap-2">
-                        <span className="text-xs font-mono font-bold text-gray-500">Q{qIdx + 1}.</span>
-                        <h4 className="text-xs font-semibold text-slate-800 dark:text-white leading-relaxed">{res.questionText}</h4>
+                      <div className="flex items-start gap-2.5 min-w-0">
+                        <span className="inline-flex items-center px-1.5 py-0.5 text-[9px] font-mono font-bold bg-indigo-500/10 dark:bg-white/10 text-indigo-600 dark:text-indigo-400 rounded-md shrink-0 mt-0.5">
+                          Q{qIdx + 1}
+                        </span>
+                        <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 leading-relaxed">{res.questionText}</h4>
                       </div>
-                      <div>
+                      <div className="shrink-0">
                         {isCorrect ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-extrabold font-mono text-emerald-500 dark:text-emerald-400 uppercase">
-                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-extrabold font-mono text-emerald-600 dark:text-emerald-400 uppercase bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                            <svg className="w-3 h-3 stroke-[3px]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                             </svg>
                             Correct
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-extrabold font-mono text-amber-500 dark:text-amber-400 uppercase">
-                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-extrabold font-mono text-rose-600 dark:text-rose-400 uppercase bg-rose-500/10 px-2 py-0.5 rounded-full border border-rose-500/20">
+                            <svg className="w-3 h-3 stroke-[2.5px]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                             </svg>
                             Incorrect
@@ -549,39 +646,43 @@ export default function QuizAnalytics({ currentUser, showSuccess, showError }) {
                     </div>
 
                     {/* Options list */}
-                    <div className="flex flex-col gap-2 pl-6">
+                    <div className="flex flex-col gap-2.5 pl-6">
                       {res.options.map((option, optIdx) => {
                         const isStudentChoice = res.selectedOptionIdx === optIdx;
                         const isCorrectChoice = res.correctAnswerIdx === optIdx;
 
-                        let optionStyle = 'border-black/5 dark:border-white/5 bg-black/[0.01] dark:bg-white/[0.02] text-slate-700 dark:text-gray-300';
+                        let optionStyle = 'border-slate-200/50 dark:border-white/5 bg-slate-50/50 dark:bg-white/[0.01] text-slate-600 dark:text-gray-300 hover:bg-slate-100/50 dark:hover:bg-white/[0.03]';
                         if (isCorrectChoice) {
-                          optionStyle = 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300 font-medium';
+                          optionStyle = 'border-emerald-500/30 bg-emerald-500/[0.06] text-emerald-800 dark:text-emerald-300 font-semibold shadow-[0_2px_8px_rgba(16,185,129,0.04)]';
                         } else if (isStudentChoice && !isCorrect) {
-                          optionStyle = 'border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-300';
+                          optionStyle = 'border-rose-500/30 bg-rose-500/[0.06] text-rose-800 dark:text-rose-300 font-semibold';
                         }
 
                         return (
                           <div
                             key={optIdx}
-                            className={`flex items-center justify-between border rounded-xl px-3 py-2 text-xs transition-all ${optionStyle}`}
+                            className={`flex items-center justify-between border rounded-xl px-3.5 py-2.5 text-xs transition-all duration-200 ${optionStyle}`}
                           >
                             <span>{option}</span>
-                            <div className="flex items-center gap-1">
+                            <div className="flex items-center gap-1 shrink-0">
                               {isStudentChoice && (
-                                <span className="text-[9px] uppercase font-bold tracking-widest text-slate-500 dark:text-slate-400 mr-1">
-                                  Choice
+                                <span className={`text-[8px] uppercase font-extrabold tracking-widest px-1.5 py-0.5 rounded bg-slate-200 dark:bg-white/10 text-slate-500 dark:text-slate-400 mr-1.5`}>
+                                  Your Choice
                                 </span>
                               )}
                               {isCorrectChoice && (
-                                <svg className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                                </svg>
+                                <div className="w-5 h-5 rounded-full bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20">
+                                  <svg className="w-3 h-3 text-emerald-600 dark:text-emerald-400 stroke-[3px]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                  </svg>
+                                </div>
                               )}
                               {isStudentChoice && !isCorrect && (
-                                <svg className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                                </svg>
+                                <div className="w-5 h-5 rounded-full bg-rose-500/10 flex items-center justify-center border border-rose-500/20">
+                                  <svg className="w-3 h-3 text-rose-600 dark:text-rose-400 stroke-[2.5px]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                  </svg>
+                                </div>
                               )}
                             </div>
                           </div>
@@ -592,8 +693,15 @@ export default function QuizAnalytics({ currentUser, showSuccess, showError }) {
                     {/* Explanation */}
                     {res.explanation && (
                       <div className="mt-1 pl-6">
-                        <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Explanation:</div>
-                        <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed italic">{res.explanation}</p>
+                        <div className="flex items-center gap-1.5 text-[9px] text-indigo-500 dark:text-indigo-400 font-extrabold uppercase tracking-wider mb-1.5">
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          Explanation
+                        </div>
+                        <div className="border-l-4 border-indigo-500 bg-slate-50 dark:bg-slate-950/40 p-3 rounded-r-xl">
+                          <p className="text-[11px] text-slate-500 dark:text-gray-400 leading-relaxed italic">{res.explanation}</p>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -602,10 +710,10 @@ export default function QuizAnalytics({ currentUser, showSuccess, showError }) {
             </div>
 
             {/* Modal Footer */}
-            <div className="p-4 border-t border-black/5 dark:border-white/5 bg-black/[0.02] dark:bg-slate-950/40 text-center">
+            <div className="p-5 border-t border-slate-200/40 dark:border-white/5 bg-slate-50/50 dark:bg-slate-950/40 text-center flex justify-end">
               <button
                 onClick={() => setSelectedAttempt(null)}
-                className="px-6 py-2 bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-xs font-semibold text-slate-800 dark:text-white rounded-xl border border-black/10 dark:border-white/10 transition-all cursor-pointer select-none"
+                className="px-6 py-2 bg-gradient-to-r from-indigo-600 to-cyan-600 hover:from-indigo-500 hover:to-cyan-500 text-white font-bold text-xs rounded-xl shadow-[0_4px_12px_rgba(99,102,241,0.2)] hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 cursor-pointer select-none"
               >
                 Close Logs
               </button>

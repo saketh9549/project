@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import TimelineExplorer from './TimelineExplorer';
 import SummaryConsole from './SummaryConsole';
 import QuizPlayer from './QuizPlayer';
@@ -39,7 +39,9 @@ const getCourseMeta = (playlistName) => {
 export default function VideoWorkspace({ currentUser, showSuccess, showError }) {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const isAdmin = currentUser?.role === 'admin';
+  const shouldShowAdminTools = isAdmin && location.state?.from !== '/home';
 
   // Active content selection in the workspace:
   // { type: 'video' | 'quiz', id: string }
@@ -225,14 +227,23 @@ export default function VideoWorkspace({ currentUser, showSuccess, showError }) 
   const handlePrevVideo = () => {
     if (hasPrevVideo) {
       const prevVideo = folderVideos[currentIndex - 1];
-      navigate(`/video/${prevVideo.id}`);
+      navigate(`/video/${prevVideo.id}`, { state: location.state });
     }
   };
 
   const handleNextVideo = () => {
     if (hasNextVideo) {
       const nextVideo = folderVideos[currentIndex + 1];
-      navigate(`/video/${nextVideo.id}`);
+      navigate(`/video/${nextVideo.id}`, { state: location.state });
+    }
+  };
+
+  const handleBack = () => {
+    const fromPath = location.state?.from || '/home';
+    if (fromPath === '/catalog') {
+      navigate('/catalog', { state: { playlistId: selectedVideo?.playlist_id } });
+    } else {
+      navigate(fromPath);
     }
   };
 
@@ -254,7 +265,9 @@ export default function VideoWorkspace({ currentUser, showSuccess, showError }) 
     showSuccess('Generating overall summary with Gemini... Please wait.');
 
     try {
-      const response = await fetch(apiUrl('/api/overall-summary'), {
+      const email = currentUser?.email || 'anonymous@summarix.io';
+      const role = currentUser?.role || 'user';
+      const response = await fetch(apiUrl(`/api/overall-summary?owner_email=${encodeURIComponent(email)}&role=${role}`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ video_id: selectedVideo.id })
@@ -343,8 +356,10 @@ export default function VideoWorkspace({ currentUser, showSuccess, showError }) 
             onSelectChapter={setSelectedChapter}
             currentTime={currentTime}
             onTimeUpdate={handleTimeUpdate}
-            isAdmin={true}
+            isAdmin={shouldShowAdminTools}
+            currentUser={currentUser}
             onUploadNew={() => navigate('/catalog', { state: { openUpload: true, playlistId: selectedVideo?.playlist_id } })}
+            onBack={handleBack}
             onVideoEnded={handleVideoEnded}
             onPrevVideo={handlePrevVideo}
             onNextVideo={handleNextVideo}
@@ -401,7 +416,7 @@ export default function VideoWorkspace({ currentUser, showSuccess, showError }) 
       <div className="flex border-b border-white/5 pb-2 mb-4 justify-between items-center gap-4 shrink-0 bg-white/2 p-3.5 rounded-2xl select-none">
         <div className="flex items-center gap-4">
           <button
-            onClick={() => navigate(isAdmin ? '/catalog' : '/home')}
+            onClick={handleBack}
             className="text-gray-400 hover:text-white flex items-center justify-center font-extrabold text-sm cursor-pointer transition-all w-8 h-8 rounded-lg hover:bg-white/5 border border-transparent"
             title="Back to Folders"
           >
@@ -635,8 +650,10 @@ export default function VideoWorkspace({ currentUser, showSuccess, showError }) 
                   onSelectChapter={setSelectedChapter}
                   currentTime={currentTime}
                   onTimeUpdate={handleTimeUpdate}
-                  isAdmin={isAdmin}
+                  isAdmin={shouldShowAdminTools}
+                  currentUser={currentUser}
                   onUploadNew={() => navigate('/catalog', { state: { openUpload: true, playlistId: selectedVideo?.playlist_id } })}
+                  onBack={handleBack}
                   onVideoEnded={handleVideoEnded}
                   onPrevVideo={handlePrevVideo}
                   onNextVideo={handleNextVideo}

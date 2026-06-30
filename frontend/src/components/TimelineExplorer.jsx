@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { apiUrl } from '../lib/api';
 
 function ChapterThumbnail({ videoSrc, time }) {
@@ -97,6 +97,7 @@ export default function TimelineExplorer({
   selectedChapter,
   onSelectChapter,
   onUploadNew,
+  onBack,
   isAdmin,
   currentTime = 0,
   onTimeUpdate,
@@ -104,9 +105,11 @@ export default function TimelineExplorer({
   onPrevVideo,
   onNextVideo,
   hasPrevVideo = false,
-  hasNextVideo = false
+  hasNextVideo = false,
+  currentUser
 }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [ccEnabled, setCcEnabled] = useState(true);
@@ -286,7 +289,9 @@ export default function TimelineExplorer({
     }
 
     try {
-      const response = await fetch(apiUrl(`/api/search?video_id=${selectedVideo.id}&query=${encodeURIComponent(query)}`));
+      const email = currentUser?.email || 'anonymous@summarix.io';
+      const role = currentUser?.role || 'user';
+      const response = await fetch(apiUrl(`/api/search?video_id=${selectedVideo.id}&query=${encodeURIComponent(query)}&owner_email=${encodeURIComponent(email)}&role=${role}`));
       if (!response.ok) throw new Error('Search failed');
       const data = await response.json();
       setSearchResults(data || []);
@@ -337,9 +342,9 @@ export default function TimelineExplorer({
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-white/5 pb-4 mb-4 shrink-0">
         <div className="flex items-center gap-3 min-w-0">
           <button
-            onClick={onUploadNew}
+            onClick={onBack}
             className="p-2 -ml-2 text-gray-400 hover:text-white rounded-lg hover:bg-white/5 transition-all cursor-pointer group shrink-0"
-            title="Go back to Catalog / Upload"
+            title="Go Back"
           >
             <svg className="w-5 h-5 group-hover:-translate-x-0.5 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
@@ -357,7 +362,7 @@ export default function TimelineExplorer({
         {isAdmin ? (
           <div className="flex gap-2 shrink-0">
             <button
-              onClick={() => navigate(`/quiz/${selectedVideo.id}`)}
+              onClick={() => navigate(`/quiz/${selectedVideo.id}`, { state: location.state })}
               className="shrink-0 flex items-center gap-1.5 bg-blue-800 hover:bg-blue-700 border border-blue-700/50 text-white active:scale-[0.98] font-bold text-xs px-3.5 py-2.5 rounded-xl transition-all cursor-pointer shadow-md"
             >
               📝 Manage Quiz

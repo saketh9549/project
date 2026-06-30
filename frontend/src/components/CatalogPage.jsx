@@ -39,13 +39,13 @@ export default function CatalogPage({
   }, []);
 
   const handleSelectVideo = (video) => {
-    navigate(`/video/${video.id}`);
+    navigate(`/video/${video.id}`, { state: { from: '/catalog' } });
   };
 
   const handleSelectFolder = (pl) => {
     const folderVideos = videos.filter(v => v.playlist_id === pl.id && v.upload_status === 'indexed');
     if (folderVideos.length > 0) {
-      navigate(`/video/${folderVideos[0].id}`);
+      navigate(`/video/${folderVideos[0].id}`, { state: { from: '/catalog' } });
     } else {
       alert("This folder is empty or contains no indexed videos yet.");
     }
@@ -82,6 +82,7 @@ export default function CatalogPage({
             showError={showError}
             initialOpenUpload={initialOpenUpload}
             initialPlaylistId={initialPlaylistId}
+            currentUser={currentUser}
           />
         </div>
       </div>

@@ -142,7 +142,7 @@ function AppContent() {
         setPendingAutoSelectId(null);
         localStorage.removeItem('summarix_pending_select');
         showSuccess(`Video "${matchedVideo.file_name}" has finished indexing and is ready!`);
-        navigate(`/video/${matchedVideo.id}`);
+        navigate(`/video/${matchedVideo.id}`, { state: { from: '/catalog' } });
       }, 1000);
       return () => clearTimeout(timer);
     }
@@ -218,7 +218,9 @@ function AppContent() {
   const handleUpdateVideoPlaylist = async (videoId, playlistId) => {
     if (!currentUser) return;
     try {
-      const response = await fetch(apiUrl(`/api/videos/${videoId}/playlist`), {
+      const email = currentUser.email || 'anonymous@summarix.io';
+      const role = currentUser.role || 'user';
+      const response = await fetch(apiUrl(`/api/videos/${videoId}/playlist?owner_email=${encodeURIComponent(email)}&role=${role}`), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ playlist_id: playlistId })
@@ -239,9 +241,9 @@ function AppContent() {
   }
 
   // Navigation menu highlights
-  const isHomeActive = location.pathname === '/home';
-  const isWorkspaceActive = location.pathname === '/my-workspace';
-  const isCatalogActive = location.pathname === '/catalog' || location.pathname.startsWith('/video') || (location.pathname.startsWith('/quiz') && !location.pathname.startsWith('/quiz-analytics'));
+  const isHomeActive = location.pathname === '/home' || (location.pathname.startsWith('/video') && location.state?.from === '/home') || (location.pathname.startsWith('/quiz') && location.state?.from === '/home' && !location.pathname.startsWith('/quiz-analytics'));
+  const isWorkspaceActive = location.pathname === '/my-workspace' || (location.pathname.startsWith('/video') && location.state?.from === '/my-workspace') || (location.pathname.startsWith('/quiz') && location.state?.from === '/my-workspace' && !location.pathname.startsWith('/quiz-analytics'));
+  const isCatalogActive = location.pathname === '/catalog' || (location.pathname.startsWith('/video') && (location.state?.from === '/catalog' || !location.state?.from)) || (location.pathname.startsWith('/quiz') && (location.state?.from === '/catalog' || !location.state?.from) && !location.pathname.startsWith('/quiz-analytics'));
   const isAnalyticsActive = location.pathname === '/quiz-analytics';
   const isWorkspace = location.pathname.startsWith('/video') || (location.pathname.startsWith('/quiz') && !location.pathname.startsWith('/quiz-analytics'));
 

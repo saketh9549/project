@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { apiUrl } from '../lib/api';
 import QuizCreator from './QuizCreator';
 import QuizPlayer from './QuizPlayer';
@@ -7,6 +7,7 @@ import QuizPlayer from './QuizPlayer';
 export default function QuizPage({ currentUser, showSuccess, showError }) {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const isAdmin = currentUser?.role === 'admin';
 
   const [quiz, setQuiz] = useState(null);
@@ -56,7 +57,9 @@ export default function QuizPage({ currentUser, showSuccess, showError }) {
   const handleSaveQuiz = async (updatedQuiz) => {
     try {
       showSuccess('Saving quiz to database...');
-      const response = await fetch(apiUrl('/api/quizzes'), {
+      const email = currentUser?.email || 'anonymous@summarix.io';
+      const role = currentUser?.role || 'user';
+      const response = await fetch(apiUrl(`/api/quizzes?owner_email=${encodeURIComponent(email)}&role=${role}`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -70,7 +73,7 @@ export default function QuizPage({ currentUser, showSuccess, showError }) {
 
       showSuccess('Quiz saved successfully!');
       // Redirect back to the video workspace
-      navigate(`/video/${id}`);
+      navigate(`/video/${id}`, { state: location.state });
     } catch (err) {
       showError('Save failed: ' + err.message);
     }
@@ -124,7 +127,7 @@ export default function QuizPage({ currentUser, showSuccess, showError }) {
             An administrator has not created a multiple-choice practice quiz for <strong>{videoTitle}</strong> yet.
           </p>
           <button
-            onClick={() => navigate(`/video/${id}`)}
+            onClick={() => navigate(`/video/${id}`, { state: location.state })}
             className="px-5 py-2.5 bg-gray-800 hover:bg-gray-700 text-white font-semibold text-xs rounded-xl border border-white/5 shadow-md cursor-pointer transition-all active:scale-[0.98]"
           >
             Back to Workspace
@@ -138,7 +141,7 @@ export default function QuizPage({ currentUser, showSuccess, showError }) {
         <QuizPlayer
           quiz={quiz}
           videoTitle={videoTitle}
-          onBackToVideo={() => navigate(`/video/${id}`)}
+          onBackToVideo={() => navigate(`/video/${id}`, { state: location.state })}
         />
       </div>
     );
@@ -152,7 +155,7 @@ export default function QuizPage({ currentUser, showSuccess, showError }) {
         videoTitle={videoTitle}
         onSave={handleSaveQuiz}
         onDelete={handleDeleteQuiz}
-        onBack={() => navigate(`/video/${id}`)}
+        onBack={() => navigate(`/video/${id}`, { state: location.state })}
         catalogId={id}
         onReload={fetchQuizAndVideo}
       />

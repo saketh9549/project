@@ -21,7 +21,8 @@ export default function VideosCatalog({
   showSuccess,
   showError,
   initialOpenUpload = false,
-  initialPlaylistId = ''
+  initialPlaylistId = '',
+  currentUser
 }) {
   const [expandedPlaylists, setExpandedPlaylists] = useState({});
   const [showNewFolderForm, setShowNewFolderForm] = useState(false);
@@ -44,7 +45,9 @@ export default function VideosCatalog({
     if (!newFolderName.trim()) return;
     setCreatingFolder(true);
     try {
-      const res = await fetch(apiUrl('/api/playlists'), {
+      const email = currentUser?.email || 'anonymous@summarix.io';
+      const role = currentUser?.role || 'user';
+      const res = await fetch(apiUrl(`/api/playlists?owner_email=${encodeURIComponent(email)}&role=${role}`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newFolderName.trim() })
@@ -311,6 +314,7 @@ export default function VideosCatalog({
                 showSuccess={showSuccess}
                 showError={showError}
                 initialPlaylistId={initialPlaylistId}
+                currentUser={currentUser}
               />
             </div>
           )}
