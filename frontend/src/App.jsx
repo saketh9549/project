@@ -249,6 +249,7 @@ function AppContent() {
   const isWorkspaceActive = location.pathname === '/my-workspace' || (location.pathname.startsWith('/course') && location.state?.from === '/my-workspace') || (location.pathname.startsWith('/video') && (location.state?.from === '/my-workspace' || activeFrom === '/my-workspace')) || (location.pathname.startsWith('/quiz') && (location.state?.from === '/my-workspace' || activeFrom === '/my-workspace') && !location.pathname.startsWith('/quiz-analytics'));
   const isCatalogActive = location.pathname === '/catalog' || (location.pathname.startsWith('/course') && location.state?.from === '/catalog') || (location.pathname.startsWith('/video') && (location.state?.from === '/catalog' || activeFrom === '/catalog' || !location.state?.from)) || (location.pathname.startsWith('/quiz') && (location.state?.from === '/catalog' || activeFrom === '/catalog' || !location.state?.from) && !location.pathname.startsWith('/quiz-analytics'));
   const isAnalyticsActive = location.pathname === '/quiz-analytics';
+  const isSettingsActive = location.pathname === '/change-password';
   const isWorkspace = location.pathname.startsWith('/video');
 
   return (
@@ -402,7 +403,7 @@ function AppContent() {
       <div className="flex-grow flex-1 flex flex-row min-h-0 w-full overflow-hidden">
         {/* Sidebar Navigation */}
         {currentUser?.role === 'admin' && (
-          <aside className={`border-r border-white/5 bg-gray-950/40 backdrop-blur-md flex flex-col shrink-0 select-none glass-panel justify-between transition-all duration-300 ${sidebarCollapsed ? 'w-20 p-3' : 'w-64 p-5'
+          <aside className={`border-r border-white/5 bg-gray-950/40 backdrop-blur-md flex flex-col shrink-0 select-none glass-panel justify-between transition-all duration-300 ${sidebarCollapsed ? 'w-20 pt-3 px-3 pb-1.5' : 'w-64 pt-5 px-5 pb-2.5'
             }`}>
             <div className="flex flex-col gap-2">
               <div className={`flex items-center justify-between text-[10px] font-bold text-gray-400 uppercase tracking-widest px-3 mb-2 ${sidebarCollapsed ? 'justify-center px-0' : ''}`}>
@@ -479,6 +480,25 @@ function AppContent() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 002 2h2a2 2 0 002-2" />
                 </svg>
                 {!sidebarCollapsed && <span>Quiz Analytics</span>}
+              </Link>
+            </div>
+
+            {/* Settings Tab at the bottom */}
+            <div className="mt-auto pt-2 border-t border-white/5">
+              <Link
+                to="/change-password"
+                className={`flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-semibold tracking-wide transition-all border border-transparent cursor-pointer group ${sidebarCollapsed ? 'justify-center px-0' : ''
+                  } ${isSettingsActive
+                    ? 'nav-link-active font-bold shadow-[0_0_8px_rgba(34,211,238,0.06)]'
+                    : 'text-gray-400 hover:text-white hover:bg-white/5'
+                  }`}
+                title={sidebarCollapsed ? "Settings" : undefined}
+              >
+                <svg className="w-4 h-4 transition-transform group-hover:scale-110 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                {!sidebarCollapsed && <span>Settings</span>}
               </Link>
             </div>
 
