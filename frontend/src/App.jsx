@@ -597,6 +597,13 @@ function AppContent() {
                 showError={showError}
               />
             } />
+            <Route path="/quiz/:id/:mode" element={
+              <QuizPage
+                currentUser={currentUser}
+                showSuccess={showSuccess}
+                showError={showError}
+              />
+            } />
             <Route path="/change-password" element={
               currentUser ? (
                 <ChangePasswordPage

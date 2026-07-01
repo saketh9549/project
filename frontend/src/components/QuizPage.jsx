@@ -5,12 +5,16 @@ import QuizCreator from './QuizCreator';
 import QuizPlayer from './QuizPlayer';
 
 export default function QuizPage({ currentUser, showSuccess, showError }) {
-  const { id } = useParams();
+  const { id, mode } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
   const isAdmin = currentUser?.role === 'admin';
 
   const [quiz, setQuiz] = useState(null);
+  const [quizTitle, setQuizTitle] = useState('');
+  const [manualQuestions, setManualQuestions] = useState([]);
+  const [uploadQuestions, setUploadQuestions] = useState([]);
+  const [aiQuestions, setAiQuestions] = useState([]);
   const [videoTitle, setVideoTitle] = useState('');
   const [loading, setLoading] = useState(true);
 
@@ -35,8 +39,12 @@ export default function QuizPage({ currentUser, showSuccess, showError }) {
       if (quizRes.ok) {
         const quizData = await quizRes.json();
         setQuiz(quizData);
+        setQuizTitle(quizData.title || `Quiz: ${fetchedTitle}`);
+        setManualQuestions(quizData.questions || []);
       } else if (quizRes.status === 404) {
         setQuiz(null); // No quiz exists yet
+        setQuizTitle(`Quiz: ${fetchedTitle}`);
+        setManualQuestions([]);
       } else {
         throw new Error('Failed to fetch quiz information');
       }
@@ -53,6 +61,13 @@ export default function QuizPage({ currentUser, showSuccess, showError }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, currentUser]);
+
+  // If a quiz already exists and no specific mode is chosen, redirect to the manual editor mode by default
+  useEffect(() => {
+    if (id && !mode && quiz && !loading) {
+      navigate(`/quiz/${id}/manual`, { replace: true, state: location.state });
+    }
+  }, [id, mode, quiz, loading, navigate, location.state]);
 
   const handleSaveQuiz = async (updatedQuiz) => {
     try {
@@ -95,6 +110,12 @@ export default function QuizPage({ currentUser, showSuccess, showError }) {
 
       showSuccess('Quiz deleted successfully.');
       setQuiz(null);
+      setManualQuestions([]);
+      setUploadQuestions([]);
+      setAiQuestions([]);
+      setQuizTitle(`Quiz: ${videoTitle}`);
+      // Go back to selection mode
+      navigate(`/quiz/${id}`, { state: location.state });
     } catch (err) {
       showError('Delete failed: ' + err.message);
     }
@@ -149,9 +170,17 @@ export default function QuizPage({ currentUser, showSuccess, showError }) {
 
   // 2. Admin view: Creator Mode
   return (
-    <div className="flex-grow flex-1 flex flex-col max-w-3xl mx-auto w-full min-h-0 max-h-full h-full animate-quiz-slide">
+    <div className="flex-grow flex-1 flex flex-col w-full min-h-0 max-h-full h-full animate-quiz-slide">
       <QuizCreator
         quiz={quiz}
+        title={quizTitle}
+        setTitle={setQuizTitle}
+        manualQuestions={manualQuestions}
+        setManualQuestions={setManualQuestions}
+        uploadQuestions={uploadQuestions}
+        setUploadQuestions={setUploadQuestions}
+        aiQuestions={aiQuestions}
+        setAiQuestions={setAiQuestions}
         videoTitle={videoTitle}
         onSave={handleSaveQuiz}
         onDelete={handleDeleteQuiz}
@@ -159,6 +188,7 @@ export default function QuizPage({ currentUser, showSuccess, showError }) {
         catalogId={id}
         onReload={fetchQuizAndVideo}
         currentUser={currentUser}
+        mode={mode}
       />
     </div>
   );

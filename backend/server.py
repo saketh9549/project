@@ -1342,7 +1342,10 @@ async def upload_quiz_endpoint(
 async def generate_quiz_endpoint(
     catalog_id: str = Query(...),
     owner_email: str = Query(...),
-    role: str = Query("user")
+    role: str = Query("user"),
+    num_questions: int = Query(10),
+    difficulty: str = Query("Medium"),
+    focus_topics: str = Query("")
 ):
     if role != "admin":
         raise HTTPException(status_code=403, detail="Forbidden: Only admin can generate quizzes automatically.")
@@ -1377,8 +1380,12 @@ async def generate_quiz_endpoint(
         client = genai.Client(api_key=api_key)
 
         prompt = (
-            "You are an expert educator. Create a multiple-choice practice quiz of 5 to 10 questions "
-            "covering the main topics and key details of the following transcript. "
+            f"You are an expert educator. Create a multiple-choice practice quiz of exactly {num_questions} questions "
+            f"at a {difficulty} difficulty level, covering the main topics and key details of the following transcript. "
+        )
+        if focus_topics:
+            prompt += f"Pay special attention to the following focus topics/areas: {focus_topics}. "
+        prompt += (
             "For each question, formulate clear answer options (exactly 4 options), identify the correct answer index "
             "(0-indexed, pointing to the options list), and provide a concise explanation explaining why that answer is correct."
         )
