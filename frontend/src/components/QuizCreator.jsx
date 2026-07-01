@@ -60,12 +60,24 @@ export default function QuizCreator({
     };
 
     if (currentIdx === null) {
-      setManualQuestions([...manualQuestions, questionData]);
+      if (mode === 'manual') setManualQuestions([...manualQuestions, questionData]);
+      else if (mode === 'upload') setUploadQuestions([...uploadQuestions, questionData]);
+      else if (mode === 'ai') setAiQuestions([...aiQuestions, questionData]);
       setIsAddingQuestion(false);
     } else {
-      const updated = [...manualQuestions];
-      updated[currentIdx] = questionData;
-      setManualQuestions(updated);
+      if (mode === 'manual') {
+        const updated = [...manualQuestions];
+        updated[currentIdx] = questionData;
+        setManualQuestions(updated);
+      } else if (mode === 'upload') {
+        const updated = [...uploadQuestions];
+        updated[currentIdx] = questionData;
+        setUploadQuestions(updated);
+      } else if (mode === 'ai') {
+        const updated = [...aiQuestions];
+        updated[currentIdx] = questionData;
+        setAiQuestions(updated);
+      }
       setCurrentIdx(null);
     }
 
@@ -82,7 +94,12 @@ export default function QuizCreator({
 
   const handleEditQuestion = (idx) => {
     setIsAddingQuestion(false);
-    const q = manualQuestions[idx];
+    let q;
+    if (mode === 'manual') q = manualQuestions[idx];
+    else if (mode === 'upload') q = uploadQuestions[idx];
+    else if (mode === 'ai') q = aiQuestions[idx];
+
+    if (!q) return;
     setCurrentIdx(idx);
     setQuestionText(q.questionText);
     setOptions([...q.options]);
@@ -102,11 +119,25 @@ export default function QuizCreator({
   };
 
   const handleDeleteAiQuestion = (idx) => {
-    setAiQuestions(aiQuestions.filter((_, i) => i !== idx));
+    if (confirm('Are you sure you want to delete this question?')) {
+      setAiQuestions(aiQuestions.filter((_, i) => i !== idx));
+      if (currentIdx === idx) {
+        resetForm();
+      } else if (currentIdx !== null && currentIdx > idx) {
+        setCurrentIdx(currentIdx - 1);
+      }
+    }
   };
 
   const handleDeleteUploadQuestion = (idx) => {
-    setUploadQuestions(uploadQuestions.filter((_, i) => i !== idx));
+    if (confirm('Are you sure you want to delete this question?')) {
+      setUploadQuestions(uploadQuestions.filter((_, i) => i !== idx));
+      if (currentIdx === idx) {
+        resetForm();
+      } else if (currentIdx !== null && currentIdx > idx) {
+        setCurrentIdx(currentIdx - 1);
+      }
+    }
   };
 
   const handleSave = () => {
@@ -441,10 +472,11 @@ export default function QuizCreator({
         </div>
       </div>
 
+
       {/* Mode Specific Layouts */}
       {mode === 'manual' && (
         <div className="flex flex-col gap-6 w-full">
-          {/* Top section: Only keep the add question button */}
+          {/* Top section: Standalone add question button */}
           <div className="flex justify-end w-full">
             <button
               onClick={() => {
@@ -579,7 +611,7 @@ export default function QuizCreator({
       )}
 
       {mode === 'upload' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 w-full">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 w-full animate-quiz-slide">
           {/* Dropzone Side */}
           <div className="lg:col-span-6 flex flex-col gap-4">
             <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider font-display border-b border-white/5 pb-2">
@@ -596,7 +628,7 @@ export default function QuizCreator({
                   await handleFileUpload(e.dataTransfer.files[0]);
                 }
               }}
-              className="flex-grow border-2 border-dashed rounded-3xl p-8 text-center flex flex-col justify-center items-center transition-all border-white/10 bg-white/2 hover:border-white/20 min-h-[300px]"
+              className="border-2 border-dashed rounded-3xl p-8 text-center flex flex-col justify-center items-center transition-all border-white/10 bg-white/2 hover:border-white/20 min-h-[300px]"
             >
               <div className="flex flex-col items-center gap-4 max-w-sm mx-auto">
                 <div className="w-16 h-16 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 shadow-lg">
@@ -659,7 +691,7 @@ export default function QuizCreator({
               <span>{uploadQuestions.length > 0 ? 'Imported Questions Preview' : 'Document Formatting Guide'}</span>
               {uploadQuestions.length > 0 && (
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/10 px-2 py-0.5 rounded-full">
+                  <span className="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/10 px-2.5 py-0.5 rounded-full">
                     {uploadQuestions.length} Questions Parsed
                   </span>
                 </div>
@@ -669,40 +701,66 @@ export default function QuizCreator({
             {uploadQuestions.length > 0 ? (
               <div className="flex flex-col gap-3 w-full">
                 {uploadQuestions.map((q, idx) => (
-                  <div key={idx} className="bg-white/5 border border-white/5 rounded-xl p-4 flex justify-between items-start gap-2">
-                    <div className="min-w-0 flex-1">
-                      <p className="font-bold text-xs text-white">
-                        {idx + 1}. {q.questionText}
-                      </p>
-                      <div className="grid grid-cols-2 gap-2 mt-3 text-[10px]">
-                        {q.options.map((opt, oIdx) => (
-                          <div
-                            key={oIdx}
-                            className={`px-3 py-1.5 rounded-lg truncate border ${
-                              q.correctAnswerIdx === oIdx
-                                ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 font-semibold'
-                                : 'bg-black/20 border-white/5 text-gray-400'
-                            }`}
-                          >
-                            {opt}
+                  <div key={idx} className="animate-quiz-slide">
+                    {currentIdx === idx ? (
+                      renderQuestionEditor(idx)
+                    ) : (
+                      <div className="bg-white/5 border border-white/5 hover:border-white/10 rounded-2xl p-5 flex flex-col sm:flex-row items-start justify-between gap-4 transition-all hover:bg-white/[0.07]">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-bold text-sm text-white leading-relaxed">
+                            {idx + 1}. {q.questionText}
+                          </p>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-4 text-xs">
+                            {q.options.map((opt, oIdx) => (
+                              <div
+                                key={oIdx}
+                                className={`px-4 py-2.5 rounded-xl truncate border flex items-center gap-2 ${
+                                  q.correctAnswerIdx === oIdx
+                                    ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 font-bold shadow-[0_0_8px_rgba(16,185,129,0.05)]'
+                                    : 'bg-black/20 border-white/5 text-gray-400'
+                                }`}
+                              >
+                                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-mono ${
+                                  q.correctAnswerIdx === oIdx ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/5 text-gray-500'
+                                }`}>
+                                  {String.fromCharCode(65 + oIdx)}
+                                </span>
+                                {opt}
+                              </div>
+                            ))}
                           </div>
-                        ))}
+                          {q.explanation && (
+                            <p className="text-xs text-indigo-300/80 mt-4 font-medium bg-indigo-500/5 px-3 py-2 rounded-xl border border-indigo-500/5 flex items-start gap-1.5">
+                              <span className="shrink-0">💡</span>
+                              <span>{q.explanation}</span>
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0 self-end sm:self-start">
+                          <button
+                            onClick={() => handleEditQuestion(idx)}
+                            className="px-3 py-1.5 bg-white/5 hover:bg-indigo-500/20 border border-white/5 text-gray-400 hover:text-indigo-400 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1"
+                            title="Edit Question"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                            </svg>
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleDeleteUploadQuestion(idx)}
+                            className="px-3 py-1.5 bg-white/5 hover:bg-red-500/20 border border-white/5 text-gray-400 hover:text-red-400 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1"
+                            title="Delete Question"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                            Delete
+                          </button>
+                        </div>
                       </div>
-                      {q.explanation && (
-                        <p className="text-[10px] text-emerald-300 mt-3 font-medium bg-emerald-500/5 px-2.5 py-1 rounded-lg border border-emerald-500/5">
-                          💡 {q.explanation}
-                        </p>
-                      )}
-                    </div>
-                    <button
-                      onClick={() => handleDeleteUploadQuestion(idx)}
-                      className="p-1.5 text-gray-500 hover:text-red-400 rounded-lg hover:bg-white/5 transition-colors cursor-pointer shrink-0"
-                      title="Remove Question"
-                    >
-                      <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    </button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -788,7 +846,7 @@ Explanation: Vite's default dev server port is 5173.`}
       )}
 
       {mode === 'ai' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 w-full">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 w-full animate-quiz-slide">
           {/* AI Settings Side */}
           <div className="lg:col-span-5 flex flex-col gap-5 w-full">
             <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider font-display border-b border-white/5 pb-2">
@@ -904,41 +962,66 @@ Explanation: Vite's default dev server port is 5173.`}
                 </div>
               ) : (
                 aiQuestions.map((q, idx) => (
-                  <div key={idx} className="bg-white/5 border border-white/5 rounded-xl p-4 flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="font-bold text-xs text-white">
-                        {idx + 1}. {q.questionText}
-                      </p>
-                      <div className="grid grid-cols-2 gap-2 mt-3 text-[10px]">
-                        {q.options.map((opt, oIdx) => (
-                          <div
-                            key={oIdx}
-                            className={`px-3 py-1.5 rounded-lg truncate border ${
-                              q.correctAnswerIdx === oIdx
-                                ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 font-semibold'
-                                : 'bg-black/20 border-white/5 text-gray-400'
-                            }`}
-                          >
-                            {opt}
+                  <div key={idx} className="animate-quiz-slide">
+                    {currentIdx === idx ? (
+                      renderQuestionEditor(idx)
+                    ) : (
+                      <div className="bg-white/5 border border-white/5 hover:border-white/10 rounded-2xl p-5 flex flex-col sm:flex-row items-start justify-between gap-4 transition-all hover:bg-white/[0.07]">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-bold text-sm text-white leading-relaxed">
+                            {idx + 1}. {q.questionText}
+                          </p>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-4 text-xs">
+                            {q.options.map((opt, oIdx) => (
+                              <div
+                                key={oIdx}
+                                className={`px-4 py-2.5 rounded-xl truncate border flex items-center gap-2 ${
+                                  q.correctAnswerIdx === oIdx
+                                    ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 font-bold shadow-[0_0_8px_rgba(16,185,129,0.05)]'
+                                    : 'bg-black/20 border-white/5 text-gray-400'
+                                }`}
+                              >
+                                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-mono ${
+                                  q.correctAnswerIdx === oIdx ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/5 text-gray-500'
+                                }`}>
+                                  {String.fromCharCode(65 + oIdx)}
+                                </span>
+                                {opt}
+                              </div>
+                            ))}
                           </div>
-                        ))}
+                          {q.explanation && (
+                            <p className="text-xs text-indigo-300/80 mt-4 font-medium bg-indigo-500/5 px-3 py-2 rounded-xl border border-indigo-500/5 flex items-start gap-1.5">
+                              <span className="shrink-0">💡</span>
+                              <span>{q.explanation}</span>
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0 self-end sm:self-start">
+                          <button
+                            onClick={() => handleEditQuestion(idx)}
+                            className="px-3 py-1.5 bg-white/5 hover:bg-indigo-500/20 border border-white/5 text-gray-400 hover:text-indigo-400 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1"
+                            title="Edit Question"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                            </svg>
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleDeleteAiQuestion(idx)}
+                            className="px-3 py-1.5 bg-white/5 hover:bg-red-500/20 border border-white/5 text-gray-400 hover:text-red-400 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1"
+                            title="Delete Question"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                            Delete
+                          </button>
+                        </div>
                       </div>
-                      {q.explanation && (
-                        <p className="text-[10px] text-cyan-300 mt-3 font-medium bg-cyan-500/5 px-2.5 py-1 rounded-lg border border-cyan-500/5">
-                          💡 {q.explanation}
-                        </p>
-                      )}
-                    </div>
-                    
-                    <button
-                      onClick={() => handleDeleteAiQuestion(idx)}
-                      className="p-1.5 text-gray-500 hover:text-red-400 rounded-lg hover:bg-white/5 transition-colors cursor-pointer shrink-0"
-                      title="Remove Question"
-                    >
-                      <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    </button>
+                    )}
                   </div>
                 ))
               )}
