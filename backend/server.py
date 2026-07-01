@@ -1317,20 +1317,11 @@ async def upload_quiz_endpoint(
         if not parsed_quiz or "questions" not in parsed_quiz or not parsed_quiz["questions"]:
             raise ValueError("No questions could be extracted from the uploaded document.")
 
-        quiz_id = db.save_quiz(
-            title=parsed_quiz.get("title", "Uploaded Quiz"),
-            created_by=owner_email,
-            catalog_id=catalog_id,
-            playlist_id=playlist_id,
-            questions=parsed_quiz["questions"]
-        )
-
         return {
             "success": True,
-            "quiz_id": quiz_id,
-            "title": parsed_quiz.get("title", "Uploaded Quiz"),
+            "title": parsed_quiz.get("title", f"Quiz: {filename}"),
             "questions": parsed_quiz["questions"],
-            "message": "Quiz parsed and saved successfully."
+            "message": "Quiz parsed successfully."
         }
 
     except ValueError as ve:

@@ -144,10 +144,6 @@ export default function QuizCreator({
       
       if (data.title) setTitle(data.title);
       if (data.questions) setUploadQuestions(data.questions);
-
-      if (onReload) {
-        await onReload();
-      }
     } catch (err) {
       alert('Error parsing quiz: ' + err.message);
     } finally {
