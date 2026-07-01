@@ -81,7 +81,7 @@ export default function VideoWorkspace({ currentUser, showSuccess, showError }) 
   });
 
   const [loading, setLoading] = useState(true);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showCertificate, setShowCertificate] = useState(false);
 
   // Split resizer state
@@ -521,22 +521,9 @@ export default function VideoWorkspace({ currentUser, showSuccess, showError }) 
             <span>&larr;</span>
           </button>
 
-          <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all cursor-pointer select-none border font-bold text-xs ${sidebarOpen
-                ? 'border-cyan-500/50 text-cyan-400 bg-cyan-950/20 shadow-[0_0_8px_rgba(34,211,238,0.15)]'
-                : 'border-white/10 text-gray-400 hover:text-white hover:bg-white/5'
-              }`}
-            title={sidebarOpen ? "Collapse Sidebar" : "Expand Sidebar"}
-          >
-            {sidebarOpen ? '<' : '>'}
-          </button>
-
-          <div className="flex gap-4 ml-2">
-            <span
-              className="text-xs font-bold font-sans cursor-pointer text-cyan-400 border-b-2 border-cyan-400 pb-2.5 -mb-3 transition-all"
-            >
-              Modules
+          <div className="flex flex-col ml-2">
+            <span className="text-xs font-bold text-gray-200">
+              {selectedVideo?.file_name || selectedVideo?.fileName || "Lecture Workspace"}
             </span>
           </div>
         </div>
@@ -741,30 +728,7 @@ export default function VideoWorkspace({ currentUser, showSuccess, showError }) 
                 )}
               </div>
 
-              {/* Accordion Item 3: Materials & Notes (Static Placeholders to match Image 2) */}
-              <div className="flex flex-col border border-white/5 bg-white/3 rounded-xl p-2.5 transition-all">
-                <div
-                  onClick={() => toggleAccordion('notes')}
-                  className="flex items-center justify-between p-1.5 cursor-pointer hover:bg-white/5 transition-all rounded-lg"
-                >
-                  <span className="text-[10px] font-bold text-white uppercase tracking-wider">
-                    Materials & Notes
-                  </span>
-                  <svg
-                    className={`w-3.5 h-3.5 transform transition-transform ${accordionState.notes ? 'rotate-180' : ''} text-gray-500`}
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                  </svg>
-                </div>
-                {accordionState.notes && (
-                  <div className="flex flex-col gap-1.5 mt-2 pl-1 border-l border-white/5 ml-2 text-[10px] text-gray-500 py-1.5 pl-3">
-                    📘 Course reference booklet (.pdf)
-                  </div>
-                )}
-              </div>
+
 
               {/* Accordion Item: Certificates */}
               <div className="flex flex-col border border-white/5 bg-white/3 rounded-xl p-2.5 transition-all">

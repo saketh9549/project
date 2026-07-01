@@ -108,10 +108,20 @@ export default function CourseSyllabusPage({ videos, playlists, currentUser }) {
     : [];
   const totalLessons = folderVideos.length;
   const watchedLessons = folderVideos.filter(v => v && Array.isArray(watchedList) && watchedList.includes(v.id)).length;
-  const progressPercent = totalLessons > 0 ? Math.round((watchedLessons / totalLessons) * 100) : 0;
 
-  const backPath = '/my-workspace';
-  const backLabel = 'Back to Workspace';
+  const totalQuizzes = quizzes.length;
+  const completedQuizzesCount = quizzes.filter(q => {
+    const score = quizScores[q.catalog_id] || 0;
+    const isCompletedInLocal = Array.isArray(completedQuizzes) && completedQuizzes.includes(q.catalog_id);
+    return score >= 75 || isCompletedInLocal;
+  }).length;
+
+  const totalItems = totalLessons + totalQuizzes;
+  const completedItems = watchedLessons + completedQuizzesCount;
+  const progressPercent = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
+
+  const backPath = '/';
+  const backLabel = 'Back to Home';
 
   // Lock logic
   const quizVideoIds = new Set(quizzes.map(q => q.catalog_id).filter(Boolean));

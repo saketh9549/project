@@ -24,6 +24,9 @@ export default function Home({
   const [watchedList, setWatchedList] = useState([]);
   const [allPlaylists, setAllPlaylists] = useState([]);
   const [allVideos, setAllVideos] = useState([]);
+  const [completedQuizzes, setCompletedQuizzes] = useState([]);
+  const [playlistQuizzes, setPlaylistQuizzes] = useState({});
+  const [playlistQuizScores, setPlaylistQuizScores] = useState({});
 
   useEffect(() => {
     const loadWatched = () => {
@@ -31,14 +34,23 @@ export default function Home({
         const val = localStorage.getItem('summarix_watched');
         const watched = val ? JSON.parse(val) : [];
         setWatchedList(Array.isArray(watched) ? watched : []);
+
+        const qVal = localStorage.getItem('summarix_completed_quizzes');
+        const completed = qVal ? JSON.parse(qVal) : [];
+        setCompletedQuizzes(Array.isArray(completed) ? completed : []);
       } catch (e) {
         console.error("Error loading watched list", e);
         setWatchedList([]);
+        setCompletedQuizzes([]);
       }
     };
     loadWatched();
     window.addEventListener('summarix_watched_change', loadWatched);
-    return () => window.removeEventListener('summarix_watched_change', loadWatched);
+    window.addEventListener('summarix_completed_change', loadWatched);
+    return () => {
+      window.removeEventListener('summarix_watched_change', loadWatched);
+      window.removeEventListener('summarix_completed_change', loadWatched);
+    };
   }, []);
 
   useEffect(() => {
@@ -75,6 +87,38 @@ export default function Home({
   const displayPlaylists = myWorkspaceMode && currentUser?.email
     ? (isAdmin ? allPlaylists : playlists).filter(pl => pl.owner_email === currentUser.email || pl.ownerEmail === currentUser.email)
     : (isAdmin ? allPlaylists : playlists);
+
+  useEffect(() => {
+    if (!displayPlaylists || displayPlaylists.length === 0) return;
+    
+    const fetchQuizzesAndScores = async () => {
+      const email = currentUser?.email || 'anonymous@summarix.io';
+      const quizzesMap = {};
+      const scoresMap = {};
+      
+      await Promise.all(displayPlaylists.map(async (pl) => {
+        if (!pl || !pl.id) return;
+        try {
+          const qRes = await fetch(apiUrl(`/api/quizzes/list?playlist_id=${pl.id}`));
+          if (qRes.ok) {
+            quizzesMap[pl.id] = await qRes.json();
+          }
+          
+          const sRes = await fetch(apiUrl(`/api/quizzes/user-scores?playlist_id=${pl.id}&owner_email=${encodeURIComponent(email)}`));
+          if (sRes.ok) {
+            scoresMap[pl.id] = await sRes.json();
+          }
+        } catch (err) {
+          console.error(`Failed to fetch quiz info for playlist ${pl.id}:`, err);
+        }
+      }));
+      
+      setPlaylistQuizzes(quizzesMap);
+      setPlaylistQuizScores(scoresMap);
+    };
+    
+    fetchQuizzesAndScores();
+  }, [displayPlaylists, currentUser]);
 
   // Both Admin and Student view the same Dashboard structure but scoped differently
   return (
@@ -115,7 +159,19 @@ export default function Home({
                 : [];
               const totalLessons = folderVideos.length;
               const watchedLessons = folderVideos.filter(v => v && Array.isArray(watchedList) && watchedList.includes(v.id)).length;
-              const progressPercent = totalLessons > 0 ? Math.round((watchedLessons / totalLessons) * 100) : 0;
+
+              const quizzesInPlaylist = playlistQuizzes[pl.id] || [];
+              const scoresForPlaylist = playlistQuizScores[pl.id] || {};
+              const totalQuizzes = quizzesInPlaylist.length;
+              const completedQuizzesCount = quizzesInPlaylist.filter(q => {
+                const score = scoresForPlaylist[q.catalog_id] || 0;
+                const isCompletedInLocal = Array.isArray(completedQuizzes) && completedQuizzes.includes(q.catalog_id);
+                return score >= 75 || isCompletedInLocal;
+              }).length;
+
+              const totalItems = totalLessons + totalQuizzes;
+              const completedItems = watchedLessons + completedQuizzesCount;
+              const progressPercent = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
 
               return (
                 <div

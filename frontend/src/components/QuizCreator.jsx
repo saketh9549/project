@@ -355,15 +355,11 @@ export default function QuizCreator({
               </svg>
             </button>
             <div>
-              <h3 className="font-bold text-lg text-white font-display">Select Quiz Creation Method</h3>
+              <h3 className="font-bold text-lg text-white font-display">{videoTitle || folderName}</h3>
               <span className="text-[10px] text-gray-500 font-medium">Choose how you want to build this quiz</span>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="inline-flex items-center px-4 py-1.5 rounded-full text-[11px] font-bold tracking-wider uppercase bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-mono shadow-[0_0_10px_rgba(99,102,241,0.05)]">
-              📁 {folderName || videoTitle}
-            </span>
-          </div>
+          <div />
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full">

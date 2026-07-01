@@ -258,6 +258,19 @@ export default function SummaryConsole({
               <span className="absolute left-0 right-0 -bottom-[9px] h-[2px] bg-cyan-500 shadow-[0_0_8px_rgba(6,182,212,0.8)]" />
             )}
           </button>
+          <button
+            onClick={() => setActiveTab('notes')}
+            className={`pb-1 text-xs font-bold font-display uppercase tracking-widest cursor-pointer transition-colors relative ${
+              activeTab === 'notes'
+                ? 'text-cyan-400'
+                : 'text-gray-500 hover:text-gray-300'
+            }`}
+          >
+            Notes
+            {activeTab === 'notes' && (
+              <span className="absolute left-0 right-0 -bottom-[9px] h-[2px] bg-cyan-500 shadow-[0_0_8px_rgba(6,182,212,0.8)]" />
+            )}
+          </button>
         </div>
 
         {((activeTab === 'summary' && overallSummary && !overallSummaryLoading) ||
@@ -276,7 +289,7 @@ export default function SummaryConsole({
 
       {/* Tab Body */}
       <div className="flex-1 overflow-y-auto pr-1 flex flex-col min-h-0">
-        {activeTab === 'summary' ? (
+        {activeTab === 'summary' && (
           <div className="flex-grow flex flex-col min-h-0">
             {overallSummaryLoading ? (
               <div className="flex-1 flex flex-col items-center justify-center py-12">
@@ -304,7 +317,9 @@ export default function SummaryConsole({
               </div>
             )}
           </div>
-        ) : (
+        )}
+
+        {activeTab === 'transcript' && (
           <div className="flex-grow flex flex-col min-h-0">
             {selectedVideo?.raw_transcript ? (
               <div className="text-left select-text pb-4 flex flex-col gap-2">
@@ -378,6 +393,22 @@ export default function SummaryConsole({
                 <p className="text-gray-500 text-xs px-4">No transcript text is available for this media file.</p>
               </div>
             )}
+          </div>
+        )}
+
+        {activeTab === 'notes' && (
+          <div className="flex-grow flex flex-col min-h-0 text-left select-text p-1">
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center gap-3.5 p-3.5 bg-white/4 border border-white/5 rounded-2xl hover:bg-white/10 hover:border-white/10 transition-all cursor-pointer group active:scale-[0.995]">
+                <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 group-hover:scale-105 transition-all">
+                  <span className="text-lg">📘</span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="font-bold text-xs text-gray-200 group-hover:text-white transition-colors">Course reference booklet (.pdf)</span>
+                  <span className="text-[10px] text-gray-500 font-semibold mt-0.5">PDF Document • 2.4 MB</span>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>
