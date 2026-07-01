@@ -88,25 +88,6 @@ export default function Home({
   // Both Admin and Student view the same Dashboard structure but scoped differently
   return (
     <div className="max-w-5xl mx-auto w-full p-4 animate-quiz-slide">
-      {/* Welcome header info card */}
-      <div className="glass-panel p-8 rounded-3xl border border-white/5 shadow-2xl relative overflow-hidden bg-gradient-to-br from-indigo-950/20 via-slate-900/10 to-cyan-950/10 text-center mb-8 shrink-0">
-        <div className="absolute top-0 right-0 w-72 h-72 bg-indigo-500/10 rounded-full blur-3xl -z-10" />
-        <div className="absolute bottom-0 left-0 w-72 h-72 bg-cyan-500/10 rounded-full blur-3xl -z-10" />
-
-        <span className="inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold tracking-widest uppercase bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 mb-4 font-mono">
-          {myWorkspaceMode ? "My Workspace" : (isAdmin ? "Admin Workspace" : "Student Workspace")}
-        </span>
-        <h2 className="text-2xl font-extrabold font-display text-white mb-2 tracking-tight">
-          Welcome back, <span className="bg-gradient-to-r from-cyan-400 to-indigo-300 bg-clip-text text-transparent">{currentUser?.username || currentUser?.email}</span>
-        </h2>
-        <p className="text-gray-400 text-xs max-w-md mx-auto leading-relaxed">
-          {myWorkspaceMode 
-            ? "Manage and access course modules and directories created by you."
-            : (isAdmin 
-                ? "View and navigate through all course modules present in the database."
-                : "Access course chapters, timestamps summaries, and evaluate your knowledge with custom module quizzes.")}
-        </p>
-      </div>
 
       {/* Course section */}
       <div className="shrink-0">

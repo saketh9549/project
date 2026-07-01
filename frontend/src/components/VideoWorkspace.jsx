@@ -3,7 +3,9 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import TimelineExplorer from './TimelineExplorer';
 import SummaryConsole from './SummaryConsole';
 import QuizPlayer from './QuizPlayer';
+import CertificateModal from './CertificateModal';
 import { apiUrl } from '../lib/api';
+
 
 // Helper for course details
 const getCourseMeta = (playlistName) => {
@@ -73,11 +75,13 @@ export default function VideoWorkspace({ currentUser, showSuccess, showError }) 
     lessons: true,
     quizzes: true,
     challenges: false,
-    notes: false
+    notes: false,
+    certificates: true
   });
 
   const [loading, setLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [showCertificate, setShowCertificate] = useState(false);
 
   // Split resizer state
   const [rightWidth, setRightWidth] = useState(() => {
@@ -340,6 +344,10 @@ export default function VideoWorkspace({ currentUser, showSuccess, showError }) 
   const watchedLessons = folderVideos.filter(v => watchedList.includes(v.id)).length;
   const progressPercent = totalLessons > 0 ? Math.round((watchedLessons / totalLessons) * 100) : 0;
   const meta = getCourseMeta(folderName);
+
+  // Check if all quizzes are completed/passed
+  const allQuizzesCompleted = folderQuizzes.length === 0 || folderQuizzes.every(q => completedQuizzes.includes(q._id));
+  const isModuleCompleted = progressPercent === 100 && allQuizzesCompleted;
 
   const selectedQuiz = folderQuizzes.find(q => q._id === activeContent.id);
 
@@ -632,6 +640,52 @@ export default function VideoWorkspace({ currentUser, showSuccess, showError }) 
                   </div>
                 )}
               </div>
+
+              {/* Accordion Item: Certificates */}
+              <div className="flex flex-col border border-white/5 bg-white/3 rounded-xl p-2.5 transition-all">
+                <div
+                  onClick={() => toggleAccordion('certificates')}
+                  className="flex items-center justify-between p-1.5 cursor-pointer hover:bg-white/5 transition-all rounded-lg"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-[10px] font-bold text-white uppercase tracking-wider">
+                      Certificates
+                    </span>
+                    <span className="text-[8.5px] text-gray-500">
+                      ({isModuleCompleted ? 1 : 0})
+                    </span>
+                  </div>
+                  <svg
+                    className={`w-3.5 h-3.5 transform transition-transform ${accordionState.certificates ? 'rotate-180' : ''} text-gray-500`}
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
+                {accordionState.certificates && (
+                  <div className="flex flex-col gap-1.5 mt-2 pl-1 border-l border-white/5 ml-2 pb-0.5">
+                    {isModuleCompleted ? (
+                      <div
+                        onClick={() => setShowCertificate(true)}
+                        className="flex items-start justify-between gap-2.5 p-2 rounded-xl border border-transparent text-xs cursor-pointer select-none text-cyan-400 hover:text-cyan-300 hover:bg-white/5 transition-all animate-pulse-glow"
+                      >
+                        <div className="flex items-center gap-2 min-w-0 font-semibold">
+                          <span>🎓</span>
+                          <span className="truncate max-w-[180px]">
+                            Module Certificate
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-[10px] text-gray-500 italic py-1.5 pl-3">
+                        Locked. Complete all videos & quizzes to unlock.
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </aside>
         )}
@@ -767,6 +821,17 @@ export default function VideoWorkspace({ currentUser, showSuccess, showError }) 
           )}
         </div>
       </div>
+
+      <CertificateModal
+        isOpen={showCertificate}
+        onClose={() => setShowCertificate(false)}
+        userName={currentUser?.username}
+        userEmail={currentUser?.email}
+        moduleName={folderName}
+        totalLessons={totalLessons}
+        totalQuizzes={folderQuizzes.length}
+        playlistId={selectedVideo?.playlist_id}
+      />
     </div>
   );
 }

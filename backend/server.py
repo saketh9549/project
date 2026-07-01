@@ -396,6 +396,31 @@ def login_endpoint(payload: LoginRequest):
     }
 
 
+class ChangePasswordRequest(BaseModel):
+    email: str
+    old_password: str
+    new_password: str
+
+@app.post("/api/auth/change-password")
+def change_password_endpoint(payload: ChangePasswordRequest):
+    db.init_db()
+    email = payload.email.strip()
+    old_password = payload.old_password
+    new_password = payload.new_password
+    
+    if not email or not old_password or not new_password:
+        raise HTTPException(status_code=400, detail="Email, current password, and new password are required")
+        
+    success = db.change_user_password(email, old_password, new_password)
+    if not success:
+        raise HTTPException(status_code=400, detail="Invalid current password")
+        
+    return {
+        "success": True,
+        "message": "Password updated successfully"
+    }
+
+
 @app.get("/api/local-files")
 def get_local_files():
     db.init_db()

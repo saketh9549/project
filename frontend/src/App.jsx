@@ -9,6 +9,7 @@ import CatalogPage from './components/CatalogPage';
 import VideoWorkspace from './components/VideoWorkspace';
 import QuizPage from './components/QuizPage';
 import QuizAnalytics from './components/QuizAnalytics';
+import ChangePasswordPage from './components/ChangePasswordPage';
 
 import { apiUrl } from './lib/api';
 
@@ -371,6 +372,23 @@ function AppContent() {
                   </svg>
                   Dark Mode
                 </button>
+                <div className="border-t border-white/5 my-1" />
+                <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-1 mb-1">
+                  Account Settings
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowSettings(false);
+                    navigate('/change-password');
+                  }}
+                  className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all text-left cursor-pointer text-gray-300 hover:bg-white/5 hover:text-white"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                  </svg>
+                  Change Password
+                </button>
               </div>
             </>
           )}
@@ -568,6 +586,17 @@ function AppContent() {
                 showSuccess={showSuccess}
                 showError={showError}
               />
+            } />
+            <Route path="/change-password" element={
+              currentUser ? (
+                <ChangePasswordPage
+                  currentUser={currentUser}
+                  showSuccess={showSuccess}
+                  showError={showError}
+                />
+              ) : (
+                <Navigate to="/" replace />
+              )
             } />
             <Route path="*" element={<Navigate to="/home" replace />} />
           </Routes>

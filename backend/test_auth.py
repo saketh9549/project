@@ -236,5 +236,54 @@ class TestAuthAndRoles(unittest.TestCase):
         self.assertEqual(res_delete.status_code, 403)
         self.assertIn("regular users are not allowed to delete", res_delete.json()["detail"])
 
+    def test_change_password(self):
+        """Test user password changing API functionality."""
+        # 1. Register a user
+        reg_payload = {
+            "email": self.test_email_other,
+            "password": self.test_password,
+            "role": "user",
+            "username": "passwordchanger"
+        }
+        res = self.client.post("/api/auth/register", json=reg_payload)
+        self.assertEqual(res.status_code, 200)
+
+        # 2. Try to change password with incorrect old password (should fail)
+        change_bad_payload = {
+            "email": self.test_email_other,
+            "old_password": "incorrect_old_pwd",
+            "new_password": "NewSecurePassword123"
+        }
+        res_change_bad = self.client.post("/api/auth/change-password", json=change_bad_payload)
+        self.assertEqual(res_change_bad.status_code, 400)
+        self.assertIn("Invalid current password", res_change_bad.json()["detail"])
+
+        # 3. Change password with correct credentials
+        change_ok_payload = {
+            "email": self.test_email_other,
+            "old_password": self.test_password,
+            "new_password": "NewSecurePassword123"
+        }
+        res_change_ok = self.client.post("/api/auth/change-password", json=change_ok_payload)
+        self.assertEqual(res_change_ok.status_code, 200)
+        self.assertTrue(res_change_ok.json()["success"])
+
+        # 4. Attempt login with old password (should fail 401)
+        login_old_payload = {
+            "username": "passwordchanger",
+            "password": self.test_password
+        }
+        res_login_old = self.client.post("/api/auth/login", json=login_old_payload)
+        self.assertEqual(res_login_old.status_code, 401)
+
+        # 5. Attempt login with new password (should succeed)
+        login_new_payload = {
+            "username": "passwordchanger",
+            "password": "NewSecurePassword123"
+        }
+        res_login_new = self.client.post("/api/auth/login", json=login_new_payload)
+        self.assertEqual(res_login_new.status_code, 200)
+        self.assertTrue(res_login_new.json()["success"])
+
 if __name__ == "__main__":
     unittest.main()

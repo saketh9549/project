@@ -289,6 +289,16 @@ html.light .bg-gray-800\/80 {
   color: #475569 !important;
 }
 
+html.light .bg-gray-800 {
+  background-color: #cbd5e1 !important; /* slate-300 */
+  color: #0f172a !important;
+}
+
+html.light .hover\:bg-gray-700:hover {
+  background-color: #94a3b8 !important; /* slate-400 */
+}
+
+
 html.light .bg-white\/5 {
   background-color: rgba(0, 0, 0, 0.04) !important;
 }
@@ -647,4 +657,53 @@ html.light .video-controls-bar * {
 html.light .video-controls-bar button:hover {
   color: rgba(255, 255, 255, 0.8) !important;
 }
+
+/* Print styles for Certificate of Completion */
+@media print {
+  /* Set A4 Landscape size */
+  @page {
+    size: A4 landscape;
+    margin: 0;
+  }
+
+  /* Hide everything on the page during print */
+  body * {
+    visibility: hidden !important;
+  }
+
+  /* Only display the certificate container and its children */
+  #certificate-print-area,
+  #certificate-print-area * {
+    visibility: visible !important;
+  }
+
+  /* Force background rendering (colors, images, gradients) */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Position the certificate to occupy the entire printed page */
+  #certificate-print-area {
+    position: fixed !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 297mm !important; /* A4 width */
+    height: 210mm !important; /* A4 height */
+    border: 16px solid #1e293b !important;
+    margin: 0 !important;
+    background-color: #fcfbf9 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    box-shadow: none !important;
+    z-index: 99999 !important;
+  }
+  
+  /* Hide the modal wrapper and other controls */
+  .no-print {
+    display: none !important;
+  }
+}
+
 

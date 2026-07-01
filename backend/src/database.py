@@ -576,6 +576,28 @@ def create_user(email: str, password_raw: str, role: str, username: str = "") ->
         print(f"[DB Error] Failed to create user: {e}")
         return None
 
+def change_user_password(email: str, old_password_raw: str, new_password_raw: str) -> bool:
+    """Changes a user's password if the old password is correct."""
+    db = get_db()
+    try:
+        email_clean = email.strip().lower()
+        user = db.users.find_one({"email": email_clean})
+        if not user:
+            return False
+            
+        if not verify_password(old_password_raw, user["passwordHash"]):
+            return False
+            
+        new_hashed = hash_password(new_password_raw)
+        db.users.update_one(
+            {"email": email_clean},
+            {"$set": {"passwordHash": new_hashed}}
+        )
+        return True
+    except Exception as e:
+        print(f"[DB Error] Failed to change password: {e}")
+        return False
+
 def authenticate_user(username_or_email: str, password_raw: str) -> Optional[Dict[str, Any]]:
     """Authenticates a user by username/email and password, returning their profile if successful."""
     db = get_db()
