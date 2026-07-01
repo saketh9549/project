@@ -445,53 +445,26 @@ export default function QuizCreator({
         </div>
       </div>
 
-      {/* Mode Specific Layouts */}
       {mode === 'manual' && (
         <div className="flex flex-col gap-6 min-h-0 flex-grow w-full">
-          {/* Top section: Title input & Add Question button */}
-          <div className="flex flex-col gap-4 bg-white/5 border border-white/5 p-5 rounded-2xl">
-            <div className="flex flex-col md:flex-row gap-4">
-              <div className="flex flex-col gap-1.5 flex-1">
-                <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Quiz Title</label>
-                <input
-                  type="text"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  className="w-full bg-gray-900/40 border border-white/5 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-500 transition-all font-semibold"
-                  placeholder="Quiz title..."
-                />
-              </div>
-
-              <div className="flex flex-col gap-1.5 flex-1">
-                <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Quiz Description</label>
-                <textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  rows={1}
-                  className="w-full bg-gray-900/40 border border-white/5 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 transition-all resize-none font-medium placeholder-gray-700"
-                  placeholder="Enter a brief description for this quiz..."
-                />
-              </div>
-            </div>
-            
-            <div className="flex justify-end border-t border-white/5 pt-3">
-              <button
-                onClick={() => {
-                  setCurrentIdx(null);
-                  resetForm();
-                  setIsAddingQuestion(true);
-                }}
-                disabled={isAddingQuestion}
-                className={`px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white font-bold text-xs rounded-xl cursor-pointer transition-all active:scale-[0.98] shadow-md shadow-indigo-500/10 flex items-center gap-1.5 ${
-                  isAddingQuestion ? 'opacity-50 cursor-not-allowed' : ''
-                }`}
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4" />
-                </svg>
-                Add Question
-              </button>
-            </div>
+          {/* Top section: Only keep the add question button */}
+          <div className="flex justify-end w-full">
+            <button
+              onClick={() => {
+                setCurrentIdx(null);
+                resetForm();
+                setIsAddingQuestion(true);
+              }}
+              disabled={isAddingQuestion}
+              className={`px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white font-bold text-xs rounded-xl cursor-pointer transition-all active:scale-[0.98] shadow-md shadow-indigo-500/10 flex items-center gap-1.5 ${
+                isAddingQuestion ? 'opacity-50 cursor-not-allowed' : ''
+              }`}
+            >
+              <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4" />
+              </svg>
+              Add Question
+            </button>
           </div>
 
           {/* Bottom section: Full-width list of questions */}
