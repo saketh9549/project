@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiUrl } from '../lib/api';
 
@@ -28,6 +28,17 @@ export default function QuizCreator({
   const [uploading, setUploading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+
+  const bottomRef = useRef(null);
+
+  const handleStartAddingQuestion = () => {
+    setCurrentIdx(null);
+    resetForm();
+    setIsAddingQuestion(true);
+    setTimeout(() => {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 100);
+  };
 
   // Inline display state for adding a new question in Manual Mode
   const [isAddingQuestion, setIsAddingQuestion] = useState(false);
@@ -331,10 +342,28 @@ export default function QuizCreator({
   if (!mode) {
     return (
       <div className="flex-grow flex-1 flex flex-col justify-center items-center p-6 w-full animate-quiz-slide max-w-5xl mx-auto my-auto min-h-[80vh]">
-        <div className="text-center mb-10">
-          <span className="inline-flex items-center px-4 py-1.5 rounded-full text-[11px] font-bold tracking-wider uppercase bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 mb-4 font-mono shadow-[0_0_10px_rgba(99,102,241,0.05)]">
-            📁 {folderName || videoTitle}
-          </span>
+        {/* Top Back Arrow and Title Section */}
+        <div className="w-full flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-white/5 pb-5 mb-10 shrink-0">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={onBack}
+              className="p-2 -ml-2 text-gray-400 hover:text-white rounded-lg hover:bg-white/5 transition-all cursor-pointer group"
+              title="Go back to Video details"
+            >
+              <svg className="w-5 h-5 group-hover:-translate-x-0.5 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+            </button>
+            <div>
+              <h3 className="font-bold text-lg text-white font-display">Select Quiz Creation Method</h3>
+              <span className="text-[10px] text-gray-500 font-medium">Choose how you want to build this quiz</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center px-4 py-1.5 rounded-full text-[11px] font-bold tracking-wider uppercase bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-mono shadow-[0_0_10px_rgba(99,102,241,0.05)]">
+              📁 {folderName || videoTitle}
+            </span>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full">
@@ -399,13 +428,6 @@ export default function QuizCreator({
             </button>
           </div>
         </div>
-
-        <button
-          onClick={onBack}
-          className="mt-12 px-5 py-2 bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white border border-white/5 hover:border-white/10 text-xs font-bold rounded-xl transition-all cursor-pointer"
-        >
-          &larr; Back to Workspace
-        </button>
       </div>
     );
   }
@@ -417,9 +439,9 @@ export default function QuizCreator({
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-white/5 pb-5">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => navigate(`/quiz/${catalogId}`)}
+            onClick={onBack}
             className="p-2 -ml-2 text-gray-400 hover:text-white rounded-lg hover:bg-white/5 transition-all cursor-pointer group"
-            title="Go back to method selection"
+            title="Go back to Video details"
           >
             <svg className="w-5 h-5 group-hover:-translate-x-0.5 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
@@ -479,11 +501,7 @@ export default function QuizCreator({
           {/* Top section: Standalone add question button */}
           <div className="flex justify-end w-full">
             <button
-              onClick={() => {
-                setCurrentIdx(null);
-                resetForm();
-                setIsAddingQuestion(true);
-              }}
+              onClick={handleStartAddingQuestion}
               disabled={isAddingQuestion}
               className={`px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white font-bold text-xs rounded-xl cursor-pointer transition-all active:scale-[0.98] shadow-md shadow-indigo-500/10 flex items-center gap-1.5 ${
                 isAddingQuestion ? 'opacity-50 cursor-not-allowed' : ''
@@ -586,13 +604,9 @@ export default function QuizCreator({
                   )}
 
                   {/* Add Question button at the bottom of the list */}
-                  <div className="flex justify-end w-full mt-4">
+                  <div className="flex justify-end w-full mt-4" ref={bottomRef}>
                     <button
-                      onClick={() => {
-                        setCurrentIdx(null);
-                        resetForm();
-                        setIsAddingQuestion(true);
-                      }}
+                      onClick={handleStartAddingQuestion}
                       disabled={isAddingQuestion}
                       className={`px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white font-bold text-xs rounded-xl cursor-pointer transition-all active:scale-[0.98] shadow-md shadow-indigo-500/10 flex items-center gap-1.5 ${
                         isAddingQuestion ? 'opacity-50 cursor-not-allowed' : ''
