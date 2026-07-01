@@ -12,6 +12,7 @@ export default function QuizPage({ currentUser, showSuccess, showError, playlist
 
   const [quiz, setQuiz] = useState(null);
   const [quizTitle, setQuizTitle] = useState('');
+  const [quizDescription, setQuizDescription] = useState('');
   const [manualQuestions, setManualQuestions] = useState([]);
   const [uploadQuestions, setUploadQuestions] = useState([]);
   const [aiQuestions, setAiQuestions] = useState([]);
@@ -50,10 +51,12 @@ export default function QuizPage({ currentUser, showSuccess, showError, playlist
         const quizData = await quizRes.json();
         setQuiz(quizData);
         setQuizTitle(quizData.title || `Quiz: ${fetchedTitle}`);
+        setQuizDescription(quizData.description || '');
         setManualQuestions(quizData.questions || []);
       } else if (quizRes.status === 404) {
         setQuiz(null); // No quiz exists yet
         setQuizTitle(`Quiz: ${fetchedTitle}`);
+        setQuizDescription('');
         setManualQuestions([]);
       } else {
         throw new Error('Failed to fetch quiz information');
@@ -89,6 +92,7 @@ export default function QuizPage({ currentUser, showSuccess, showError, playlist
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: updatedQuiz.title,
+          description: updatedQuiz.description,
           catalogId: id,
           questions: updatedQuiz.questions
         })
@@ -124,6 +128,7 @@ export default function QuizPage({ currentUser, showSuccess, showError, playlist
       setUploadQuestions([]);
       setAiQuestions([]);
       setQuizTitle(`Quiz: ${videoTitle}`);
+      setQuizDescription('');
       // Go back to selection mode
       navigate(`/quiz/${id}`, { state: location.state });
     } catch (err) {
@@ -185,6 +190,8 @@ export default function QuizPage({ currentUser, showSuccess, showError, playlist
         quiz={quiz}
         title={quizTitle}
         setTitle={setQuizTitle}
+        description={quizDescription}
+        setDescription={setQuizDescription}
         manualQuestions={manualQuestions}
         setManualQuestions={setManualQuestions}
         uploadQuestions={uploadQuestions}

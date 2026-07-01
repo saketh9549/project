@@ -1226,6 +1226,7 @@ class QuestionModel(BaseModel):
 
 class QuizCreateRequest(BaseModel):
     title: str
+    description: Optional[str] = ""
     catalogId: Optional[str] = None
     playlistId: Optional[str] = None
     questions: List[QuestionModel]
@@ -1246,6 +1247,7 @@ def create_quiz_endpoint(
         questions_dict = [q.model_dump() for q in payload.questions]
         quiz_id = db.save_quiz(
             title=payload.title,
+            description=payload.description,
             created_by=owner_email,
             catalog_id=payload.catalogId,
             playlist_id=payload.playlistId,

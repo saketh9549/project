@@ -796,7 +796,7 @@ def update_upload_status(video_id: str, status: str) -> bool:
         print(f"[DB Error] Failed to update upload status: {e}")
         return False
 
-def save_quiz(title: str, created_by: str, catalog_id: str = None, playlist_id: str = None, questions: list = None) -> str:
+def save_quiz(title: str, created_by: str, catalog_id: str = None, playlist_id: str = None, questions: list = None, description: str = "") -> str:
     """Inserts or updates a quiz linked to either a catalog_id (video) or playlist_id."""
     db = get_db()
     cat_oid = None
@@ -823,6 +823,7 @@ def save_quiz(title: str, created_by: str, catalog_id: str = None, playlist_id: 
 
     quiz_doc = {
         "title": title,
+        "description": description,
         "catalogId": cat_oid,
         "playlistId": play_oid,
         "questions": questions or [],

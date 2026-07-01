@@ -6,6 +6,8 @@ export default function QuizCreator({
   quiz,
   title,
   setTitle,
+  description,
+  setDescription,
   manualQuestions,
   setManualQuestions,
   uploadQuestions,
@@ -27,8 +29,8 @@ export default function QuizCreator({
   const [generating, setGenerating] = useState(false);
   const [dragOver, setDragOver] = useState(false);
 
-  // Modal display state for Manual Mode
-  const [showQuestionModal, setShowQuestionModal] = useState(false);
+  // Inline display state for adding a new question in Manual Mode
+  const [isAddingQuestion, setIsAddingQuestion] = useState(false);
 
   // Form state for Manual Mode (adding/editing questions)
   const [currentIdx, setCurrentIdx] = useState(null);
@@ -59,14 +61,15 @@ export default function QuizCreator({
 
     if (currentIdx === null) {
       setManualQuestions([...manualQuestions, questionData]);
+      setIsAddingQuestion(false);
     } else {
       const updated = [...manualQuestions];
       updated[currentIdx] = questionData;
       setManualQuestions(updated);
+      setCurrentIdx(null);
     }
 
     resetForm();
-    setShowQuestionModal(false);
   };
 
   const resetForm = () => {
@@ -78,13 +81,13 @@ export default function QuizCreator({
   };
 
   const handleEditQuestion = (idx) => {
+    setIsAddingQuestion(false);
     const q = manualQuestions[idx];
     setCurrentIdx(idx);
     setQuestionText(q.questionText);
     setOptions([...q.options]);
     setCorrectAnswerIdx(q.correctAnswerIdx);
     setExplanation(q.explanation || '');
-    setShowQuestionModal(true);
   };
 
   const handleDeleteQuestion = (idx) => {
@@ -117,6 +120,7 @@ export default function QuizCreator({
     }
     onSave({
       title: title.trim() || `Quiz: ${videoTitle}`,
+      description: description.trim(),
       questions: targetQuestions
     });
   };
@@ -193,6 +197,107 @@ export default function QuizCreator({
     if (mode === 'upload') return uploadQuestions.length;
     if (mode === 'ai') return aiQuestions.length;
     return 0;
+  };
+
+  const renderQuestionEditor = (idx) => {
+    const isEditMode = idx !== null;
+    return (
+      <div className="bg-white/5 border border-indigo-500/30 rounded-2xl p-5 flex flex-col gap-4 transition-all">
+        <div className="flex items-center justify-between border-b border-white/5 pb-2">
+          <span className="text-xs font-bold text-indigo-400 uppercase tracking-wider font-display">
+            {isEditMode ? `Editing Question #${idx + 1}` : "New Question"}
+          </span>
+        </div>
+
+        {/* Question Input */}
+        <div className="flex flex-col gap-1.5">
+          <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Question Text</label>
+          <textarea
+            value={questionText}
+            onChange={(e) => setQuestionText(e.target.value)}
+            rows={2}
+            className="w-full bg-gray-900/40 border border-white/5 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 transition-all font-semibold resize-none placeholder-gray-700"
+            placeholder="Write the multiple choice question here..."
+          />
+        </div>
+
+        {/* Options Grid */}
+        <div className="flex flex-col gap-2">
+          <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Options & Correct Key</label>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {options.map((opt, oIdx) => (
+              <div
+                key={oIdx}
+                className={`px-4 py-2 rounded-xl border flex items-center gap-3 transition-all ${
+                  correctAnswerIdx === oIdx
+                    ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                    : 'bg-black/20 border-white/5 text-gray-400'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name={`correct-option-${idx ?? 'new'}`}
+                  checked={correctAnswerIdx === oIdx}
+                  onChange={() => setCorrectAnswerIdx(oIdx)}
+                  className="h-4.5 w-4.5 text-emerald-600 focus:ring-emerald-500 border-gray-600 bg-gray-900/40 cursor-pointer shrink-0"
+                />
+                <span className="text-[10px] font-bold font-mono">
+                  {String.fromCharCode(65 + oIdx)}
+                </span>
+                <input
+                  type="text"
+                  value={opt}
+                  onChange={(e) => {
+                    const updated = [...options];
+                    updated[oIdx] = e.target.value;
+                    setOptions(updated);
+                  }}
+                  className="flex-grow bg-transparent border-none p-0 text-xs text-white focus:outline-none focus:ring-0 placeholder-gray-700 font-medium"
+                  placeholder={`Option ${String.fromCharCode(65 + oIdx)}...`}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Explanation */}
+        <div className="flex flex-col gap-1.5">
+          <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Gemini / Contextual Explanation</label>
+          <textarea
+            value={explanation}
+            onChange={(e) => setExplanation(e.target.value)}
+            rows={1.5}
+            className="w-full bg-gray-900/40 border border-white/5 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 transition-all resize-none placeholder-gray-700"
+            placeholder="Provide explanation showing why the answer is correct..."
+          />
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex items-center justify-end gap-2 border-t border-white/5 pt-3">
+          <button
+            type="button"
+            onClick={() => {
+              resetForm();
+              if (isEditMode) {
+                setCurrentIdx(null);
+              } else {
+                setIsAddingQuestion(false);
+              }
+            }}
+            className="px-4 py-2 bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white text-xs font-semibold rounded-xl cursor-pointer transition-all border border-white/5"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleAddOrUpdateQuestion}
+            className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl cursor-pointer transition-all active:scale-[0.98] shadow-md shadow-indigo-500/10"
+          >
+            {isEditMode ? 'Update Question' : 'Add Question'}
+          </button>
+        </div>
+      </div>
+    );
   };
 
   // RENDER SELECTOR/LANDING SCREEN (if no mode is specified)
@@ -344,26 +449,49 @@ export default function QuizCreator({
       {mode === 'manual' && (
         <div className="flex flex-col gap-6 min-h-0 flex-grow w-full">
           {/* Top section: Title input & Add Question button */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white/5 border border-white/5 p-5 rounded-2xl">
-            <div className="flex-grow max-w-xl flex flex-col gap-1.5">
-              <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Quiz Title</label>
-              <input
-                type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className="w-full bg-gray-900/40 border border-white/5 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-500 transition-all font-semibold"
-                placeholder="Quiz title..."
-              />
+          <div className="flex flex-col gap-4 bg-white/5 border border-white/5 p-5 rounded-2xl">
+            <div className="flex flex-col md:flex-row gap-4">
+              <div className="flex flex-col gap-1.5 flex-1">
+                <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Quiz Title</label>
+                <input
+                  type="text"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  className="w-full bg-gray-900/40 border border-white/5 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-500 transition-all font-semibold"
+                  placeholder="Quiz title..."
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5 flex-1">
+                <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Quiz Description</label>
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  rows={1}
+                  className="w-full bg-gray-900/40 border border-white/5 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 transition-all resize-none font-medium placeholder-gray-700"
+                  placeholder="Enter a brief description for this quiz..."
+                />
+              </div>
             </div>
-            <button
-              onClick={() => { resetForm(); setShowQuestionModal(true); }}
-              className="px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white font-bold text-xs rounded-xl cursor-pointer transition-all active:scale-[0.98] shadow-md shadow-indigo-500/10 flex items-center gap-1.5 self-end sm:self-center"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4" />
-              </svg>
-              Add Question
-            </button>
+            
+            <div className="flex justify-end border-t border-white/5 pt-3">
+              <button
+                onClick={() => {
+                  setCurrentIdx(null);
+                  resetForm();
+                  setIsAddingQuestion(true);
+                }}
+                disabled={isAddingQuestion}
+                className={`px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white font-bold text-xs rounded-xl cursor-pointer transition-all active:scale-[0.98] shadow-md shadow-indigo-500/10 flex items-center gap-1.5 ${
+                  isAddingQuestion ? 'opacity-50 cursor-not-allowed' : ''
+                }`}
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4" />
+                </svg>
+                Add Question
+              </button>
+            </div>
           </div>
 
           {/* Bottom section: Full-width list of questions */}
@@ -375,171 +503,86 @@ export default function QuizCreator({
               </span>
             </h4>
 
-            <div className="flex-grow overflow-y-auto pr-1 flex flex-col gap-3 min-h-0">
-              {manualQuestions.length === 0 ? (
+            <div className="flex-grow overflow-y-auto pr-1 flex flex-col gap-4 min-h-0">
+              {/* If isAddingQuestion is true, show form just below the button (i.e. at the top of the questions list) */}
+              {isAddingQuestion && (
+                <div className="animate-quiz-slide">
+                  {renderQuestionEditor(null)}
+                </div>
+              )}
+
+              {manualQuestions.length === 0 && !isAddingQuestion ? (
                 <div className="text-center text-gray-500 text-xs font-mono py-24 bg-white/2 rounded-2xl border border-dashed border-white/5 my-auto">
-                  No questions added yet. Click "+ Add Question" at the top to write your first question.
+                  No questions added yet. Click "Add Question" at the top to write your first question.
                 </div>
               ) : (
                 manualQuestions.map((q, idx) => (
-                  <div
-                    key={idx}
-                    className="bg-white/5 border border-white/5 hover:border-white/10 rounded-2xl p-5 flex flex-col sm:flex-row items-start justify-between gap-4 transition-all hover:bg-white/[0.07]"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="font-bold text-sm text-white leading-relaxed">
-                        {idx + 1}. {q.questionText}
-                      </p>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-4 text-xs">
-                        {q.options.map((opt, oIdx) => (
-                          <div
-                            key={oIdx}
-                            className={`px-4 py-2.5 rounded-xl truncate border flex items-center gap-2 ${
-                              q.correctAnswerIdx === oIdx
-                                ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 font-bold shadow-[0_0_8px_rgba(16,185,129,0.05)]'
-                                : 'bg-black/20 border-white/5 text-gray-400'
-                            }`}
-                          >
-                            <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-mono ${
-                              q.correctAnswerIdx === oIdx ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/5 text-gray-500'
-                            }`}>
-                              {String.fromCharCode(65 + oIdx)}
-                            </span>
-                            {opt}
+                  <div key={idx} className="animate-quiz-slide">
+                    {currentIdx === idx ? (
+                      renderQuestionEditor(idx)
+                    ) : (
+                      /* Standard question card layout - exact format like 2nd image */
+                      <div className="bg-white/5 border border-white/5 hover:border-white/10 rounded-2xl p-5 flex flex-col sm:flex-row items-start justify-between gap-4 transition-all hover:bg-white/[0.07]">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-bold text-sm text-white leading-relaxed">
+                            {idx + 1}. {q.questionText}
+                          </p>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-4 text-xs">
+                            {q.options.map((opt, oIdx) => (
+                              <div
+                                key={oIdx}
+                                className={`px-4 py-2.5 rounded-xl truncate border flex items-center gap-2 ${
+                                  q.correctAnswerIdx === oIdx
+                                    ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 font-bold shadow-[0_0_8px_rgba(16,185,129,0.05)]'
+                                    : 'bg-black/20 border-white/5 text-gray-400'
+                                }`}
+                              >
+                                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-mono ${
+                                  q.correctAnswerIdx === oIdx ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/5 text-gray-500'
+                                }`}>
+                                  {String.fromCharCode(65 + oIdx)}
+                                </span>
+                                {opt}
+                              </div>
+                            ))}
                           </div>
-                        ))}
-                      </div>
-                      {q.explanation && (
-                        <p className="text-xs text-indigo-300/80 mt-4 font-medium bg-indigo-500/5 px-3 py-2 rounded-xl border border-indigo-500/5 flex items-start gap-1.5">
-                          <span className="shrink-0">💡</span>
-                          <span>{q.explanation}</span>
-                        </p>
-                      )}
-                    </div>
+                          {q.explanation && (
+                            <p className="text-xs text-indigo-300/80 mt-4 font-medium bg-indigo-500/5 px-3 py-2 rounded-xl border border-indigo-500/5 flex items-start gap-1.5">
+                              <span className="shrink-0">💡</span>
+                              <span>{q.explanation}</span>
+                            </p>
+                          )}
+                        </div>
 
-                    <div className="flex items-center gap-2 shrink-0 self-end sm:self-start">
-                      <button
-                        onClick={() => handleEditQuestion(idx)}
-                        className="px-3 py-1.5 bg-white/5 hover:bg-indigo-500/20 border border-white/5 text-gray-400 hover:text-indigo-400 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1"
-                        title="Edit Question"
-                      >
-                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                        </svg>
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDeleteQuestion(idx)}
-                        className="px-3 py-1.5 bg-white/5 hover:bg-red-500/20 border border-white/5 text-gray-400 hover:text-red-400 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1"
-                        title="Delete Question"
-                      >
-                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                        Delete
-                      </button>
-                    </div>
+                        <div className="flex items-center gap-2 shrink-0 self-end sm:self-start">
+                          <button
+                            onClick={() => handleEditQuestion(idx)}
+                            className="px-3 py-1.5 bg-white/5 hover:bg-indigo-500/20 border border-white/5 text-gray-400 hover:text-indigo-400 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1"
+                            title="Edit Question"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                            </svg>
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleDeleteQuestion(idx)}
+                            className="px-3 py-1.5 bg-white/5 hover:bg-red-500/20 border border-white/5 text-gray-400 hover:text-red-400 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1"
+                            title="Delete Question"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))
               )}
             </div>
           </div>
-
-          {/* Modal Overlay for Add/Edit Question */}
-          {showQuestionModal && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-              <div
-                className="fixed inset-0"
-                onClick={() => { resetForm(); setShowQuestionModal(false); }}
-              />
-              <div className="relative w-full max-w-xl bg-gray-950 border border-white/10 rounded-3xl p-6 shadow-2xl flex flex-col gap-4 animate-scale-in max-h-[90vh] overflow-y-auto z-10">
-                <div className="flex items-center justify-between border-b border-white/5 pb-3">
-                  <h4 className="text-sm font-bold text-white font-display">
-                    {currentIdx === null ? 'Add Question' : `Editing Question #${currentIdx + 1}`}
-                  </h4>
-                  <button
-                    onClick={() => { resetForm(); setShowQuestionModal(false); }}
-                    className="p-1.5 text-gray-400 hover:text-white rounded-lg hover:bg-white/5 transition-all cursor-pointer"
-                  >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-
-                <form onSubmit={handleAddOrUpdateQuestion} className="flex flex-col gap-4">
-                  {/* Question text */}
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Question text</label>
-                    <textarea
-                      value={questionText}
-                      onChange={(e) => setQuestionText(e.target.value)}
-                      rows={3}
-                      className="w-full bg-gray-900/40 border border-white/5 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 transition-all resize-none placeholder-gray-700 font-semibold"
-                      placeholder="Write the multiple choice question here..."
-                    />
-                  </div>
-
-                  {/* Options */}
-                  <div className="flex flex-col gap-2">
-                    <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Answer Options & Correct Key</label>
-                    {options.map((opt, oIdx) => (
-                      <div key={oIdx} className="flex items-center gap-2">
-                        <input
-                          type="radio"
-                          name="correct-option-modal"
-                          checked={correctAnswerIdx === oIdx}
-                          onChange={() => setCorrectAnswerIdx(oIdx)}
-                          className="h-4.5 w-4.5 text-indigo-600 focus:ring-indigo-500 border-gray-600 bg-gray-900/40 cursor-pointer shrink-0"
-                          title="Mark as correct answer"
-                        />
-                        <input
-                          type="text"
-                          value={opt}
-                          onChange={(e) => {
-                            const updated = [...options];
-                            updated[oIdx] = e.target.value;
-                            setOptions(updated);
-                          }}
-                          className="flex-grow bg-gray-900/40 border border-white/5 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 transition-all placeholder-gray-700 font-medium"
-                          placeholder={`Option ${String.fromCharCode(65 + oIdx)}...`}
-                        />
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Explanation */}
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Gemini / Contextual Explanation</label>
-                    <textarea
-                      value={explanation}
-                      onChange={(e) => setExplanation(e.target.value)}
-                      rows={2.5}
-                      className="w-full bg-gray-900/40 border border-white/5 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 transition-all resize-none placeholder-gray-700"
-                      placeholder="Provide explanation showing why the answer is correct..."
-                    />
-                  </div>
-
-                  {/* Action buttons */}
-                  <div className="flex items-center justify-end gap-2 border-t border-white/5 pt-4 mt-2">
-                    <button
-                      type="button"
-                      onClick={() => { resetForm(); setShowQuestionModal(false); }}
-                      className="px-4 py-2 bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white text-xs font-semibold rounded-xl cursor-pointer transition-all border border-white/5"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl cursor-pointer transition-all active:scale-[0.98] shadow-md shadow-indigo-500/10"
-                    >
-                      {currentIdx === null ? 'Add Question' : 'Update Question'}
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          )}
         </div>
       )}
 
@@ -628,7 +671,7 @@ export default function QuizCreator({
               <span>{uploadQuestions.length > 0 ? 'Imported Questions Preview' : 'Document Formatting Guide'}</span>
               {uploadQuestions.length > 0 && (
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/10 px-2 py-0.5 rounded-full">
+                  <span className="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/10 px-2.5 py-0.5 rounded-full">
                     {uploadQuestions.length} Questions Parsed
                   </span>
                 </div>
