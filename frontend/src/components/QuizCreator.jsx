@@ -628,58 +628,60 @@ export default function QuizCreator({
                   await handleFileUpload(e.dataTransfer.files[0]);
                 }
               }}
-              className="border-2 border-dashed rounded-3xl p-8 text-center flex flex-col justify-center items-center transition-all border-white/10 bg-white/2 hover:border-white/20 min-h-[300px]"
+              className="border border-dashed rounded-2xl p-5 text-center flex flex-col justify-center items-center transition-all border-white/10 bg-white/2 hover:border-white/20 min-h-[160px]"
             >
-              <div className="flex flex-col items-center gap-4 max-w-sm mx-auto">
-                <div className="w-16 h-16 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 shadow-lg">
+              <div className="flex flex-col items-center gap-3 max-w-sm mx-auto">
+                <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 shadow-md">
                   {uploading ? (
-                    <svg className="animate-spin h-7 w-7 text-indigo-400" fill="none" viewBox="0 0 24 24">
+                    <svg className="animate-spin h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
                   ) : (
-                    <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                     </svg>
                   )}
                 </div>
 
                 <div>
-                  <h3 className="font-extrabold text-base text-white">Drag and Drop Document</h3>
-                  <p className="text-xs text-gray-400 mt-1.5 leading-relaxed">
+                  <h3 className="font-bold text-sm text-white">Drag and Drop Document</h3>
+                  <p className="text-[11px] text-gray-400 mt-1 leading-relaxed">
                     Drop your quiz file here, or click browse to import.
                   </p>
                 </div>
 
-                <input
-                  type="file"
-                  id="quiz-file-upload-mode"
-                  className="hidden"
-                  accept=".txt,.pdf,.docx,.json,.csv"
-                  onChange={async (e) => {
-                    if (e.target.files && e.target.files[0]) {
-                      await handleFileUpload(e.target.files[0]);
-                    }
-                  }}
-                  disabled={uploading}
-                />
+                <div className="flex items-center gap-3 mt-1.5">
+                  <input
+                    type="file"
+                    id="quiz-file-upload-mode"
+                    className="hidden"
+                    accept=".txt,.pdf,.docx,.json,.csv"
+                    onChange={async (e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        await handleFileUpload(e.target.files[0]);
+                      }
+                    }}
+                    disabled={uploading}
+                  />
 
-                <label
-                  htmlFor="quiz-file-upload-mode"
-                  className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl cursor-pointer transition-all active:scale-[0.98] shadow-md shadow-indigo-500/10"
-                >
-                  {uploading ? 'Processing Document...' : 'Browse File'}
-                </label>
+                  <label
+                    htmlFor="quiz-file-upload-mode"
+                    className="px-4.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[11px] rounded-lg cursor-pointer transition-all active:scale-[0.98] shadow-md shadow-indigo-500/10"
+                  >
+                    {uploading ? 'Processing...' : 'Browse File'}
+                  </label>
 
-                <div className="flex flex-wrap justify-center gap-2 mt-2">
-                  {['PDF', 'DOCX', 'TXT', 'CSV', 'JSON'].map((format) => (
-                    <span
-                      key={format}
-                      className="px-2 py-0.5 rounded bg-white/5 border border-white/5 text-[9px] font-semibold text-gray-400"
-                    >
-                      {format}
-                    </span>
-                  ))}
+                  <div className="flex gap-1.5">
+                    {['PDF', 'DOCX', 'TXT', 'CSV', 'JSON'].map((format) => (
+                      <span
+                        key={format}
+                        className="px-1.5 py-0.5 rounded bg-white/5 border border-white/5 text-[9px] font-semibold text-gray-400"
+                      >
+                        {format}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
