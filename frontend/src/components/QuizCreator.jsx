@@ -555,6 +555,26 @@ export default function QuizCreator({
                       {renderQuestionEditor(null)}
                     </div>
                   )}
+
+                  {/* Add Question button at the bottom of the list */}
+                  <div className="flex justify-end w-full mt-4">
+                    <button
+                      onClick={() => {
+                        setCurrentIdx(null);
+                        resetForm();
+                        setIsAddingQuestion(true);
+                      }}
+                      disabled={isAddingQuestion}
+                      className={`px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white font-bold text-xs rounded-xl cursor-pointer transition-all active:scale-[0.98] shadow-md shadow-indigo-500/10 flex items-center gap-1.5 ${
+                        isAddingQuestion ? 'opacity-50 cursor-not-allowed' : ''
+                      }`}
+                    >
+                      <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4" />
+                      </svg>
+                      Add Question
+                    </button>
+                  </div>
                 </>
               )}
             </div>
