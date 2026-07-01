@@ -284,7 +284,11 @@ export default function CourseSyllabusPage({ videos, playlists, currentUser }) {
             </div>
           ) : (
             <div className="flex flex-col gap-2.5">
-              {quizzes.map((quizItem) => {
+              {[...quizzes].sort((a, b) => {
+                const idxA = a.catalog_id ? folderVideos.findIndex(v => v.id === a.catalog_id) : 999;
+                const idxB = b.catalog_id ? folderVideos.findIndex(v => v.id === b.catalog_id) : 999;
+                return idxA - idxB;
+              }).map((quizItem) => {
                 const videoIdx = quizItem.catalog_id ? folderVideos.findIndex(v => v.id === quizItem.catalog_id) : -1;
                 const isUnlocked = videoIdx === -1 || isVideoUnlocked(folderVideos[videoIdx], videoIdx);
                 const isCompleted = Array.isArray(completedQuizzes) && completedQuizzes.includes(quizItem.catalog_id);
