@@ -4,7 +4,7 @@ import { apiUrl } from '../lib/api';
 import QuizCreator from './QuizCreator';
 import QuizPlayer from './QuizPlayer';
 
-export default function QuizPage({ currentUser, showSuccess, showError }) {
+export default function QuizPage({ currentUser, showSuccess, showError, playlists = [] }) {
   const { id, mode } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
@@ -16,6 +16,7 @@ export default function QuizPage({ currentUser, showSuccess, showError }) {
   const [uploadQuestions, setUploadQuestions] = useState([]);
   const [aiQuestions, setAiQuestions] = useState([]);
   const [videoTitle, setVideoTitle] = useState('');
+  const [folderName, setFolderName] = useState('');
   const [loading, setLoading] = useState(true);
 
   const fetchQuizAndVideo = async () => {
@@ -26,13 +27,22 @@ export default function QuizPage({ currentUser, showSuccess, showError }) {
       const role = currentUser?.role || 'user';
       const videoRes = await fetch(apiUrl(`/api/videos/${id}?owner_email=${encodeURIComponent(email)}&role=${role}`));
       let fetchedTitle = 'Workspace Media';
+      let resolvedFolderName = '';
       if (videoRes.ok) {
         const videoData = await videoRes.json();
         if (videoData.video) {
           fetchedTitle = videoData.video.file_name;
+          const plId = videoData.video.playlist_id;
+          if (plId && Array.isArray(playlists)) {
+            const folderObj = playlists.find(p => p && (p.id === plId || p._id === plId));
+            if (folderObj) {
+              resolvedFolderName = folderObj.name;
+            }
+          }
         }
       }
       setVideoTitle(fetchedTitle);
+      setFolderName(resolvedFolderName);
 
       // 2. Fetch quiz details
       const quizRes = await fetch(apiUrl(`/api/quizzes?video_id=${id}`));
@@ -60,7 +70,7 @@ export default function QuizPage({ currentUser, showSuccess, showError }) {
       fetchQuizAndVideo();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, currentUser]);
+  }, [id, currentUser, playlists]);
 
   // If a quiz already exists and no specific mode is chosen, redirect to the manual editor mode by default
   useEffect(() => {
@@ -182,6 +192,7 @@ export default function QuizPage({ currentUser, showSuccess, showError }) {
         aiQuestions={aiQuestions}
         setAiQuestions={setAiQuestions}
         videoTitle={videoTitle}
+        folderName={folderName}
         onSave={handleSaveQuiz}
         onDelete={handleDeleteQuiz}
         onBack={() => navigate(`/video/${id}`, { state: location.state })}

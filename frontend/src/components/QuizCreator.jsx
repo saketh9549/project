@@ -13,6 +13,7 @@ export default function QuizCreator({
   aiQuestions,
   setAiQuestions,
   videoTitle,
+  folderName,
   onSave,
   onDelete,
   onBack,
@@ -194,15 +195,9 @@ export default function QuizCreator({
     return (
       <div className="flex-grow flex-1 flex flex-col justify-center items-center p-6 w-full animate-quiz-slide max-w-5xl mx-auto my-auto min-h-[80vh]">
         <div className="text-center mb-10">
-          <span className="inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold tracking-widest uppercase bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 mb-4 font-mono">
-            Assessment Console
+          <span className="inline-flex items-center px-4 py-1.5 rounded-full text-[11px] font-bold tracking-wider uppercase bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 mb-4 font-mono shadow-[0_0_10px_rgba(99,102,241,0.05)]">
+            📁 {folderName || videoTitle}
           </span>
-          <h2 className="text-3xl font-extrabold font-display text-white mb-2 tracking-tight">
-            Create Practice Quiz
-          </h2>
-          <p className="text-gray-400 text-xs max-w-md mx-auto leading-relaxed">
-            Select a method below to add questions and build a customized multiple-choice quiz for <strong>{videoTitle}</strong>.
-          </p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full">
@@ -243,7 +238,7 @@ export default function QuizCreator({
                 Import and parse existing quiz files. Supports PDF, DOCX, TXT, CSV, or structured JSON file formats.
               </p>
             </div>
-            <button className="w-full py-2 bg-emerald-600/10 group-hover:bg-emerald-600 border border-emerald-500/20 group-hover:border-transparent text-emerald-400 group-hover:text-white font-bold text-xs rounded-xl transition-all cursor-pointer">
+            <button className="w-full py-2 bg-emerald-600/10 group-hover:bg-emerald-600 border border-emerald-500/20 group-hover:border-transparent text-indigo-400 group-hover:text-white font-bold text-xs rounded-xl transition-all cursor-pointer">
               Upload Quiz File
             </button>
           </div>
@@ -262,7 +257,7 @@ export default function QuizCreator({
                 Let Google Gemini AI read the video transcript to instantly generate a complete 5-20 question quiz with keys and explanations.
               </p>
             </div>
-            <button className="w-full py-2 bg-cyan-600/10 group-hover:bg-cyan-600 border border-cyan-500/20 group-hover:border-transparent text-cyan-400 group-hover:text-white font-bold text-xs rounded-xl transition-all cursor-pointer">
+            <button className="w-full py-2 bg-cyan-600/10 group-hover:bg-cyan-600 border border-cyan-500/20 group-hover:border-transparent text-indigo-400 group-hover:text-white font-bold text-xs rounded-xl transition-all cursor-pointer">
               Configure Gemini AI
             </button>
           </div>

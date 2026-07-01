@@ -595,6 +595,7 @@ function AppContent() {
                 currentUser={currentUser}
                 showSuccess={showSuccess}
                 showError={showError}
+                playlists={playlists}
               />
             } />
             <Route path="/quiz/:id/:mode" element={
@@ -602,8 +603,10 @@ function AppContent() {
                 currentUser={currentUser}
                 showSuccess={showSuccess}
                 showError={showError}
+                playlists={playlists}
               />
             } />
+
             <Route path="/change-password" element={
               currentUser ? (
                 <ChangePasswordPage
