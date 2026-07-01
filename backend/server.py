@@ -1338,6 +1338,199 @@ async def upload_quiz_endpoint(
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to process quiz document: {e}")
 
+@app.post("/api/quizzes/generate")
+async def generate_quiz_endpoint(
+    catalog_id: str = Query(...),
+    owner_email: str = Query(...),
+    role: str = Query("user")
+):
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden: Only admin can generate quizzes automatically.")
+
+    db.init_db()
+
+    try:
+        # 1. Fetch video details
+        video = db.get_video(catalog_id, owner_email=owner_email, role=role)
+        if not video:
+            raise HTTPException(status_code=404, detail="Video not found.")
+
+        # 2. Get transcript
+        transcript = video.get("raw_transcript", "").strip()
+        if not transcript:
+            raise HTTPException(status_code=400, detail="The video does not have a transcript available. Cannot generate a quiz.")
+
+        # 3. Call Gemini to generate structured quiz
+        api_key = os.getenv("GEMINI_API_KEY", "").strip()
+        from src.indexer import GEMINI_AVAILABLE
+        if not GEMINI_AVAILABLE or not api_key or api_key == '""' or "your_gemini_api_key_here" in api_key:
+            raise HTTPException(
+                status_code=400,
+                detail="Gemini API is not configured. Cannot generate quiz automatically."
+            )
+
+        model_name = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite").strip()
+        from google import genai
+        from google.genai import types
+        from src.quiz_parser import QuizModel
+
+        client = genai.Client(api_key=api_key)
+
+        prompt = (
+            "You are an expert educator. Create a multiple-choice practice quiz of 5 to 10 questions "
+            "covering the main topics and key details of the following transcript. "
+            "For each question, formulate clear answer options (exactly 4 options), identify the correct answer index "
+            "(0-indexed, pointing to the options list), and provide a concise explanation explaining why that answer is correct."
+        )
+
+        content_parts = [
+            f"Video Transcript:\n\n{transcript}\n\n",
+            prompt
+        ]
+
+        models_to_try = [model_name]
+        for fallback in ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-3.1-flash-lite"]:
+            if fallback != model_name:
+                models_to_try.append(fallback)
+
+        import asyncio
+        import json
+
+        parsed_quiz = None
+        last_exception = None
+
+        for model in models_to_try:
+            max_retries = 3
+            delay = 1.5
+            for attempt in range(max_retries):
+                try:
+                    print(f"[Gemini Quiz Generator] Generating quiz with model={model} (attempt {attempt + 1}/{max_retries})")
+                    response = client.models.generate_content(
+                        model=model,
+                        contents=content_parts,
+                        config=types.GenerateContentConfig(
+                            response_mime_type="application/json",
+                            response_schema=QuizModel,
+                            temperature=0.7
+                        )
+                    )
+                    parsed_quiz = json.loads(response.text.strip())
+                    print(f"[Gemini Quiz Generator] Successfully generated quiz using model={model}")
+                    break
+                except Exception as e:
+                    last_exception = e
+                    print(f"[Gemini Quiz Generator] Attempt {attempt + 1} with model={model} failed: {e}")
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(delay)
+                        delay *= 2
+                    else:
+                        break
+            if parsed_quiz:
+                break
+
+        if not parsed_quiz:
+            raise ValueError(f"Gemini failed to generate the quiz: {str(last_exception)}")
+
+        if "questions" not in parsed_quiz or not parsed_quiz["questions"]:
+            raise ValueError("Generated quiz did not contain any questions.")
+
+        return {
+            "success": True,
+            "title": parsed_quiz.get("title", f"Quiz: {video.get('file_name', 'Video')}"),
+            "questions": parsed_quiz["questions"],
+            "message": "Quiz generated successfully."
+        }
+
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to generate quiz: {e}")
+
+@app.get("/api/quizzes/list")
+def list_quizzes_endpoint(
+    playlist_id: str = Query(...)
+):
+    from bson.objectid import ObjectId
+    db_conn = db.get_db()
+    
+    try:
+        # Find all videos in the playlist
+        videos = list(db_conn.catalogs.find({"playlistId": ObjectId(playlist_id)}))
+        video_ids = [v["_id"] for v in videos]
+        
+        # Query quizzes associated with the playlist_id or any of the video_ids
+        query = {
+            "$or": [
+                {"playlistId": ObjectId(playlist_id)},
+                {"catalogId": {"$in": video_ids}}
+            ]
+        }
+        
+        quizzes = list(db_conn.quizzes.find(query))
+        
+        # Map video ID to its file_name
+        video_titles = {str(v["_id"]): v.get("fileName", "Untitled Lecture") for v in videos}
+        
+        result = []
+        for q in quizzes:
+            q_id = str(q["_id"])
+            cat_id = str(q.get("catalogId", "")) if q.get("catalogId") else None
+            pl_id = str(q.get("playlistId", "")) if q.get("playlistId") else None
+            
+            associated_title = "Course Level Assessment"
+            if cat_id and cat_id in video_titles:
+                associated_title = f"{video_titles[cat_id]}"
+                
+            result.append({
+                "id": q_id,
+                "title": q.get("title", "Untitled Assessment"),
+                "catalog_id": cat_id,
+                "playlist_id": pl_id,
+                "questions_count": len(q.get("questions", [])),
+                "associated_title": associated_title
+            })
+            
+        return result
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to list quizzes: {e}")
+
+@app.get("/api/quizzes/user-scores")
+def get_user_quiz_scores(
+    playlist_id: str = Query(...),
+    owner_email: str = Query(...)
+):
+    from bson.objectid import ObjectId
+    db_conn = db.get_db()
+    
+    try:
+        # Find all videos in the playlist
+        videos = list(db_conn.catalogs.find({"playlistId": ObjectId(playlist_id)}))
+        video_ids = [v["_id"] for v in videos]
+        
+        # Find all quiz attempts for these videos by userEmail
+        clean_email = owner_email.strip().lower()
+        attempts = list(db_conn.quiz_attempts.find({
+            "userEmail": clean_email,
+            "catalogId": {"$in": video_ids}
+        }))
+        
+        # Map video ID (catalogId) to highest score achieved
+        scores = {}
+        for att in attempts:
+            cat_id = str(att.get("catalogId", ""))
+            if cat_id:
+                scores[cat_id] = max(scores.get(cat_id, 0.0), att.get("score", 0.0))
+                
+        return scores
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to fetch user quiz scores: {e}")
+
 @app.get("/api/quizzes")
 def get_quiz_endpoint(
     video_id: Optional[str] = Query(None),

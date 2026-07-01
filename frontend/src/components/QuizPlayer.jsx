@@ -62,6 +62,26 @@ export default function QuizPlayer({ quiz, videoTitle, onBackToVideo, onQuizComp
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail || 'Failed to submit quiz');
 
+      // Save score to local storage & dispatch change event
+      const currentScores = JSON.parse(localStorage.getItem('summarix_quiz_scores') || '{}');
+      const videoId = quiz.catalogId || quiz.catalog_id;
+      if (videoId) {
+        currentScores[videoId] = Math.max(currentScores[videoId] || 0, data.score);
+        localStorage.setItem('summarix_quiz_scores', JSON.stringify(currentScores));
+      }
+      
+      // Also add to completed quizzes if passed with >= 75%
+      if (data.score >= 75 && videoId) {
+        const completed = JSON.parse(localStorage.getItem('summarix_completed_quizzes') || '[]');
+        if (!completed.includes(videoId)) {
+          completed.push(videoId);
+          localStorage.setItem('summarix_completed_quizzes', JSON.stringify(completed));
+          window.dispatchEvent(new Event('summarix_completed_change'));
+        }
+      }
+
+      window.dispatchEvent(new Event('summarix_quiz_scores_change'));
+
       setGradedResult(data);
       setIsFinished(true);
       if (onQuizComplete) {
@@ -118,6 +138,28 @@ export default function QuizPlayer({ quiz, videoTitle, onBackToVideo, onQuizComp
             {quiz.title}
           </h3>
         </div>
+
+        {gradedResult.score >= 75 ? (
+          <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-4 text-center animate-pulse">
+            <span className="text-xl">🎉</span>
+            <h4 className="text-emerald-400 font-extrabold text-sm mt-1">
+              Assessment Passed! (75%+)
+            </h4>
+            <p className="text-[11px] text-gray-300 mt-1">
+              Congratulations! You scored {gradedResult.score}% and successfully unlocked the next lecture module.
+            </p>
+          </div>
+        ) : (
+          <div className="bg-rose-500/10 border border-rose-500/20 rounded-2xl p-4 text-center">
+            <span className="text-xl">⚠️</span>
+            <h4 className="text-rose-400 font-extrabold text-sm mt-1">
+              Passing Score Required: 75%
+            </h4>
+            <p className="text-[11px] text-gray-300 mt-1">
+              You scored {gradedResult.score}%. Retake the quiz and score at least 75% to unlock the next lecture module.
+            </p>
+          </div>
+        )}
 
         {/* Circular Dashboard Scorecard */}
         <div className="flex flex-col md:flex-row items-center justify-center gap-8 py-4 bg-white/3 rounded-2xl border border-white/5 p-6">

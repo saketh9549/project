@@ -69,6 +69,7 @@ export default function VideoWorkspace({ currentUser, showSuccess, showError }) 
   // Watched lessons states
   const [watchedList, setWatchedList] = useState([]);
   const [completedQuizzes, setCompletedQuizzes] = useState([]);
+  const [quizScores, setQuizScores] = useState({});
 
   // Sidebar accordions expanded state
   const [accordionState, setAccordionState] = useState({
@@ -119,6 +120,31 @@ export default function VideoWorkspace({ currentUser, showSuccess, showError }) 
     window.addEventListener('summarix_watched_change', loadProgressData);
     return () => window.removeEventListener('summarix_watched_change', loadProgressData);
   }, []);
+
+  const fetchUserScores = async (playlistId) => {
+    if (!playlistId) return;
+    try {
+      const email = currentUser?.email || 'anonymous@summarix.io';
+      const res = await fetch(apiUrl(`/api/quizzes/user-scores?playlist_id=${playlistId}&owner_email=${encodeURIComponent(email)}`));
+      if (res.ok) {
+        const data = await res.json();
+        setQuizScores(data || {});
+      }
+    } catch (err) {
+      console.error("Failed to fetch user scores:", err);
+    }
+  };
+
+  useEffect(() => {
+    const handleScoresChange = () => {
+      const playlistId = selectedVideo?.playlist_id;
+      if (playlistId) {
+        fetchUserScores(playlistId);
+      }
+    };
+    window.addEventListener('summarix_quiz_scores_change', handleScoresChange);
+    return () => window.removeEventListener('summarix_quiz_scores_change', handleScoresChange);
+  }, [selectedVideo]);
 
   // Fetch all metadata on video change
   const fetchWorkspaceData = async (videoId) => {
@@ -190,6 +216,7 @@ export default function VideoWorkspace({ currentUser, showSuccess, showError }) 
           }
 
           setFolderQuizzes(quizList);
+          await fetchUserScores(playlistId);
         } else {
           // Standalone video context
           setFolderVideos([data.video]);
@@ -222,6 +249,37 @@ export default function VideoWorkspace({ currentUser, showSuccess, showError }) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, currentUser]);
 
+  const quizVideoIds = new Set(folderQuizzes.map(q => q.catalogId || q.videoId).filter(Boolean));
+
+  const isVideoUnlocked = (vId) => {
+    if (isAdmin) return true;
+    if (folderVideos.length === 0) return true;
+    const idx = folderVideos.findIndex(v => v.id === vId);
+    if (idx === -1 || idx === 0) return true;
+    for (let k = 0; k < idx; k++) {
+      const prevVideo = folderVideos[k];
+      if (quizVideoIds.has(prevVideo.id)) {
+        const score = quizScores[prevVideo.id] || 0;
+        if (score < 75) {
+          return false;
+        }
+      }
+    }
+    return true;
+  };
+
+  useEffect(() => {
+    if (id && folderVideos.length > 0 && Object.keys(quizScores).length > 0) {
+      if (!isVideoUnlocked(id)) {
+        showError("This module is currently locked. Complete preceding quizzes with 75%+ to unlock.");
+        const firstUnlocked = folderVideos.find(v => isVideoUnlocked(v.id));
+        if (firstUnlocked) {
+          navigate(`/video/${firstUnlocked.id}`, { state: location.state, replace: true });
+        }
+      }
+    }
+  }, [id, folderVideos, quizScores]);
+
   const currentIndex = selectedVideo && folderVideos.length > 0
     ? folderVideos.findIndex(v => v.id === selectedVideo.id)
     : -1;
@@ -237,6 +295,20 @@ export default function VideoWorkspace({ currentUser, showSuccess, showError }) 
 
   const handleNextVideo = () => {
     if (hasNextVideo) {
+      if (!isAdmin && selectedVideo) {
+        const matchedQuiz = folderQuizzes.find(
+          (q) => q.catalogId === selectedVideo.id || q.videoId === selectedVideo.id
+        );
+        if (matchedQuiz) {
+          const score = quizScores[selectedVideo.id] || 0;
+          if (score < 75) {
+            showError("Assessment Required: Please score at least 75% on the practice quiz to unlock the next module.");
+            setActiveContent({ type: 'quiz', id: matchedQuiz._id });
+            setQuizViewState('landing');
+            return;
+          }
+        }
+      }
       const nextVideo = folderVideos[currentIndex + 1];
       navigate(`/video/${nextVideo.id}`, { state: location.state });
     }
@@ -252,12 +324,25 @@ export default function VideoWorkspace({ currentUser, showSuccess, showError }) 
   };
 
   const handleSelectVideoContent = (videoId) => {
+    if (!isVideoUnlocked(videoId)) {
+      showError("Locked: You must score at least 75% on the preceding quiz to unlock this video.");
+      return;
+    }
     setActiveContent({ type: 'video', id: videoId });
     setQuizViewState('landing');
     fetchWorkspaceData(videoId);
   };
 
   const handleSelectQuizContent = (quizId) => {
+    const q = folderQuizzes.find(item => item._id === quizId);
+    if (q) {
+      const videoIdx = q.catalogId ? folderVideos.findIndex(v => v.id === q.catalogId) : -1;
+      const isUnlocked = videoIdx === -1 || isVideoUnlocked(folderVideos[videoIdx].id);
+      if (!isUnlocked) {
+        showError("Locked: You must score at least 75% on the preceding quiz to unlock this assessment.");
+        return;
+      }
+    }
     setActiveContent({ type: 'quiz', id: quizId });
     setQuizViewState('landing');
   };
@@ -293,11 +378,16 @@ export default function VideoWorkspace({ currentUser, showSuccess, showError }) 
       (q) => q.catalogId === selectedVideo.id || q.videoId === selectedVideo.id
     );
     if (matchedQuiz) {
-      showSuccess("Video completed! Loading practice quiz...");
-      setTimeout(() => {
-        setActiveContent({ type: 'quiz', id: matchedQuiz._id });
-        setQuizViewState('landing');
-      }, 1000);
+      const score = quizScores[selectedVideo.id] || 0;
+      if (score < 75) {
+        showSuccess("Video completed! Redirecting to required practice quiz...");
+        setTimeout(() => {
+          setActiveContent({ type: 'quiz', id: matchedQuiz._id });
+          setQuizViewState('landing');
+        }, 1000);
+      } else {
+        showSuccess("Video completed! You have already passed the quiz for this module.");
+      }
     }
   };
 
@@ -520,32 +610,44 @@ export default function VideoWorkspace({ currentUser, showSuccess, showError }) 
                     {folderVideos.map((v, index) => {
                       const isWatched = watchedList.includes(v.id);
                       const isActive = activeContent.type === 'video' && activeContent.id === v.id;
-                      return (
-                        <div
-                          key={v.id}
-                          onClick={() => handleSelectVideoContent(v.id)}
-                          className={`flex items-start justify-between gap-2.5 p-2 rounded-xl border text-xs cursor-pointer select-none transition-all ${isActive
-                              ? 'border-indigo-500/50 bg-indigo-950/20 text-white font-semibold'
-                              : 'border-transparent text-gray-400 hover:text-white hover:bg-white/5'
-                            }`}
-                        >
-                          <div className="flex items-center gap-2 min-w-0">
-                            {/* Checkmark circle icon */}
-                            {isWatched ? (
-                              <div className="w-4 h-4 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center shrink-0">
-                                <svg className="w-2.5 h-2.5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                                </svg>
-                              </div>
-                            ) : (
-                              <div className="w-4 h-4 rounded-full border border-gray-600 bg-black/20 shrink-0" />
-                            )}
-                            <span className="truncate max-w-[180px]">
-                              {index + 1}. {v.file_name}
-                            </span>
-                          </div>
-                        </div>
-                      );
+                       const isUnlocked = isVideoUnlocked(v.id);
+                       return (
+                         <div
+                           key={v.id}
+                           onClick={() => isUnlocked && handleSelectVideoContent(v.id)}
+                           className={`flex items-start justify-between gap-2.5 p-2 rounded-xl border text-xs select-none transition-all ${
+                             isUnlocked
+                               ? isActive
+                                 ? 'border-indigo-500/50 bg-indigo-950/20 text-white font-semibold cursor-pointer'
+                                 : 'border-transparent text-gray-400 hover:text-white hover:bg-white/5 cursor-pointer'
+                               : 'border-transparent text-gray-600 opacity-40 cursor-not-allowed'
+                           }`}
+                           title={isUnlocked ? "" : "Locked: Score 75%+ on preceding quiz to unlock."}
+                         >
+                           <div className="flex items-center gap-2 min-w-0">
+                             {isUnlocked ? (
+                               isWatched ? (
+                                 <div className="w-4 h-4 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center shrink-0">
+                                   <svg className="w-2.5 h-2.5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
+                                     <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                   </svg>
+                                 </div>
+                               ) : (
+                                 <div className="w-4 h-4 rounded-full border border-gray-600 bg-black/20 shrink-0" />
+                               )
+                             ) : (
+                               <div className="w-4 h-4 flex items-center justify-center shrink-0 text-gray-600">
+                                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                                 </svg>
+                               </div>
+                             )}
+                             <span className="truncate max-w-[180px]">
+                               {index + 1}. {v.file_name}
+                             </span>
+                           </div>
+                         </div>
+                       );
                     })}
                   </div>
                 )}
@@ -585,29 +687,52 @@ export default function VideoWorkspace({ currentUser, showSuccess, showError }) 
                       folderQuizzes.map((q) => {
                         const isDone = completedQuizzes.includes(q._id);
                         const isActive = activeContent.type === 'quiz' && activeContent.id === q._id;
+                        const videoIdx = q.catalogId ? folderVideos.findIndex(v => v.id === q.catalogId) : -1;
+                        const isUnlocked = videoIdx === -1 || isVideoUnlocked(folderVideos[videoIdx].id);
+                        const highestScore = quizScores[q.catalogId] || null;
+
                         return (
                           <div
                             key={q._id}
-                            onClick={() => handleSelectQuizContent(q._id)}
-                            className={`flex items-start justify-between gap-2.5 p-2 rounded-xl border text-xs cursor-pointer select-none transition-all ${isActive
-                                ? 'border-indigo-500/50 bg-indigo-950/20 text-white font-semibold'
-                                : 'border-transparent text-gray-400 hover:text-white hover:bg-white/5'
-                              }`}
+                            onClick={() => isUnlocked && handleSelectQuizContent(q._id)}
+                            className={`flex items-start justify-between gap-2.5 p-2 rounded-xl border text-xs select-none transition-all ${
+                              isUnlocked
+                                ? isActive
+                                  ? 'border-indigo-500/50 bg-indigo-950/20 text-white font-semibold cursor-pointer'
+                                  : 'border-transparent text-gray-400 hover:text-white hover:bg-white/5 cursor-pointer'
+                                : 'border-transparent text-gray-600 opacity-40 cursor-not-allowed'
+                            }`}
+                            title={isUnlocked ? "" : "Locked: Score 75%+ on preceding quiz to unlock."}
                           >
                             <div className="flex items-center gap-2 min-w-0">
-                              {isDone ? (
-                                <div className="w-4 h-4 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center shrink-0">
-                                  <svg className="w-2.5 h-2.5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                              {isUnlocked ? (
+                                isDone ? (
+                                  <div className="w-4 h-4 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center shrink-0">
+                                    <svg className="w-2.5 h-2.5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" />
+                                    </svg>
+                                  </div>
+                                ) : (
+                                  <div className="w-4 h-4 rounded-full border border-gray-600 bg-black/20 shrink-0" />
+                                )
+                              ) : (
+                                <div className="w-4 h-4 flex items-center justify-center shrink-0 text-gray-600">
+                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                                   </svg>
                                 </div>
-                              ) : (
-                                <div className="w-4 h-4 rounded-full border border-gray-600 bg-black/20 shrink-0" />
                               )}
-                              <span className="truncate max-w-[180px]">
-                                📝 {q.title}
+                              <span className="truncate max-w-[140px]">
+                                {q.title}
                               </span>
                             </div>
+                            {highestScore !== null && (
+                              <span className={`text-[8px] font-mono font-bold px-1 rounded shrink-0 ${
+                                highestScore >= 75 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'
+                              }`}>
+                                {highestScore}%
+                              </span>
+                            )}
                           </div>
                         );
                       })

@@ -69,16 +69,7 @@ export default function Home({
   };
 
   const handleSelectFolder = (pl) => {
-    let targetVideos = isAdmin ? allVideos : videos;
-    if (myWorkspaceMode && currentUser?.email) {
-      targetVideos = targetVideos.filter(v => v.owner_email === currentUser.email || v.ownerEmail === currentUser.email);
-    }
-    const folderVideos = targetVideos.filter(v => v.playlist_id === pl.id && v.upload_status === 'indexed');
-    if (folderVideos.length > 0) {
-      navigate(`/video/${folderVideos[0].id}`, { state: { from: myWorkspaceMode ? '/my-workspace' : '/home' } });
-    } else {
-      alert("This folder is empty or contains no indexed videos yet.");
-    }
+    navigate(`/course/${pl.id}`, { state: { from: myWorkspaceMode ? '/my-workspace' : '/home' } });
   };
 
   const displayPlaylists = myWorkspaceMode && currentUser?.email
