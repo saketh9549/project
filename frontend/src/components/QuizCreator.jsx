@@ -611,9 +611,9 @@ export default function QuizCreator({
       )}
 
       {mode === 'upload' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 w-full animate-quiz-slide">
+        <div className="flex flex-col gap-6 w-full animate-quiz-slide">
           {/* Dropzone Side */}
-          <div className="lg:col-span-6 flex flex-col gap-4">
+          <div className="flex flex-col gap-4 w-full">
             <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider font-display border-b border-white/5 pb-2">
               Upload Quiz Document
             </h4>
@@ -686,7 +686,7 @@ export default function QuizCreator({
           </div>
 
           {/* Guidelines / Preview Side */}
-          <div className="lg:col-span-6 flex flex-col gap-4 w-full">
+          <div className="flex flex-col gap-4 w-full">
             <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider font-display border-b border-white/5 pb-2 flex items-center justify-between shrink-0">
               <span>{uploadQuestions.length > 0 ? 'Imported Questions Preview' : 'Document Formatting Guide'}</span>
               {uploadQuestions.length > 0 && (
