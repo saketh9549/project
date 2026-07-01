@@ -385,7 +385,7 @@ export default function QuizCreator({
 
   // RENDER DETAILED MODE WORKSPACE (Manual, Upload, or AI)
   return (
-    <div className="flex-grow flex-1 flex flex-col gap-6 p-6 min-h-0 w-full animate-quiz-slide">
+    <div className="flex flex-col gap-6 p-6 w-full animate-quiz-slide">
       {/* Header Toolbar */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-white/5 pb-5">
         <div className="flex items-center gap-3">
@@ -445,8 +445,9 @@ export default function QuizCreator({
         </div>
       </div>
 
+      {/* Mode Specific Layouts */}
       {mode === 'manual' && (
-        <div className="flex flex-col gap-6 min-h-0 flex-grow w-full">
+        <div className="flex flex-col gap-6 w-full">
           {/* Top section: Only keep the add question button */}
           <div className="flex justify-end w-full">
             <button
@@ -468,7 +469,7 @@ export default function QuizCreator({
           </div>
 
           {/* Bottom section: Full-width list of questions */}
-          <div className="flex flex-col gap-4 overflow-hidden flex-grow w-full">
+          <div className="flex flex-col gap-4 w-full">
             <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider font-display border-b border-white/5 pb-2 flex items-center justify-between shrink-0">
               <span>Questions List</span>
               <span className="text-[10px] font-mono font-bold text-indigo-400 bg-indigo-500/10 border border-indigo-500/10 px-2 py-0.5 rounded-full">
@@ -476,7 +477,7 @@ export default function QuizCreator({
               </span>
             </h4>
 
-            <div className="flex-grow overflow-y-auto pr-1 flex flex-col gap-4 min-h-0">
+            <div className="flex flex-col gap-4 w-full">
               {/* If isAddingQuestion is true, show form just below the button (i.e. at the top of the questions list) */}
               {isAddingQuestion && (
                 <div className="animate-quiz-slide">
@@ -560,7 +561,7 @@ export default function QuizCreator({
       )}
 
       {mode === 'upload' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0 flex-grow">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 w-full">
           {/* Dropzone Side */}
           <div className="lg:col-span-6 flex flex-col gap-4">
             <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider font-display border-b border-white/5 pb-2">
@@ -577,11 +578,7 @@ export default function QuizCreator({
                   await handleFileUpload(e.dataTransfer.files[0]);
                 }
               }}
-              className={`flex-grow border-2 border-dashed rounded-3xl p-8 text-center flex flex-col justify-center items-center transition-all ${
-                dragOver
-                  ? 'border-indigo-500 bg-indigo-950/20 shadow-[0_0_20px_rgba(99,102,241,0.18)]'
-                  : 'border-white/10 bg-white/2 hover:border-white/20'
-              }`}
+              className="flex-grow border-2 border-dashed rounded-3xl p-8 text-center flex flex-col justify-center items-center transition-all border-white/10 bg-white/2 hover:border-white/20 min-h-[300px]"
             >
               <div className="flex flex-col items-center gap-4 max-w-sm mx-auto">
                 <div className="w-16 h-16 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 shadow-lg">
@@ -639,12 +636,12 @@ export default function QuizCreator({
           </div>
 
           {/* Guidelines / Preview Side */}
-          <div className="lg:col-span-6 flex flex-col gap-4 overflow-hidden h-full">
+          <div className="lg:col-span-6 flex flex-col gap-4 w-full">
             <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider font-display border-b border-white/5 pb-2 flex items-center justify-between shrink-0">
               <span>{uploadQuestions.length > 0 ? 'Imported Questions Preview' : 'Document Formatting Guide'}</span>
               {uploadQuestions.length > 0 && (
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/10 px-2.5 py-0.5 rounded-full">
+                  <span className="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/10 px-2 py-0.5 rounded-full">
                     {uploadQuestions.length} Questions Parsed
                   </span>
                 </div>
@@ -652,7 +649,7 @@ export default function QuizCreator({
             </h4>
 
             {uploadQuestions.length > 0 ? (
-              <div className="flex-grow overflow-y-auto pr-1 flex flex-col gap-3 min-h-0">
+              <div className="flex flex-col gap-3 w-full">
                 {uploadQuestions.map((q, idx) => (
                   <div key={idx} className="bg-white/5 border border-white/5 rounded-xl p-4 flex justify-between items-start gap-2">
                     <div className="min-w-0 flex-1">
@@ -692,7 +689,7 @@ export default function QuizCreator({
                 ))}
               </div>
             ) : (
-              <div className="bg-white/2 border border-white/5 rounded-2xl p-5 flex flex-col gap-4 flex-grow overflow-y-auto">
+              <div className="bg-white/2 border border-white/5 rounded-2xl p-5 flex flex-col gap-4 w-full">
                 <div className="flex border-b border-white/5 pb-2 gap-3">
                   <span
                     onClick={() => setActiveGuideTab('txt')}
@@ -773,9 +770,9 @@ Explanation: Vite's default dev server port is 5173.`}
       )}
 
       {mode === 'ai' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0 flex-grow">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 w-full">
           {/* AI Settings Side */}
-          <div className="lg:col-span-5 flex flex-col gap-5 overflow-y-auto pr-1">
+          <div className="lg:col-span-5 flex flex-col gap-5 w-full">
             <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider font-display border-b border-white/5 pb-2">
               Gemini Quiz Configurator
             </h4>
@@ -858,7 +855,7 @@ Explanation: Vite's default dev server port is 5173.`}
           </div>
 
           {/* Results preview side */}
-          <div className="lg:col-span-7 flex flex-col gap-4 overflow-hidden h-full">
+          <div className="lg:col-span-7 flex flex-col gap-4 w-full">
             <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider font-display border-b border-white/5 pb-2 flex items-center justify-between shrink-0">
               <span>Preview AI Generated Quiz</span>
               <span className="text-[10px] font-mono font-bold text-cyan-400 bg-cyan-500/10 border border-cyan-500/10 px-2 py-0.5 rounded-full">
@@ -866,10 +863,10 @@ Explanation: Vite's default dev server port is 5173.`}
               </span>
             </h4>
 
-            <div className="flex-grow overflow-y-auto pr-1 flex flex-col gap-3 min-h-0">
+            <div className="flex flex-col gap-3 w-full">
               {generating ? (
                 /* Animated loading skeletons for generated questions */
-                <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-4 w-full">
                   {[1, 2, 3].map((s) => (
                     <div key={s} className="bg-white/5 border border-white/5 rounded-xl p-4 flex flex-col gap-3 animate-pulse">
                       <div className="h-4 bg-white/10 rounded w-3/4"></div>

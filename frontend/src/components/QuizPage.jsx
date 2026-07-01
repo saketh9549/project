@@ -185,7 +185,7 @@ export default function QuizPage({ currentUser, showSuccess, showError, playlist
 
   // 2. Admin view: Creator Mode
   return (
-    <div className="flex-grow flex-1 flex flex-col w-full min-h-0 max-h-full h-full animate-quiz-slide">
+    <div className="w-full animate-quiz-slide flex flex-col">
       <QuizCreator
         quiz={quiz}
         title={quizTitle}

@@ -249,7 +249,7 @@ function AppContent() {
   const isWorkspaceActive = location.pathname === '/my-workspace' || (location.pathname.startsWith('/course') && location.state?.from === '/my-workspace') || (location.pathname.startsWith('/video') && (location.state?.from === '/my-workspace' || activeFrom === '/my-workspace')) || (location.pathname.startsWith('/quiz') && (location.state?.from === '/my-workspace' || activeFrom === '/my-workspace') && !location.pathname.startsWith('/quiz-analytics'));
   const isCatalogActive = location.pathname === '/catalog' || (location.pathname.startsWith('/course') && location.state?.from === '/catalog') || (location.pathname.startsWith('/video') && (location.state?.from === '/catalog' || activeFrom === '/catalog' || !location.state?.from)) || (location.pathname.startsWith('/quiz') && (location.state?.from === '/catalog' || activeFrom === '/catalog' || !location.state?.from) && !location.pathname.startsWith('/quiz-analytics'));
   const isAnalyticsActive = location.pathname === '/quiz-analytics';
-  const isWorkspace = location.pathname.startsWith('/video') || (location.pathname.startsWith('/quiz') && !location.pathname.startsWith('/quiz-analytics'));
+  const isWorkspace = location.pathname.startsWith('/video');
 
   return (
     <div className="flex flex-col h-screen overflow-hidden">
