@@ -1,6 +1,6 @@
-# 🎥 Summarix - Video Chapter Indexer & Summary Console
+# 🎥 Summarix - Video Chapter Indexer & LMS Dashboard
 
-Summarix is a high-performance, developer-centric video indexing and chapter summarization platform. It features an offline-first transcription pipeline utilizing local `faster-whisper` on CPU, semantic chapter boundary analysis using the Google GenAI Gemini API, cloud-backed AWS S3 video streaming storage, and an interactive React + Tailwind CSS dashboard with a drag-and-drop workflow.
+Summarix is a high-performance, developer-centric video indexing, chapter summarization, and LMS (Learning Management System) platform. It features an offline-first transcription pipeline utilizing local `faster-whisper` on CPU, semantic chapter boundary analysis using the Google GenAI Gemini API, cloud-backed AWS S3 video streaming storage, and an interactive React + Tailwind CSS dashboard with a drag-and-drop workflow, course syllabus, quiz engine, and printable course completion certificates.
 
 ---
 
@@ -19,8 +19,22 @@ The pipeline processes files in-memory through the following flow:
 3. **In-Memory Audio Extraction:** FFmpeg extracts mono, 16kHz audio tracks on-the-fly.
 4. **Whisper Transcription:** Transcribes audio locally using a native `faster-whisper` `"base"` model with `int8` quantization on CPU.
 5. **Gemini Semantic Topic Segmentation:** Feeds the transcript to Gemini (defaulting to `gemini-3.1-flash-lite`) to map dialogues into structured JSON chapter moments.
-6. **MongoDB Storage:** Data collections for `catalogs`, `indices`, and `summaries` are written directly to MongoDB Atlas.
+6. **MongoDB Storage:** Data collections for `catalogs`, `indices`, `summaries`, `quiz_attempts`, and `progress` are written directly to MongoDB Atlas.
 7. **S3 Range Streaming Proxy:** A multi-threaded FastAPI range-request proxy streams video bytes directly from S3 to support seek operations in HTML5 players.
+
+---
+
+## 🎓 Learning Management System (LMS) Features
+
+Summarix integrates full course syllabus tracking, practice quizzes, final assessments, and completion certificates:
+
+* **Interactive Course Syllabus**: Scopes videos by playlist/module with green watch indicators, practice quizzes, and locks/unlocks that enforce chronological learning.
+* **Quiz / Assessment Engine**: 
+  - Dynamic practice quizzes assigned to individual videos.
+  - Interactive Quiz Player with timer, high-contrast red "Retake Quiz" navigation, and feedback scorecard.
+  - **Final Course Assessment**: Unlocks once all playlist videos are watched and all practice quizzes are passed with a score $\ge 75\%$.
+* **Automatic Progress Tracking**: Real-time progress bar computing watched lessons, practice quizzes, and final assessment scores to display overall progress up to 100%.
+* **Printable Course Certificate**: Renders a golden, high-fidelity printable completion certificate once the final assessment is passed ($\ge 75\%$). Supports quick print configurations and SPA "Back to Home" navigation.
 
 ---
 

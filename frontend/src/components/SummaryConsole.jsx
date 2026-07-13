@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { apiUrl } from '../lib/api';
 
 const parseTranscript = (rawText) => {
   if (!rawText) return [];
@@ -50,9 +51,16 @@ export default function SummaryConsole({
   overallSummary,
   overallSummaryLoading,
   onGenerateOverallSummary,
-  currentTime = 0
+  currentTime = 0,
+  currentUser
 }) {
   const [activeTab, setActiveTab] = useState('transcript');
+  
+  // Notepad states
+  const [notesText, setNotesText] = useState('');
+  const [notesLoading, setNotesLoading] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   const lines = selectedVideo?.raw_transcript ? parseTranscript(selectedVideo.raw_transcript) : [];
   const currentActiveLine = lines.find((line, idx) => {
@@ -85,15 +93,106 @@ export default function SummaryConsole({
     }
   }, [selectedChapter, activeTab]);
 
+  // Load notes from AWS S3 whenever video or user changes
+  useEffect(() => {
+    if (!selectedVideo?.id || !currentUser?.email) {
+      setNotesText('');
+      setHasUnsavedChanges(false);
+      return;
+    }
+
+    const loadNotes = async () => {
+      setNotesLoading(true);
+      try {
+        const response = await fetch(
+          apiUrl(`/api/notes?video_id=${selectedVideo.id}&owner_email=${encodeURIComponent(currentUser.email)}`)
+        );
+        if (response.ok) {
+          const resData = await response.json();
+          setNotesText(resData.notes || '');
+        } else {
+          setNotesText('');
+        }
+      } catch (err) {
+        console.error('Failed to load notes from S3:', err);
+        setNotesText('');
+      } finally {
+        setNotesLoading(false);
+        setHasUnsavedChanges(false);
+      }
+    };
+
+    loadNotes();
+  }, [selectedVideo?.id, currentUser?.email]);
+
+  const handleSaveNotes = async () => {
+    if (!selectedVideo?.id || !currentUser?.email) return;
+    setIsSaving(true);
+    try {
+      const response = await fetch(apiUrl('/api/notes'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          video_id: selectedVideo.id,
+          owner_email: currentUser.email,
+          notes: notesText
+        })
+      });
+      if (!response.ok) throw new Error('Failed to upload notes to S3');
+      setHasUnsavedChanges(false);
+      if (showSuccess) {
+        showSuccess('Notes saved to S3 successfully!');
+      }
+    } catch (err) {
+      alert('Error saving notes to S3: ' + err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Keyboard shortcut Ctrl+S / Cmd+S for manual saving
+  useEffect(() => {
+    if (activeTab !== 'notes') return;
+
+    const handleKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        handleSaveNotes();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeTab, notesText, selectedVideo?.id, currentUser?.email]);
+
   const copyToClipboard = () => {
-    const textToCopy = activeTab === 'summary' ? overallSummary : selectedVideo?.raw_transcript;
+    const textToCopy =
+      activeTab === 'summary'
+        ? overallSummary
+        : activeTab === 'notes'
+        ? notesText
+        : selectedVideo?.raw_transcript;
+
     if (!textToCopy) return;
     const plainText = activeTab === 'summary' ? stripMarkdown(textToCopy) : textToCopy;
     navigator.clipboard.writeText(plainText);
     if (showSuccess) {
-      showSuccess(activeTab === 'summary' ? 'Summary copied to clipboard!' : 'Transcript copied to clipboard!');
-      setTimeout(() => showSuccess(null), 3000);
+      let msg = 'Transcript copied to clipboard!';
+      if (activeTab === 'summary') msg = 'Summary copied to clipboard!';
+      if (activeTab === 'notes') msg = 'Notes copied to clipboard!';
+      showSuccess(msg);
     }
+  };
+
+  const exportNotesAsFile = () => {
+    if (!notesText) return;
+    const blob = new Blob([notesText], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${selectedVideo?.file_name || 'video'}_notes.txt`;
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
   const stripMarkdown = (text) => {
@@ -155,7 +254,6 @@ export default function SummaryConsole({
 
   const parseInline = (text) => {
     if (!text) return '';
-    // Parse **bold** and *italic*
     const regex = /(\*\*.*?\*\*|\*.*?\*)/g;
     const parts = text.split(regex);
     return parts.map((part, index) => {
@@ -176,7 +274,6 @@ export default function SummaryConsole({
   const renderMarkdown = (text) => {
     if (!text) return null;
 
-    // Clean conversational intros first
     const cleanedText = cleanSummaryText(text);
     const lines = cleanedText.split('\n');
 
@@ -216,7 +313,6 @@ export default function SummaryConsole({
         );
       }
 
-      // Render normal paragraph
       if (trimmed === '') return <div key={idx} className="h-2" />;
       return (
         <p key={idx} className="text-gray-300 my-2 leading-relaxed text-xs">
@@ -225,7 +321,6 @@ export default function SummaryConsole({
       );
     });
   };
-
 
   return (
     <div className="flex-grow flex flex-col min-h-0">
@@ -258,27 +353,30 @@ export default function SummaryConsole({
               <span className="absolute left-0 right-0 -bottom-[9px] h-[2px] bg-cyan-500 shadow-[0_0_8px_rgba(6,182,212,0.8)]" />
             )}
           </button>
-          <button
-            onClick={() => setActiveTab('notes')}
-            className={`pb-1 text-xs font-bold font-display uppercase tracking-widest cursor-pointer transition-colors relative ${
-              activeTab === 'notes'
-                ? 'text-cyan-400'
-                : 'text-gray-500 hover:text-gray-300'
-            }`}
-          >
-            Notes
-            {activeTab === 'notes' && (
-              <span className="absolute left-0 right-0 -bottom-[9px] h-[2px] bg-cyan-500 shadow-[0_0_8px_rgba(6,182,212,0.8)]" />
-            )}
-          </button>
+          {currentUser?.role !== 'admin' && (
+            <button
+              onClick={() => setActiveTab('notes')}
+              className={`pb-1 text-xs font-bold font-display uppercase tracking-widest cursor-pointer transition-colors relative ${
+                activeTab === 'notes'
+                  ? 'text-cyan-400'
+                  : 'text-gray-500 hover:text-gray-300'
+              }`}
+            >
+              Notes
+              {activeTab === 'notes' && (
+                <span className="absolute left-0 right-0 -bottom-[9px] h-[2px] bg-cyan-500 shadow-[0_0_8px_rgba(6,182,212,0.8)]" />
+              )}
+            </button>
+          )}
         </div>
 
         {((activeTab === 'summary' && overallSummary && !overallSummaryLoading) ||
-          (activeTab === 'transcript' && selectedVideo?.raw_transcript)) && (
+          (activeTab === 'transcript' && selectedVideo?.raw_transcript) ||
+          (activeTab === 'notes' && notesText && !notesLoading)) && (
           <button
             onClick={copyToClipboard}
             className="text-gray-400 hover:text-white p-1 rounded hover:bg-gray-800 transition-colors cursor-pointer shrink-0"
-            title={activeTab === 'summary' ? 'Copy Summary' : 'Copy Transcript'}
+            title={activeTab === 'notes' ? 'Copy Notes' : activeTab === 'summary' ? 'Copy Summary' : 'Copy Transcript'}
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
@@ -396,19 +494,114 @@ export default function SummaryConsole({
           </div>
         )}
 
-        {activeTab === 'notes' && (
-          <div className="flex-grow flex flex-col min-h-0 text-left select-text p-1">
-            <div className="flex flex-col gap-4">
-              <div className="flex items-center gap-3.5 p-3.5 bg-white/4 border border-white/5 rounded-2xl hover:bg-white/10 hover:border-white/10 transition-all cursor-pointer group active:scale-[0.995]">
-                <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 group-hover:scale-105 transition-all">
-                  <span className="text-lg">📘</span>
+        {/* Tab 3: Interactive Notepad (Loads & Saves to S3) */}
+        {activeTab === 'notes' && currentUser?.role !== 'admin' && (
+          <div className="flex-grow flex flex-col min-h-0 text-left p-1 animate-fade-in">
+            {notesLoading ? (
+              <div className="flex-grow flex flex-col items-center justify-center py-12">
+                <svg className="animate-spin h-6 w-6 text-cyan-400 mb-2" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span className="text-[10px] text-gray-500 font-mono">Fetching notes from S3...</span>
+              </div>
+            ) : (
+              <div className="flex-grow flex flex-col gap-3.5 min-h-0">
+                {/* Notes Toolbar */}
+                <div className="flex items-center justify-between gap-3 bg-white/2 border border-white/5 p-2 rounded-xl shrink-0">
+                  <div className="flex items-center gap-1.5">
+                    {hasUnsavedChanges ? (
+                      <span className="inline-flex items-center gap-1 text-[9.5px] font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20 animate-fade-in">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                        Unsaved
+                      </span>
+                    ) : (
+                      <div className="w-4 h-4" /> // spacing placeholder
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {/* Clear Button */}
+                    {notesText && (
+                      <button
+                        onClick={() => {
+                          if (confirm('Are you sure you want to clear your notes?')) {
+                            setNotesText('');
+                            setHasUnsavedChanges(true);
+                          }
+                        }}
+                        className="p-1.5 rounded-lg text-gray-500 hover:text-white bg-white/5 hover:bg-white/10 transition-all border border-white/5 cursor-pointer"
+                        title="Clear Notes"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    )}
+
+                    {/* Export File Button */}
+                    {notesText && (
+                      <button
+                        onClick={exportNotesAsFile}
+                        className="p-1.5 rounded-lg text-gray-500 hover:text-white bg-white/5 hover:bg-white/10 transition-all border border-white/5 cursor-pointer"
+                        title="Export as .txt"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                      </button>
+                    )}
+
+                    {/* Save notes Button */}
+                    <button
+                      onClick={handleSaveNotes}
+                      disabled={isSaving}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all select-none border cursor-pointer ${
+                        isSaving
+                          ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20'
+                          : hasUnsavedChanges
+                          ? 'bg-indigo-600 hover:bg-indigo-500 text-white border-indigo-600 shadow-md scale-[1.01]'
+                          : 'bg-white/5 text-gray-400 hover:text-white border-white/5'
+                      }`}
+                    >
+                      {isSaving ? (
+                        <>
+                          <svg className="animate-spin h-3 w-3 text-indigo-400" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          Saving...
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2v-9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                          </svg>
+                          Save Notes
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
-                <div className="flex flex-col">
-                  <span className="font-bold text-xs text-gray-200 group-hover:text-white transition-colors">Course reference booklet (.pdf)</span>
-                  <span className="text-[10px] text-gray-500 font-semibold mt-0.5">PDF Document • 2.4 MB</span>
+
+                {/* Notepad Text Editor */}
+                <div className="flex-grow flex flex-col min-h-0 relative">
+                  <textarea
+                    value={notesText}
+                    onChange={(e) => {
+                      setNotesText(e.target.value);
+                      setHasUnsavedChanges(true);
+                    }}
+                    placeholder="Write your study notes and key takeaways here... Press Ctrl+S (or Cmd+S) to save directly to S3."
+                    className="w-full flex-grow bg-black/25 border border-white/5 rounded-2xl p-4 text-xs text-slate-400 placeholder-gray-600 focus:outline-none focus:border-indigo-500/40 transition-all resize-none leading-relaxed font-sans"
+                    disabled={isSaving}
+                  />
+                  <div className="absolute right-3.5 bottom-3.5 text-[9px] text-gray-600 font-mono pointer-events-none select-none">
+                    {notesText.length} characters
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
         )}
       </div>

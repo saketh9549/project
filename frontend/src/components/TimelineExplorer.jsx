@@ -413,6 +413,15 @@ export default function TimelineExplorer({
                   localStorage.setItem('summarix_watched', JSON.stringify(watched));
                   window.dispatchEvent(new Event('summarix_watched_change'));
                 }
+                
+                if (currentUser?.email) {
+                  fetch(apiUrl('/api/progress'), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ video_id: selectedVideo.id })
+                  }).catch(err => console.error("Failed to sync watched progress to DB:", err));
+                }
+
                 if (onVideoEnded) {
                   onVideoEnded();
                 }

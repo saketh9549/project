@@ -49,14 +49,16 @@ export default function CatalogPage({
   // If Admin, show the standard folder catalog with folder builder and delete actions
   if (isAdmin) {
     return (
-      <div className="flex-grow flex-1 flex flex-col max-w-4xl mx-auto w-full glass-panel p-8 rounded-2xl shadow-[0_8px_32px_0_rgba(99,102,241,0.05)] border border-white/5 min-h-0 animate-quiz-slide">
-        <h2 className="text-xl font-bold text-center text-white mb-6 font-display flex items-center justify-center gap-2 shrink-0">
-          <svg className="w-6 h-6 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <div className="flex-grow flex-1 flex flex-col max-w-5xl mx-auto w-full glass-panel p-6 rounded-2xl shadow-[0_8px_32px_0_rgba(99,102,241,0.05)] border border-white/5 min-h-0 animate-quiz-slide">
+        <div className="flex items-center gap-2 mb-6 shrink-0">
+          <svg className="w-5 h-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
           </svg>
-          Folder Manager Library
-        </h2>
-        <div className="flex-grow overflow-y-auto pr-1">
+          <h2 className="text-base font-extrabold text-white tracking-tight">
+            Content Manager Library
+          </h2>
+        </div>
+        <div className="flex-grow flex flex-col min-h-0">
           <VideosCatalog
             videos={videos}
             playlists={playlists}
@@ -93,19 +95,6 @@ export default function CatalogPage({
           <h2 className="text-xl font-bold font-sans text-white tracking-tight">
             Continue Learning
           </h2>
-          <div className="flex items-center gap-4">
-            <span className="text-xs text-indigo-400 font-bold hover:underline cursor-pointer select-none">
-              See all
-            </span>
-            <div className="flex gap-2">
-              <button className="w-8 h-8 rounded-full border border-white/10 hover:bg-white/5 text-gray-400 hover:text-white flex items-center justify-center cursor-pointer transition-all select-none">
-                &lt;
-              </button>
-              <button className="w-8 h-8 rounded-full border border-white/10 hover:bg-white/5 text-gray-400 hover:text-white flex items-center justify-center cursor-pointer transition-all select-none">
-                &gt;
-              </button>
-            </div>
-          </div>
         </div>
 
         {playlists.length === 0 ? (

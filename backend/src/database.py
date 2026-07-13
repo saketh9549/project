@@ -15,6 +15,7 @@ from src.config import get_mongodb_uri
 
 
 _client = None
+_db_initialized = False
 
 def get_mongodb_client() -> MongoClient:
     """Gets or initializes the global MongoClient."""
@@ -36,6 +37,9 @@ def get_db():
 
 def init_db():
     """Initializes the MongoDB collections and creates indexes."""
+    global _db_initialized
+    if _db_initialized:
+        return
     db = get_db()
     
     # 1. catalogs collection
@@ -53,7 +57,12 @@ def init_db():
     
     # 5. playlists collection
     db.playlists.create_index("ownerEmail")
-    print("[DB] MongoDB collections and indexes initialized successfully.")
+    
+    # 6. progress collection
+    db.progress.create_index([("user_email", 1), ("video_id", 1)], unique=True)
+    
+    print("[DB] MongoDB collections and indexes initialized successfully. Status Code: 200")
+    _db_initialized = True
 
 def _map_catalog_to_sqlite_style(doc: Dict[str, Any]) -> Dict[str, Any]:
     """Helper to convert MongoDB Catalog document back to SQLite schema keys for compatibility."""
@@ -94,6 +103,7 @@ def _map_catalog_to_sqlite_style(doc: Dict[str, Any]) -> Dict[str, Any]:
         "s3_bucket": doc.get("s3Bucket", ""),
         "owner_email": doc.get("ownerEmail", ""),
         "timeline_index": timeline_index,
+        "order": doc.get("order", 0),
         "created_at": created_at_str
     }
 
@@ -315,7 +325,7 @@ def list_videos(owner_email: str = "", role: str = "user") -> List[Dict[str, Any
         query = {}
         if owner_email:
             query.update(_build_owner_filter(owner_email, role))
-        docs = db.catalogs.find(query).sort("createdAt", -1)
+        docs = db.catalogs.find(query).sort([("order", 1), ("createdAt", 1)])
         return [_map_catalog_to_sqlite_style(d) for d in docs]
     except Exception as e:
         print(f"[DB Error] Failed to list videos: {e}")
@@ -818,6 +828,7 @@ def save_quiz(title: str, created_by: str, catalog_id: str = None, playlist_id: 
         query["catalogId"] = cat_oid
     elif play_oid:
         query["playlistId"] = play_oid
+        query["catalogId"] = None
     else:
         raise ValueError("Either catalog_id or playlist_id must be provided.")
 
@@ -854,6 +865,7 @@ def get_quiz_by_target(catalog_id: str = None, playlist_id: str = None) -> Optio
             query["playlistId"] = ObjectId(playlist_id)
         except InvalidId:
             query["playlistId"] = playlist_id
+        query["catalogId"] = None
     else:
         return None
 
@@ -884,7 +896,7 @@ def delete_quiz(quiz_id: str) -> bool:
         return False
 
 def save_quiz_attempt(quiz_id: str, quiz_title: str, catalog_id: Optional[str], playlist_id: Optional[str], user_email: str, username: str, score: float, correct_count: int, total_count: int, results: list) -> str:
-    """Saves a quiz attempt in the quiz_attempts collection."""
+    """Saves a quiz attempt in the quiz_attempts collection, keeping only the best score."""
     db = get_db()
     try:
         from bson.objectid import ObjectId
@@ -909,21 +921,52 @@ def save_quiz_attempt(quiz_id: str, quiz_title: str, catalog_id: Optional[str], 
             except InvalidId:
                 play_oid = playlist_id
                 
-        doc = {
-            "quizId": q_oid,
-            "quizTitle": quiz_title,
-            "catalogId": cat_oid,
-            "playlistId": play_oid,
-            "userEmail": user_email.strip().lower() if user_email else "anonymous",
-            "username": username.strip() if username else "Anonymous",
-            "score": score,
-            "correctCount": correct_count,
-            "totalCount": total_count,
-            "results": results,
-            "submittedAt": datetime.now()
-        }
-        res = db.quiz_attempts.insert_one(doc)
-        return str(res.inserted_id)
+        clean_email = user_email.strip().lower() if user_email else "anonymous"
+        existing = db.quiz_attempts.find_one({"userEmail": clean_email, "quizId": q_oid})
+        
+        if existing:
+            attempts_count = existing.get("attemptsCount", 1) + 1
+            if score > existing.get("score", 0.0):
+                db.quiz_attempts.update_one(
+                    {"_id": existing["_id"]},
+                    {"$set": {
+                        "score": score,
+                        "correctCount": correct_count,
+                        "totalCount": total_count,
+                        "results": results,
+                        "submittedAt": datetime.now(),
+                        "attemptsCount": attempts_count,
+                        "quizTitle": quiz_title,
+                        "catalogId": cat_oid,
+                        "playlistId": play_oid,
+                        "username": username.strip() if username else "Anonymous"
+                    }}
+                )
+            else:
+                db.quiz_attempts.update_one(
+                    {"_id": existing["_id"]},
+                    {"$set": {
+                        "attemptsCount": attempts_count
+                    }}
+                )
+            return str(existing["_id"])
+        else:
+            doc = {
+                "quizId": q_oid,
+                "quizTitle": quiz_title,
+                "catalogId": cat_oid,
+                "playlistId": play_oid,
+                "userEmail": clean_email,
+                "username": username.strip() if username else "Anonymous",
+                "score": score,
+                "correctCount": correct_count,
+                "totalCount": total_count,
+                "results": results,
+                "submittedAt": datetime.now(),
+                "attemptsCount": 1
+            }
+            res = db.quiz_attempts.insert_one(doc)
+            return str(res.inserted_id)
     except Exception as e:
         print(f"[DB Error] Failed to save quiz attempt: {e}")
         return ""
@@ -956,6 +999,7 @@ def get_quiz_attempts(quiz_id: str = None, user_email: str = None) -> list:
                 "userEmail": doc.get("userEmail", ""),
                 "username": doc.get("username", ""),
                 "score": doc.get("score", 0.0),
+                "attemptsCount": doc.get("attemptsCount", 1),
                 "correctCount": doc.get("correctCount", 0),
                 "totalCount": doc.get("totalCount", 0),
                 "results": doc.get("results", []),
@@ -964,6 +1008,33 @@ def get_quiz_attempts(quiz_id: str = None, user_email: str = None) -> list:
         return attempts
     except Exception as e:
         print(f"[DB Error] Failed to get quiz attempts: {e}")
+        return []
+
+def add_watched_video(user_email: str, video_id: str) -> bool:
+    """Stores a user's watched video progress in the database."""
+    db = get_db()
+    try:
+        db.progress.update_one(
+            {"user_email": user_email.strip().lower(), "video_id": video_id},
+            {"$set": {"user_email": user_email.strip().lower(), "video_id": video_id}},
+            upsert=True
+        )
+        print(f"[DB] Video '{video_id}' marked as watched for '{user_email}'. Status Code: 200")
+        return True
+    except Exception as e:
+        print(f"[DB Error] Failed to store watched progress: {e}. Status Code: 500")
+        return False
+
+def get_watched_videos(user_email: str) -> list:
+    """Retrieves list of watched video IDs for a user from the database."""
+    db = get_db()
+    try:
+        cursor = db.progress.find({"user_email": user_email.strip().lower()})
+        ids = [doc["video_id"] for doc in cursor]
+        print(f"[DB] Retrieved {len(ids)} watched videos for '{user_email}'. Status Code: 200")
+        return ids
+    except Exception as e:
+        print(f"[DB Error] Failed to retrieve watched progress: {e}. Status Code: 500")
         return []
 
 

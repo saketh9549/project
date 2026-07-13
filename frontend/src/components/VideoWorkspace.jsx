@@ -81,7 +81,6 @@ export default function VideoWorkspace({ currentUser, showSuccess, showError }) 
   });
 
   const [loading, setLoading] = useState(true);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showCertificate, setShowCertificate] = useState(false);
 
   // Split resizer state
@@ -493,6 +492,7 @@ export default function VideoWorkspace({ currentUser, showSuccess, showError }) 
             overallSummaryLoading={overallSummaryLoading}
             onGenerateOverallSummary={handleGenerateOverallSummary}
             currentTime={currentTime}
+            currentUser={currentUser}
           />
         </aside>
 
@@ -527,17 +527,13 @@ export default function VideoWorkspace({ currentUser, showSuccess, showError }) 
             </span>
           </div>
         </div>
-        <button className="text-xs text-gray-400 hover:text-white flex items-center gap-1 cursor-pointer transition-all">
-          <span>☆ Rate this course</span>
-        </button>
       </div>
 
       {/* Workspace split screen columns: Left Sidebar Accordion + Right Workspace */}
       <div className="flex-grow flex-1 flex flex-col lg:flex-row min-h-0 overflow-hidden relative gap-6">
 
         {/* Left Column: LMS Course Outline Accordion (Image 2 style) */}
-        {sidebarOpen && (
-          <aside className="w-full lg:w-80 shrink-0 glass-panel p-4 rounded-2xl flex flex-col gap-4 min-h-0 overflow-y-auto select-none">
+        <aside className="w-full lg:w-80 shrink-0 glass-panel p-4 rounded-2xl flex flex-col gap-4 min-h-0 overflow-y-auto select-none">
             {/* Module course progress card header */}
             <div className={`p-4 rounded-xl bg-gradient-to-br ${meta.bgGradient} border border-white/5 shadow-md flex flex-col gap-3 relative overflow-hidden`}>
               <div className="absolute top-0 right-0 w-16 h-16 bg-white/5 rounded-full blur-xl" />
@@ -777,7 +773,6 @@ export default function VideoWorkspace({ currentUser, showSuccess, showError }) 
               </div>
             </div>
           </aside>
-        )}
 
         {/* Right Column: Active Content Port (Image 2 style Workspace layout) */}
         <div className="flex-grow flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden relative">
@@ -828,6 +823,7 @@ export default function VideoWorkspace({ currentUser, showSuccess, showError }) 
                   overallSummaryLoading={overallSummaryLoading}
                   onGenerateOverallSummary={handleGenerateOverallSummary}
                   currentTime={currentTime}
+                  currentUser={currentUser}
                 />
               </aside>
 

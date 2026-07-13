@@ -91,6 +91,27 @@ function AppContent() {
     }
   };
 
+  const fetchWatchedProgress = async () => {
+    if (!currentUser) {
+      localStorage.setItem('summarix_watched', JSON.stringify([]));
+      window.dispatchEvent(new Event('summarix_watched_change'));
+      return;
+    }
+    try {
+      const email = currentUser.email || 'anonymous@summarix.io';
+      const role = currentUser.role || 'user';
+      const response = await fetch(apiUrl(`/api/progress?owner_email=${encodeURIComponent(email)}&role=${role}`));
+      if (response.ok) {
+        const data = await response.json();
+        const watchedIds = data.watched_video_ids || [];
+        localStorage.setItem('summarix_watched', JSON.stringify(watchedIds));
+        window.dispatchEvent(new Event('summarix_watched_change'));
+      }
+    } catch (err) {
+      console.error("Failed to load watched progress from DB:", err);
+    }
+  };
+
   // Apply theme class to document root
   useEffect(() => {
     if (theme === 'light') {
@@ -105,6 +126,7 @@ function AppContent() {
   useEffect(() => {
     fetchVideos();
     fetchPlaylists();
+    fetchWatchedProgress();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser]);
 
@@ -307,6 +329,12 @@ function AppContent() {
                 type="button"
                 onClick={() => {
                   localStorage.removeItem('summarix_user');
+                  localStorage.removeItem('summarix_watched');
+                  localStorage.removeItem('summarix_quiz_scores');
+                  localStorage.removeItem('summarix_completed_quizzes');
+                  window.dispatchEvent(new Event('summarix_watched_change'));
+                  window.dispatchEvent(new Event('summarix_quiz_scores_change'));
+                  window.dispatchEvent(new Event('summarix_completed_change'));
                   setCurrentUser(null);
                   navigate('/home');
                 }}
@@ -610,7 +638,7 @@ function AppContent() {
                 showError={showError}
               />
             } />
-            <Route path="/quiz/:id" element={
+             <Route path="/quiz/:id" element={
               <QuizPage
                 currentUser={currentUser}
                 showSuccess={showSuccess}
@@ -619,6 +647,22 @@ function AppContent() {
               />
             } />
             <Route path="/quiz/:id/:mode" element={
+              <QuizPage
+                currentUser={currentUser}
+                showSuccess={showSuccess}
+                showError={showError}
+                playlists={playlists}
+              />
+            } />
+            <Route path="/quiz/course/:playlistId" element={
+              <QuizPage
+                currentUser={currentUser}
+                showSuccess={showSuccess}
+                showError={showError}
+                playlists={playlists}
+              />
+            } />
+            <Route path="/quiz/course/:playlistId/:mode" element={
               <QuizPage
                 currentUser={currentUser}
                 showSuccess={showSuccess}

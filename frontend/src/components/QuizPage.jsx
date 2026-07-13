@@ -5,10 +5,11 @@ import QuizCreator from './QuizCreator';
 import QuizPlayer from './QuizPlayer';
 
 export default function QuizPage({ currentUser, showSuccess, showError, playlists = [] }) {
-  const { id, mode } = useParams();
+  const { id, playlistId, mode } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
   const isAdmin = currentUser?.role === 'admin';
+  const isCourseQuiz = !!playlistId;
 
   const [quiz, setQuiz] = useState(null);
   const [quizTitle, setQuizTitle] = useState('');
@@ -18,35 +19,76 @@ export default function QuizPage({ currentUser, showSuccess, showError, playlist
   const [aiQuestions, setAiQuestions] = useState([]);
   const [videoTitle, setVideoTitle] = useState('');
   const [folderName, setFolderName] = useState('');
+  const [videoPlaylistId, setVideoPlaylistId] = useState(null);
+  const [nextVideo, setNextVideo] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const fetchQuizAndVideo = async () => {
     setLoading(true);
     try {
-      // 1. Fetch video metadata to display title
       const email = currentUser?.email || 'anonymous@summarix.io';
       const role = currentUser?.role || 'user';
-      const videoRes = await fetch(apiUrl(`/api/videos/${id}?owner_email=${encodeURIComponent(email)}&role=${role}`));
+
       let fetchedTitle = 'Workspace Media';
       let resolvedFolderName = '';
-      if (videoRes.ok) {
-        const videoData = await videoRes.json();
-        if (videoData.video) {
-          fetchedTitle = videoData.video.file_name;
-          const plId = videoData.video.playlist_id;
-          if (plId && Array.isArray(playlists)) {
-            const folderObj = playlists.find(p => p && (p.id === plId || p._id === plId));
-            if (folderObj) {
-              resolvedFolderName = folderObj.name;
+      let quizUrl = '';
+      let currentPlId = null;
+
+      if (isCourseQuiz) {
+        if (playlistId && Array.isArray(playlists)) {
+          const folderObj = playlists.find(p => p && (p.id === playlistId || p._id === playlistId));
+          if (folderObj) {
+            fetchedTitle = `Course Final Assessment: ${folderObj.name}`;
+            resolvedFolderName = folderObj.name;
+          }
+        }
+        quizUrl = apiUrl(`/api/quizzes?playlist_id=${playlistId}`);
+      } else {
+        const videoRes = await fetch(apiUrl(`/api/videos/${id}?owner_email=${encodeURIComponent(email)}&role=${role}`));
+        if (videoRes.ok) {
+          const videoData = await videoRes.json();
+          if (videoData.video) {
+            fetchedTitle = videoData.video.file_name;
+            const plId = videoData.video.playlist_id;
+            setVideoPlaylistId(plId);
+            currentPlId = plId;
+            if (plId && Array.isArray(playlists)) {
+              const folderObj = playlists.find(p => p && (p.id === plId || p._id === plId));
+              if (folderObj) {
+                resolvedFolderName = folderObj.name;
+              }
             }
           }
         }
+        quizUrl = apiUrl(`/api/quizzes?video_id=${id}`);
       }
+
       setVideoTitle(fetchedTitle);
       setFolderName(resolvedFolderName);
 
-      // 2. Fetch quiz details
-      const quizRes = await fetch(apiUrl(`/api/quizzes?video_id=${id}`));
+      // Fetch next video in playlist if applicable
+      if (currentPlId && !isCourseQuiz) {
+        try {
+          const allVideosRes = await fetch(apiUrl(`/api/videos?owner_email=${encodeURIComponent(email)}&role=${role}`));
+          if (allVideosRes.ok) {
+            const allVideos = await allVideosRes.json();
+            const playlistVideos = allVideos.filter(v => v && v.playlist_id === currentPlId && v.upload_status === 'indexed');
+            const currentVideoIdx = playlistVideos.findIndex(v => v.id === id);
+            if (currentVideoIdx !== -1 && currentVideoIdx < playlistVideos.length - 1) {
+              setNextVideo(playlistVideos[currentVideoIdx + 1]);
+            } else {
+              setNextVideo(null);
+            }
+          }
+        } catch (err) {
+          console.error("Failed to load playlist videos for next navigation", err);
+        }
+      } else {
+        setNextVideo(null);
+      }
+
+      // Fetch quiz details
+      const quizRes = await fetch(quizUrl);
       if (quizRes.ok) {
         const quizData = await quizRes.json();
         setQuiz(quizData);
@@ -55,7 +97,7 @@ export default function QuizPage({ currentUser, showSuccess, showError, playlist
         setManualQuestions(quizData.questions || []);
       } else if (quizRes.status === 404) {
         setQuiz(null); // No quiz exists yet
-        setQuizTitle(`Quiz: ${fetchedTitle}`);
+        setQuizTitle(isCourseQuiz ? fetchedTitle : `Quiz: ${fetchedTitle}`);
         setQuizDescription('');
         setManualQuestions([]);
       } else {
@@ -69,18 +111,22 @@ export default function QuizPage({ currentUser, showSuccess, showError, playlist
   };
 
   useEffect(() => {
-    if (id) {
+    if (id || playlistId) {
       fetchQuizAndVideo();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, currentUser, playlists]);
+  }, [id, playlistId, currentUser, playlists]);
 
   // If a quiz already exists and no specific mode is chosen, redirect to the manual editor mode by default
   useEffect(() => {
-    if (id && !mode && quiz && !loading) {
-      navigate(`/quiz/${id}/manual`, { replace: true, state: location.state });
+    if ((id || playlistId) && !mode && quiz && !loading) {
+      if (isCourseQuiz) {
+        navigate(`/quiz/course/${playlistId}/manual`, { replace: true, state: location.state });
+      } else {
+        navigate(`/quiz/${id}/manual`, { replace: true, state: location.state });
+      }
     }
-  }, [id, mode, quiz, loading, navigate, location.state]);
+  }, [id, playlistId, isCourseQuiz, mode, quiz, loading, navigate, location.state]);
 
   const handleSaveQuiz = async (updatedQuiz) => {
     try {
@@ -93,7 +139,8 @@ export default function QuizPage({ currentUser, showSuccess, showError, playlist
         body: JSON.stringify({
           title: updatedQuiz.title,
           description: updatedQuiz.description,
-          catalogId: id,
+          catalogId: isCourseQuiz ? null : id,
+          playlistId: isCourseQuiz ? playlistId : videoPlaylistId,
           questions: updatedQuiz.questions
         })
       });
@@ -101,8 +148,16 @@ export default function QuizPage({ currentUser, showSuccess, showError, playlist
       if (!response.ok) throw new Error(data.detail || 'Failed to save quiz');
 
       showSuccess('Quiz saved successfully!');
-      // Redirect back to the video workspace
-      navigate(`/video/${id}`, { state: location.state });
+      
+      // Notify other views of the score updates
+      window.dispatchEvent(new Event('summarix_quiz_scores_change'));
+
+      // Redirect back
+      if (isCourseQuiz) {
+        navigate(`/course/${playlistId}`, { state: location.state });
+      } else {
+        navigate(`/video/${id}`, { state: location.state });
+      }
     } catch (err) {
       showError('Save failed: ' + err.message);
     }
@@ -116,21 +171,31 @@ export default function QuizPage({ currentUser, showSuccess, showError, playlist
       showSuccess('Deleting quiz...');
       const email = currentUser?.email || 'anonymous@summarix.io';
       const role = currentUser?.role || 'user';
-      const response = await fetch(apiUrl(`/api/quizzes?video_id=${id}&owner_email=${encodeURIComponent(email)}&role=${role}`), {
+      const queryParam = isCourseQuiz ? `playlist_id=${playlistId}` : `video_id=${id}`;
+      const response = await fetch(apiUrl(`/api/quizzes?${queryParam}&owner_email=${encodeURIComponent(email)}&role=${role}`), {
         method: 'DELETE'
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail || 'Failed to delete quiz');
 
       showSuccess('Quiz deleted successfully.');
+      
+      // Notify other views of the score updates
+      window.dispatchEvent(new Event('summarix_quiz_scores_change'));
+
       setQuiz(null);
       setManualQuestions([]);
       setUploadQuestions([]);
       setAiQuestions([]);
-      setQuizTitle(`Quiz: ${videoTitle}`);
+      setQuizTitle(isCourseQuiz ? `Course Final Assessment` : `Quiz: ${videoTitle}`);
       setQuizDescription('');
+      
       // Go back to selection mode
-      navigate(`/quiz/${id}`, { state: location.state });
+      if (isCourseQuiz) {
+        navigate(`/quiz/course/${playlistId}`, { state: location.state });
+      } else {
+        navigate(`/quiz/${id}`, { state: location.state });
+      }
     } catch (err) {
       showError('Delete failed: ' + err.message);
     }
@@ -148,6 +213,8 @@ export default function QuizPage({ currentUser, showSuccess, showError, playlist
     );
   }
 
+  const backTarget = isCourseQuiz ? `/course/${playlistId}` : `/video/${id}`;
+
   // 1. User view: Player Mode
   if (!isAdmin) {
     if (!quiz) {
@@ -160,13 +227,13 @@ export default function QuizPage({ currentUser, showSuccess, showError, playlist
           </div>
           <h3 className="text-lg font-bold font-display text-white mb-2">No Quiz Available</h3>
           <p className="text-gray-400 text-xs leading-relaxed mb-6">
-            An administrator has not created a multiple-choice practice quiz for <strong>{videoTitle}</strong> yet.
+            An administrator has not created a final course assessment for <strong>{videoTitle}</strong> yet.
           </p>
           <button
-            onClick={() => navigate(`/video/${id}`, { state: location.state })}
+            onClick={() => navigate(backTarget, { state: location.state })}
             className="px-5 py-2.5 bg-gray-800 hover:bg-gray-700 text-white font-semibold text-xs rounded-xl border border-white/5 shadow-md cursor-pointer transition-all active:scale-[0.98]"
           >
-            Back to Workspace
+            Back to Course Syllabus
           </button>
         </div>
       );
@@ -177,7 +244,11 @@ export default function QuizPage({ currentUser, showSuccess, showError, playlist
         <QuizPlayer
           quiz={quiz}
           videoTitle={videoTitle}
-          onBackToVideo={() => navigate(`/video/${id}`, { state: location.state })}
+          onBackToVideo={() => navigate(backTarget, { state: location.state })}
+          nextVideoId={nextVideo?.id}
+          nextVideoTitle={nextVideo?.file_name}
+          isCourseQuiz={isCourseQuiz}
+          currentUser={currentUser}
         />
       </div>
     );
@@ -202,8 +273,9 @@ export default function QuizPage({ currentUser, showSuccess, showError, playlist
         folderName={folderName}
         onSave={handleSaveQuiz}
         onDelete={handleDeleteQuiz}
-        onBack={() => navigate(`/video/${id}`, { state: location.state })}
-        catalogId={id}
+        onBack={() => navigate(backTarget, { state: location.state })}
+        catalogId={isCourseQuiz ? null : id}
+        playlistId={isCourseQuiz ? playlistId : videoPlaylistId}
         onReload={fetchQuizAndVideo}
         currentUser={currentUser}
         mode={mode}

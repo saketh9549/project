@@ -1,9 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { apiUrl } from '../lib/api';
+import { downloadCertificatePdf } from '../lib/certificatePdf';
 
-export default function QuizPlayer({ quiz, videoTitle, onBackToVideo, onQuizComplete }) {
+export default function QuizPlayer({ quiz, onBackToVideo, onQuizComplete, nextVideoId, nextVideoTitle, isCourseQuiz, currentUser }) {
+  const navigate = useNavigate();
   const questions = quiz.get?.('questions') || quiz.questions || [];
   const totalQuestions = questions.length;
+  const [showCertificate, setShowCertificate] = useState(false);
+  const certificateRef = useRef(null);
+  const [isDownloadingCertificate, setIsDownloadingCertificate] = useState(false);
 
   const [currentIdx, setCurrentIdx] = useState(0);
   const [answers, setAnswers] = useState(() => Array(questions.length).fill(null));
@@ -64,17 +70,17 @@ export default function QuizPlayer({ quiz, videoTitle, onBackToVideo, onQuizComp
 
       // Save score to local storage & dispatch change event
       const currentScores = JSON.parse(localStorage.getItem('summarix_quiz_scores') || '{}');
-      const videoId = quiz.catalogId || quiz.catalog_id;
-      if (videoId) {
-        currentScores[videoId] = Math.max(currentScores[videoId] || 0, data.score);
+      const targetId = quiz.catalogId || quiz.catalog_id || quiz.playlistId || quiz.playlist_id;
+      if (targetId) {
+        currentScores[targetId] = Math.max(currentScores[targetId] || 0, data.score);
         localStorage.setItem('summarix_quiz_scores', JSON.stringify(currentScores));
       }
       
       // Also add to completed quizzes if passed with >= 75%
-      if (data.score >= 75 && videoId) {
+      if (data.score >= 75 && targetId) {
         const completed = JSON.parse(localStorage.getItem('summarix_completed_quizzes') || '[]');
-        if (!completed.includes(videoId)) {
-          completed.push(videoId);
+        if (!completed.includes(targetId)) {
+          completed.push(targetId);
           localStorage.setItem('summarix_completed_quizzes', JSON.stringify(completed));
           window.dispatchEvent(new Event('summarix_completed_change'));
         }
@@ -103,6 +109,17 @@ export default function QuizPlayer({ quiz, videoTitle, onBackToVideo, onQuizComp
     setShowReview(false);
   };
 
+  const handleDownloadCertificate = async () => {
+    setIsDownloadingCertificate(true);
+    try {
+      await downloadCertificatePdf(certificateRef.current, `${quiz.title || 'summarix'}-certificate`);
+    } catch (error) {
+      alert(error.message || 'Unable to download the certificate. Please try again.');
+    } finally {
+      setIsDownloadingCertificate(false);
+    }
+  };
+
   // Performance badges mapping
   const getPerformanceDetails = (score) => {
     if (score >= 90) return { title: 'Master', color: 'text-emerald-400', desc: 'Outstanding achievement! You have mastered this content.' };
@@ -129,7 +146,8 @@ export default function QuizPlayer({ quiz, videoTitle, onBackToVideo, onQuizComp
     const strokeDashoffset = circumference - (scoreAnimationVal / 100) * circumference;
 
     return (
-      <div className="flex-grow flex-1 flex flex-col gap-6 p-6 glass-panel rounded-2xl border border-white/5 shadow-2xl min-h-0 overflow-y-auto max-w-2xl mx-auto w-full animate-quiz-slide">
+      <>
+        <div className="flex-grow flex-1 flex flex-col gap-6 p-6 glass-panel rounded-2xl border border-white/5 shadow-2xl min-h-0 overflow-y-auto max-w-2xl mx-auto w-full animate-quiz-slide">
         <div className="text-center border-b border-white/5 pb-5">
           <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest font-mono">
             Practice Result
@@ -209,11 +227,10 @@ export default function QuizPlayer({ quiz, videoTitle, onBackToVideo, onQuizComp
         </div>
 
         {/* Action Controls */}
-        <div className="flex gap-3 justify-center">
+        <div className="flex flex-wrap gap-3 justify-center">
           <button
             onClick={handleRetake}
-            className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow-md cursor-pointer transition-all active:scale-[0.98]"
-
+            className="px-5 py-2.5 bg-red-600 hover:bg-red-500 text-white font-bold text-xs rounded-xl shadow-md cursor-pointer transition-all active:scale-[0.98]"
           >
             Retake Quiz
           </button>
@@ -223,6 +240,26 @@ export default function QuizPlayer({ quiz, videoTitle, onBackToVideo, onQuizComp
           >
             Back to Video Workspace
           </button>
+          {isCourseQuiz && gradedResult.score >= 75 && (
+            <button
+              onClick={() => setShowCertificate(true)}
+              className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-bold text-xs rounded-xl shadow-md cursor-pointer transition-all active:scale-[0.98] flex items-center gap-1.5 animate-pulse"
+            >
+              <span>🎓</span> Claim Certificate
+            </button>
+          )}
+          {nextVideoId && (
+            <button
+              onClick={() => navigate(`/video/${nextVideoId}`)}
+              className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-md cursor-pointer transition-all active:scale-[0.98] flex items-center gap-1.5"
+              title={`Next Lesson: ${nextVideoTitle}`}
+            >
+              <span>Next Lesson</span>
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          )}
         </div>
 
         {/* Detailed Solutions Review Collapsible Accordion */}
@@ -299,6 +336,171 @@ export default function QuizPlayer({ quiz, videoTitle, onBackToVideo, onQuizComp
           )}
         </div>
       </div>
+
+      {showCertificate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md overflow-y-auto">
+          <style>{`
+            @media print {
+              @page {
+                size: landscape;
+                margin: 0;
+              }
+              body {
+                margin: 0;
+                background: white;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+              }
+              .cert-modal-overlay {
+                position: absolute !important;
+                inset: 0 !important;
+                background: white !important;
+                padding: 0 !important;
+                width: 100vw !important;
+                height: 100vh !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+              }
+              .cert-card-container {
+                border: none !important;
+                box-shadow: none !important;
+                width: 100vw !important;
+                height: 100vh !important;
+                max-width: none !important;
+                border-radius: 0 !important;
+              }
+            }
+          `}</style>
+
+          <div className="cert-modal-overlay relative flex items-center justify-center w-full max-w-[760px] animate-quiz-slide">
+            {/* Close Button */}
+            <button
+              onClick={() => setShowCertificate(false)}
+              className="absolute -top-12 right-0 p-2 text-white/70 hover:text-white font-sans print:hidden bg-white/10 hover:bg-white/20 rounded-full transition-all cursor-pointer flex items-center justify-center z-50"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            {/* The Certificate card */}
+            <div ref={certificateRef} className="cert-card-container relative w-full aspect-[1.414/1] bg-white text-slate-800 rounded-3xl overflow-hidden shadow-2xl border border-slate-200/50 flex flex-row print:fixed print:inset-0 print:w-screen print:h-screen print:rounded-none print:border-none print:shadow-none">
+              
+              {/* Left Panel Curved Navy & Gold Frame */}
+              <div className="absolute top-0 left-0 h-full w-[260px] z-0 overflow-hidden pointer-events-none print:w-[32.5%]">
+                <svg className="w-full h-full" viewBox="0 0 260 600" preserveAspectRatio="none">
+                  {/* Dark navy sweep */}
+                  <path d="M 0 0 L 150 0 Q 210 300 240 600 L 0 600 Z" fill="#0c2340" />
+                  {/* Gold sweep line */}
+                  <path d="M 150 0 Q 210 300 240 600 L 250 600 Q 220 300 160 0 Z" fill="#dca842" />
+                </svg>
+                
+                {/* Gold Rosette Seal Overlay in top-left */}
+                <div className="absolute top-10 left-10 z-10">
+                  <svg className="w-24 h-24 drop-shadow-xl" viewBox="0 0 100 100">
+                    {/* Ribbon tails */}
+                    <path d="M 35 60 L 20 95 L 38 85 L 48 70 Z" fill="#e5ad35" />
+                    <path d="M 65 60 L 80 95 L 62 85 L 52 70 Z" fill="#e5ad35" />
+                    <path d="M 35 60 L 28 80 L 38 75 Z" fill="#b9881e" />
+                    <path d="M 65 60 L 72 80 L 62 75 Z" fill="#b9881e" />
+                    
+                    {/* Scalloped pleated gold rosette points */}
+                    <g fill="#f1b319" stroke="#cfa018" strokeWidth="0.5">
+                      {[...Array(24)].map((_, i) => (
+                        <path 
+                          key={i} 
+                          d="M 50 12 L 53 18 L 47 18 Z" 
+                          transform={`rotate(${i * 15} 50 50)`} 
+                        />
+                      ))}
+                    </g>
+                    {/* Inner gold rings */}
+                    <circle cx="50" cy="50" r="28" fill="#fcca29" stroke="#b9881e" strokeWidth="1.5" />
+                    <circle cx="50" cy="50" r="23" fill="#ffe066" />
+                    {/* White highlight reflection */}
+                    <path d="M 33 39 A 20 20 0 0 1 67 39 A 20 20 0 0 0 33 39 Z" fill="#ffffff" opacity="0.45" />
+                  </svg>
+                </div>
+              </div>
+
+              {/* Gold Inner Frame Border */}
+              <div className="absolute inset-5 border-[3px] border-[#dca842] rounded-md pointer-events-none z-10" />
+
+              {/* Abstract Wavy Lines in White Background */}
+              <svg className="absolute inset-0 w-full h-full opacity-[0.03] pointer-events-none z-0" viewBox="0 0 800 600" preserveAspectRatio="none">
+                <path d="M 300 0 C 400 200 700 300 800 150 M 350 0 C 450 250 750 350 800 200 M 400 0 C 500 300 800 400 800 250" fill="none" stroke="#000000" strokeWidth="3" />
+                <path d="M 200 600 C 300 400 600 300 800 450 M 250 600 C 350 450 650 350 800 500 M 300 600 C 400 500 700 400 800 550" fill="none" stroke="#000000" strokeWidth="3" />
+              </svg>
+
+              {/* Main Content Area */}
+              <div className="relative flex-1 h-full z-20 pl-[290px] pr-14 py-16 flex flex-col justify-between items-center text-center font-serif">
+                
+                {/* Title header */}
+                <div className="flex flex-col items-center mt-2">
+                  <h1 className="text-[44px] font-bold text-[#0c2340] leading-none mb-1 tracking-tight">
+                    Certificate
+                  </h1>
+                  <h2 className="font-sans text-[10px] uppercase tracking-[0.28em] text-slate-500 font-bold">
+                    of Recognition
+                  </h2>
+                </div>
+
+                {/* Presentation Subtext */}
+                <div className="flex flex-col items-center w-full">
+                  <p className="font-sans text-[11px] text-slate-400 italic mb-5 tracking-wide">
+                    This certificate is presented to
+                  </p>
+                  
+                  {/* Dynamic Student/User Name */}
+                  <h3 className="text-[36px] font-semibold text-[#c89228] tracking-wide capitalize leading-tight mb-5 font-serif select-all">
+                    {currentUser?.username || currentUser?.name || currentUser?.email || 'Successful Graduate'}
+                  </h3>
+                  
+                  {/* Dynamic Course Name Description */}
+                  <p className="font-sans text-[12px] text-[#334155] leading-relaxed max-w-[440px] mb-6">
+                    in recognition of their successful completion of the <span className="font-semibold text-slate-900">{(quiz.title || 'Vite Course Playlist').replace(/(?:\s+practice)?\s+quiz/gi, '').replace(/\s+final\s+course\s+assessment/gi, '').trim()}</span> certification program on <span className="font-semibold text-slate-900">{new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}</span>.
+                  </p>
+                </div>
+
+                {/* Divider Line & Disclaimer */}
+                <div className="flex flex-col items-center w-full mb-2">
+                  <div className="w-[180px] h-[1px] bg-slate-200 mb-5" />
+                  <p className="font-sans text-[8.5px] text-slate-400 leading-normal max-w-[460px] text-justify md:text-center px-4">
+                    This certificate attests to the learner's completion of an online course. It does not constitute formal enrollment at any university or entity and does not itself grant academic credit, grades, or a degree. Institutions or organizations may, at their discretion, recognize this learning toward their own programs or credentials.
+                  </p>
+                </div>
+
+              </div>
+
+            </div>
+
+            {/* Print and Back Actions Row */}
+            <div className="absolute -bottom-16 left-0 right-0 flex justify-center gap-3 print:hidden z-50">
+              <button
+                onClick={() => navigate('/')}
+                className="px-6 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-sans font-bold text-xs rounded-xl shadow-md border border-slate-200 dark:border-slate-700 cursor-pointer transition-all active:scale-[0.98] flex items-center gap-1.5"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                </svg>
+                <span>Back to Home</span>
+              </button>
+              <button
+                onClick={handleDownloadCertificate}
+                disabled={isDownloadingCertificate}
+                className="px-6 py-2.5 bg-amber-600 hover:bg-amber-500 disabled:opacity-60 text-white font-sans font-bold text-xs rounded-xl shadow-md cursor-pointer transition-all active:scale-[0.98] flex items-center gap-1.5"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                </svg>
+                <span>{isDownloadingCertificate ? 'Preparing PDF…' : 'Download PDF'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      </>
     );
   }
 

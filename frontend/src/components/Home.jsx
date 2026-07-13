@@ -1,21 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import VideoIndexer from './VideoIndexer';
 import { apiUrl } from '../lib/api';
 
 export default function Home({
   currentUser,
   videos,
   playlists,
-  fetchPlaylists,
-  indexingLoading,
-  pendingAutoSelectId,
-  onIndexStart,
-  onIndexSuccess,
-  onIndexError,
-  onDeleteVideo,
-  showSuccess,
-  showError,
   myWorkspaceMode = false
 }) {
   const navigate = useNavigate();
@@ -76,10 +66,6 @@ export default function Home({
     fetchAllData();
   }, [isAdmin, videos, playlists, currentUser]);
 
-  const handleSelectVideo = (video) => {
-    navigate(`/video/${video.id}`, { state: { from: myWorkspaceMode ? '/my-workspace' : '/home' } });
-  };
-
   const handleSelectFolder = (pl) => {
     navigate(`/course/${pl.id}`, { state: { from: myWorkspaceMode ? '/my-workspace' : '/home' } });
   };
@@ -134,14 +120,6 @@ export default function Home({
             <span onClick={() => navigate('/catalog')} className="text-xs text-indigo-400 font-bold hover:underline cursor-pointer select-none">
               See all
             </span>
-            <div className="flex gap-2">
-              <button className="w-8 h-8 rounded-full border border-white/10 hover:bg-white/5 text-gray-400 hover:text-white flex items-center justify-center cursor-pointer transition-all select-none">
-                &lt;
-              </button>
-              <button className="w-8 h-8 rounded-full border border-white/10 hover:bg-white/5 text-gray-400 hover:text-white flex items-center justify-center cursor-pointer transition-all select-none">
-                &gt;
-              </button>
-            </div>
           </div>
         </div>
 
@@ -164,8 +142,10 @@ export default function Home({
               const scoresForPlaylist = playlistQuizScores[pl.id] || {};
               const totalQuizzes = quizzesInPlaylist.length;
               const completedQuizzesCount = quizzesInPlaylist.filter(q => {
-                const score = scoresForPlaylist[q.catalog_id] || 0;
-                const isCompletedInLocal = Array.isArray(completedQuizzes) && completedQuizzes.includes(q.catalog_id);
+                const isCourseQuiz = !q.catalog_id;
+                const key = isCourseQuiz ? pl.id : q.catalog_id;
+                const score = scoresForPlaylist[key] || 0;
+                const isCompletedInLocal = Array.isArray(completedQuizzes) && completedQuizzes.includes(key);
                 return score >= 75 || isCompletedInLocal;
               }).length;
 

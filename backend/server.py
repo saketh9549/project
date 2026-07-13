@@ -52,9 +52,10 @@ def run_pipeline_task(video_id: str, payload_dict: dict, owner_email: str):
             video_url = generate_s3_download_url(s3_key, expires_in=3600)
             if not video_url:
                 db.update_upload_status(video_id, "failed_uploading")
+                print(f"[Queue Worker] Failed to generate S3 URL. Status Code: 500")
                 raise ValueError("Failed to generate S3 pre-signed URL for video streaming.")
                 
-            print(f"[Queue Worker] Indexing S3 video via direct streaming: {s3_key} ...")
+            print(f"[Queue Worker] Indexing S3 video '{safe_filename}' initiated. Status Code: 102")
             index_video(
                 video_url,
                 language=language,
@@ -80,18 +81,19 @@ def run_pipeline_task(video_id: str, payload_dict: dict, owner_email: str):
                 grid_out = fs.get(ObjectId(grid_fs_id))
             except Exception as e:
                 db.update_upload_status(video_id, "failed_uploading")
+                print(f"[Queue Worker] GridFS file not found. Status Code: 404")
                 raise ValueError(f"GridFS file not found: {e}")
                 
             temp_dir = get_temp_dir()
             safe_filename = os.path.basename(grid_out.filename)
             temp_video_path = os.path.join(temp_dir, f"temp_{grid_fs_id}_{safe_filename}")
             
-            print(f"[Queue Worker] Buffering GridFS file to temp path: {temp_video_path} ...")
+            print(f"[Queue Worker] Buffering GridFS file to temp path: {temp_video_path}...")
             with open(temp_video_path, 'wb') as temp_file:
                 temp_file.write(grid_out.read())
                 
             try:
-                print(f"[Queue Worker] Indexing GridFS video: {grid_out.filename} ...")
+                print(f"[Queue Worker] Indexing GridFS video '{grid_out.filename}' initiated. Status Code: 102")
                 index_video(
                     temp_video_path,
                     language=language,
@@ -115,7 +117,7 @@ def run_pipeline_task(video_id: str, payload_dict: dict, owner_email: str):
             if not resolved_path:
                 raise ValueError(f"Local video file not found at path: {video_path}")
                 
-            print(f"[Queue Worker] Indexing video: {resolved_path} ...")
+            print(f"[Queue Worker] Indexing local video '{os.path.basename(resolved_path)}' initiated. Status Code: 102")
             index_video(resolved_path, language=language, owner_email=owner_email, playlist_id=playlist_id, upload_status="indexing")
             
         # Common post-index steps
@@ -124,7 +126,7 @@ def run_pipeline_task(video_id: str, payload_dict: dict, owner_email: str):
             print(f"[Queue Worker] Automatically analyzing video ID: {video_id} ...")
             analyse_video(video_id, owner_email=owner_email)
         except Exception as ex:
-            print(f"[Queue Worker Warning] Automatic boundary analysis failed: {ex}")
+            print(f"[Queue Worker Warning] Automatic boundary analysis failed: {ex}. Status Code: 500")
             db.update_upload_status(video_id, "failed_summarizing")
             raise ex
             
@@ -132,16 +134,17 @@ def run_pipeline_task(video_id: str, payload_dict: dict, owner_email: str):
             print(f"[Queue Worker] Automatically generating overall summary for video ID: {video_id} ...")
             generate_overall_summary(video_id, owner_email=owner_email)
         except Exception as ex:
-            print(f"[Queue Worker Warning] Automatic overall summary generation failed: {ex}")
+            print(f"[Queue Worker Warning] Automatic overall summary generation failed: {ex}. Status Code: 500")
             db.update_upload_status(video_id, "failed_summarizing")
             raise ex
             
         db.update_upload_status(video_id, "indexed")
+        print(f"[Queue Worker] Summarization & boundary analysis completed successfully for video ID {video_id}. Status Code: 200")
         
     except VideoCancelledException as vce:
         raise vce
     except Exception as e:
-        print(f"[Queue Worker Error] Failed to complete background indexing pipeline for video {video_id}: {e}")
+        print(f"[Queue Worker Error] Failed to complete background indexing pipeline for video {video_id}: {e}. Status Code: 500")
         # Only overwrite to general 'failed' if not already set to a granular stage-specific failure status
         current = db.get_video(video_id, owner_email)
         if current and not current.get("upload_status", "").startswith("failed_"):
@@ -159,7 +162,7 @@ def queue_worker():
             # Check if video was cancelled/deleted from database before starting
             db.init_db()
             if not db.get_video(video_id, owner_email):
-                print(f"[Queue Worker] Video {video_id} was deleted/cancelled before starting. Skipping.")
+                print(f"[Queue Worker] Video {video_id} was deleted/cancelled before starting. Skipping. Status Code: 404")
                 continue
                 
             print(f"[Queue Worker] Starting background processing for video: {video_id} ...")
@@ -170,7 +173,7 @@ def queue_worker():
             # Run the processing pipeline
             run_pipeline_task(video_id, payload_dict, owner_email)
             
-            print(f"[Queue Worker] Completed processing for video: {video_id}")
+            print(f"[Queue Worker] Video processing pipeline finished successfully. Video Status Code: 200")
         except VideoCancelledException as vce:
             print(f"[Queue Worker Info] Processing of video {video_id} was cancelled by user: {vce}")
         except Exception as e:
@@ -484,6 +487,7 @@ def list_videos(
                 "duration": v["duration"],
                 "duration_str": format_timestamp(v["duration"]),
                 "owner_email": v.get("owner_email", ""),
+                "order": v.get("order", 0),
                 "created_at": v["created_at"]
             })
         return video_list
@@ -617,16 +621,17 @@ async def upload_endpoint(
         if not s3_bucket:
             raise HTTPException(status_code=500, detail="S3 bucket configuration is missing on server")
             
-        print(f"[Server API] Uploading file '{safe_filename}' to S3 Key '{s3_key}'...")
+        print(f"[Server API] Video upload initiated. S3 Key: '{s3_key}'. Status Code: 100")
         
         loop = asyncio.get_running_loop()
         reader = AsyncStreamReader(request, loop)
         
         success = await run_in_threadpool(upload_file_stream_to_s3, reader, s3_key, content_type)
         if not success:
+            print(f"[Server API] Video upload failed for '{safe_filename}'. Status Code: 500")
             raise HTTPException(status_code=500, detail="Upload failed or was interrupted")
             
-        print(f"[Server API] S3 Upload completed. Key: {s3_key}")
+        print(f"[Server API] Video '{safe_filename}' uploaded successfully. Status Code: 200")
         return {
             "success": True,
             "s3_key": s3_key,
@@ -727,6 +732,7 @@ async def index_endpoint(payload: IndexRequest, owner_email: str = Query(...), r
         "playlist_id": playlist_id
     }
     indexing_queue.put((video_id, task_payload, owner_email))
+    print(f"[Server API] Video '{final_file_name}' queued for indexing. Status Code: 202")
     
     return {
         "success": True,
@@ -1156,6 +1162,84 @@ def stream_video(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Local streaming failed: {e}")
 
+class SaveNotesRequest(BaseModel):
+    video_id: str
+    owner_email: str
+    notes: str
+
+@app.get("/api/notes")
+def get_notes_endpoint(
+    video_id: str = Query(...),
+    owner_email: str = Query(...),
+    role: Optional[str] = Query(None)
+):
+    from src.s3 import get_s3_object
+    s3_key = f"notes/{owner_email}/{video_id}_notes.txt"
+    try:
+        content = get_s3_object(s3_key)
+        return {
+            "success": True,
+            "notes": content or "",
+            "message": "Notes retrieved from S3 successfully."
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve notes from S3: {e}")
+
+@app.post("/api/notes")
+def save_notes_endpoint(
+    payload: SaveNotesRequest,
+    owner_email: Optional[str] = Query(None),
+    role: Optional[str] = Query(None)
+):
+    from src.s3 import put_s3_object
+    # Fallback to payload email if query email not provided
+    email_to_use = owner_email or payload.owner_email
+    s3_key = f"notes/{email_to_use}/{payload.video_id}_notes.txt"
+    try:
+        success = put_s3_object(s3_key, payload.notes)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to write notes to S3")
+        return {
+            "success": True,
+            "message": "Notes saved to S3 successfully."
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save notes: {e}")
+
+class SaveProgressRequest(BaseModel):
+    video_id: str
+
+@app.get("/api/progress")
+def get_progress_endpoint(
+    owner_email: str = Query(...),
+    role: Optional[str] = Query(None)
+):
+    try:
+        watched_ids = db.get_watched_videos(owner_email)
+        return {
+            "success": True,
+            "watched_video_ids": watched_ids
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve watched progress: {e}")
+
+@app.post("/api/progress")
+def save_progress_endpoint(
+    payload: SaveProgressRequest,
+    owner_email: str = Query(...),
+    role: Optional[str] = Query(None)
+):
+    try:
+        success = db.add_watched_video(owner_email, payload.video_id)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to store progress in DB")
+        return {
+            "success": True,
+            "message": "Progress stored successfully."
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save progress: {e}")
+
 class PlaylistCreateRequest(BaseModel):
     name: str
 
@@ -1217,6 +1301,31 @@ def update_video_playlist_endpoint(video_id: str, payload: UpdatePlaylistRequest
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to update playlist: {e}")
+
+class ReorderVideosRequest(BaseModel):
+    playlist_id: str
+    video_ids: List[str]
+
+@app.post("/api/videos/reorder")
+def reorder_videos_endpoint(
+    payload: ReorderVideosRequest,
+    owner_email: str = Query(...),
+    role: str = Query("user")
+):
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden: only admins can reorder videos")
+    db_conn = db.get_db()
+    try:
+        from bson.objectid import ObjectId
+        for idx, vid_id in enumerate(payload.video_ids):
+            db_conn.catalogs.update_one(
+                {"_id": ObjectId(vid_id)},
+                {"$set": {"order": idx}}
+            )
+        print(f"[DB] Reordered {len(payload.video_ids)} videos for playlist '{payload.playlist_id}'. Status Code: 200")
+        return {"success": True, "message": "Videos reordered successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to reorder videos: {e}")
 
 class QuestionModel(BaseModel):
     questionText: str
@@ -1333,7 +1442,8 @@ async def upload_quiz_endpoint(
 
 @app.post("/api/quizzes/generate")
 async def generate_quiz_endpoint(
-    catalog_id: str = Query(...),
+    catalog_id: Optional[str] = Query(None),
+    playlist_id: Optional[str] = Query(None),
     owner_email: str = Query(...),
     role: str = Query("user"),
     num_questions: int = Query(10),
@@ -1343,18 +1453,42 @@ async def generate_quiz_endpoint(
     if role != "admin":
         raise HTTPException(status_code=403, detail="Forbidden: Only admin can generate quizzes automatically.")
 
+    if not catalog_id and not playlist_id:
+        raise HTTPException(status_code=400, detail="Either catalog_id or playlist_id must be provided.")
+
     db.init_db()
 
     try:
-        # 1. Fetch video details
-        video = db.get_video(catalog_id, owner_email=owner_email, role=role)
-        if not video:
-            raise HTTPException(status_code=404, detail="Video not found.")
-
-        # 2. Get transcript
-        transcript = video.get("raw_transcript", "").strip()
-        if not transcript:
-            raise HTTPException(status_code=400, detail="The video does not have a transcript available. Cannot generate a quiz.")
+        from bson.objectid import ObjectId
+        transcript = ""
+        default_title = "Assessment"
+        
+        if catalog_id:
+            # 1. Fetch video details
+            video = db.get_video(catalog_id, owner_email=owner_email, role=role)
+            if not video:
+                raise HTTPException(status_code=404, detail="Video not found.")
+            transcript = video.get("raw_transcript", "").strip()
+            if not transcript:
+                raise HTTPException(status_code=400, detail="The video does not have a transcript available. Cannot generate a quiz.")
+            default_title = f"Quiz: {video.get('file_name', 'Video')}"
+        else:
+            # 2. Fetch playlist/course details
+            playlist = db.get_playlist(playlist_id, owner_email=owner_email, role=role)
+            playlist_name = playlist.get("name", "Course") if playlist else "Course"
+            db_conn = db.get_db()
+            videos = list(db_conn.catalogs.find({"playlistId": ObjectId(playlist_id), "uploadStatus": "indexed"}))
+            
+            transcripts = []
+            for v in videos:
+                t = v.get("rawTranscript", "").strip()
+                if t:
+                    transcripts.append(f"Lecture: {v.get('fileName', 'Untitled')}\nTranscript:\n{t}")
+            
+            transcript = "\n\n---\n\n".join(transcripts)
+            if not transcript.strip():
+                raise HTTPException(status_code=400, detail="No videos in this course have transcripts available. Cannot generate a quiz.")
+            default_title = f"Course Final Assessment: {playlist_name}"
 
         # 3. Call Gemini to generate structured quiz
         api_key = os.getenv("GEMINI_API_KEY", "").strip()
@@ -1363,7 +1497,7 @@ async def generate_quiz_endpoint(
             raise HTTPException(
                 status_code=400,
                 detail="Gemini API is not configured. Cannot generate quiz automatically."
-            )
+              )
 
         model_name = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite").strip()
         from google import genai
@@ -1384,7 +1518,7 @@ async def generate_quiz_endpoint(
         )
 
         content_parts = [
-            f"Video Transcript:\n\n{transcript}\n\n",
+            f"Transcript:\n\n{transcript}\n\n",
             prompt
         ]
 
@@ -1436,7 +1570,7 @@ async def generate_quiz_endpoint(
 
         return {
             "success": True,
-            "title": parsed_quiz.get("title", f"Quiz: {video.get('file_name', 'Video')}"),
+            "title": parsed_quiz.get("title", default_title),
             "questions": parsed_quiz["questions"],
             "message": "Quiz generated successfully."
         }
@@ -1511,19 +1645,32 @@ def get_user_quiz_scores(
         videos = list(db_conn.catalogs.find({"playlistId": ObjectId(playlist_id)}))
         video_ids = [v["_id"] for v in videos]
         
-        # Find all quiz attempts for these videos by userEmail
+        try:
+            play_oid = ObjectId(playlist_id)
+        except Exception:
+            play_oid = playlist_id
+
+        # Find all quiz attempts for these videos or for the playlist directly (course-level)
         clean_email = owner_email.strip().lower()
         attempts = list(db_conn.quiz_attempts.find({
             "userEmail": clean_email,
-            "catalogId": {"$in": video_ids}
+            "$or": [
+                {"catalogId": {"$in": video_ids}},
+                {"playlistId": play_oid, "catalogId": None},
+                {"playlistId": str(playlist_id), "catalogId": None}
+            ]
         }))
         
-        # Map video ID (catalogId) to highest score achieved
+        # Map video ID (catalogId) or playlistId to highest score achieved
         scores = {}
         for att in attempts:
-            cat_id = str(att.get("catalogId", ""))
+            cat_id = str(att.get("catalogId", "")) if att.get("catalogId") else None
+            pl_id = str(att.get("playlistId", "")) if att.get("playlistId") else None
+            
             if cat_id:
                 scores[cat_id] = max(scores.get(cat_id, 0.0), att.get("score", 0.0))
+            elif pl_id:
+                scores[pl_id] = max(scores.get(pl_id, 0.0), att.get("score", 0.0))
                 
         return scores
     except Exception as e:
@@ -1568,6 +1715,43 @@ def delete_quiz_endpoint(
         return {"success": True, "message": "Quiz deleted successfully."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to delete quiz: {e}")
+
+@app.delete("/api/quizzes/attempts")
+def delete_quiz_attempts_endpoint(
+    quiz_id: Optional[str] = Query(None),
+    playlist_id: Optional[str] = Query(None),
+    owner_email: str = Query(...),
+    role: str = Query("user")
+):
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden: Only admin can clear logs.")
+    db_conn = db.get_db()
+    try:
+        query = {}
+        if quiz_id:
+            from bson.objectid import ObjectId
+            from bson.errors import InvalidId
+            try:
+                query["quizId"] = ObjectId(quiz_id)
+            except InvalidId:
+                query["quizId"] = quiz_id
+        elif playlist_id:
+            from bson.objectid import ObjectId
+            from bson.errors import InvalidId
+            try:
+                query["playlistId"] = ObjectId(playlist_id)
+            except InvalidId:
+                query["playlistId"] = playlist_id
+                
+        res = db_conn.quiz_attempts.delete_many(query)
+        print(f"[DB] Cleared {res.deleted_count} quiz attempts. Status Code: 200")
+        return {
+            "success": True,
+            "deleted_count": res.deleted_count,
+            "message": f"Successfully cleared {res.deleted_count} logs."
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to clear attempts: {e}")
 
 class AnswerSubmission(BaseModel):
     questionIdx: int

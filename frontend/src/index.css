@@ -671,9 +671,11 @@ html.light .video-controls-bar button:hover {
     visibility: hidden !important;
   }
 
-  /* Only display the certificate container and its children */
+  /* Only display the active certificate template and its children. */
   #certificate-print-area,
-  #certificate-print-area * {
+  #certificate-print-area *,
+  .cert-card-container,
+  .cert-card-container * {
     visibility: visible !important;
   }
 
@@ -683,21 +685,31 @@ html.light .video-controls-bar button:hover {
     print-color-adjust: exact !important;
   }
 
-  /* Position the certificate to occupy the entire printed page */
-  #certificate-print-area {
+  /* Position every certificate implementation to occupy the entire printed page. */
+  #certificate-print-area,
+  .cert-card-container {
     position: fixed !important;
     left: 0 !important;
     top: 0 !important;
     width: 297mm !important; /* A4 width */
     height: 210mm !important; /* A4 height */
-    border: 16px solid #1e293b !important;
     margin: 0 !important;
-    background-color: #fcfbf9 !important;
     display: flex !important;
-    flex-direction: column !important;
-    justify-content: space-between !important;
     box-shadow: none !important;
     z-index: 99999 !important;
+  }
+
+  #certificate-print-area {
+    border: 16px solid #1e293b !important;
+    background-color: #fcfbf9 !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+  }
+
+  .cert-card-container {
+    border: none !important;
+    border-radius: 0 !important;
+    max-width: none !important;
   }
   
   /* Hide the modal wrapper and other controls */

@@ -1,4 +1,5 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { downloadCertificatePdf } from '../lib/certificatePdf';
 
 export default function CertificateModal({
   isOpen,
@@ -7,9 +8,11 @@ export default function CertificateModal({
   userEmail,
   moduleName,
   totalLessons,
-  totalQuizzes,
-  playlistId
+  totalQuizzes
 }) {
+  const certificateRef = useRef(null);
+  const [isDownloading, setIsDownloading] = useState(false);
+
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') onClose();
@@ -22,32 +25,27 @@ export default function CertificateModal({
 
   if (!isOpen) return null;
 
-  // Generate a mock unique certificate hash
-  const generateCertificateId = () => {
-    const raw = `${userEmail || 'anonymous'}-${playlistId || 'workspace'}-summarix-cert`;
-    let hash = 0;
-    for (let i = 0; i < raw.length; i++) {
-      hash = (hash << 5) - hash + raw.charCodeAt(i);
-      hash |= 0;
-    }
-    return `SMX-CERT-${Math.abs(hash).toString(36).toUpperCase()}-${Date.now().toString().slice(-4)}`;
-  };
-
-  const certificateId = generateCertificateId();
   const currentDate = new Date().toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'long',
     day: 'numeric'
   });
 
-  const handlePrint = () => {
-    window.print();
+  const handleDownload = async () => {
+    setIsDownloading(true);
+    try {
+      await downloadCertificatePdf(certificateRef.current, `${moduleName || 'summarix'}-certificate`);
+    } catch (error) {
+      alert(error.message || 'Unable to download the certificate. Please try again.');
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 overflow-y-auto">
       {/* Modal Card */}
-      <div className="w-full max-w-4xl bg-gray-900 border border-white/10 rounded-2xl p-6 shadow-2xl flex flex-col gap-4 animate-quiz-slide no-print">
+      <div className="w-full max-w-4xl bg-gray-900 border border-white/10 rounded-2xl p-6 shadow-2xl flex flex-col gap-4 animate-quiz-slide">
         {/* Modal Header */}
         <div className="flex justify-between items-center border-b border-white/5 pb-3">
           <div className="flex items-center gap-2">
@@ -69,6 +67,7 @@ export default function CertificateModal({
           {/* Certificate Container (A4 Landscape aspect ratio: 842 x 595 pixels) */}
           <div
             id="certificate-print-area"
+            ref={certificateRef}
             className="w-[842px] h-[595px] bg-[#fcfbf9] text-[#1e293b] p-12 border-[16px] border-[#1e293b] relative flex flex-col justify-between select-none shadow-xl shrink-0"
             style={{
               fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
@@ -161,10 +160,11 @@ export default function CertificateModal({
           </button>
           <button
             type="button"
-            onClick={handlePrint}
-            className="px-5 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-bold text-xs rounded-xl cursor-pointer transition-all active:scale-[0.98] shadow-md flex items-center gap-1.5"
+            onClick={handleDownload}
+            disabled={isDownloading}
+            className="px-5 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 disabled:opacity-60 text-white font-bold text-xs rounded-xl cursor-pointer transition-all active:scale-[0.98] shadow-md flex items-center gap-1.5"
           >
-            <span>🖨️</span> Print / Save PDF
+            <span>⬇️</span> {isDownloading ? 'Preparing PDF…' : 'Download PDF'}
           </button>
         </div>
       </div>

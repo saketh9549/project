@@ -7,7 +7,6 @@ export default function QuizCreator({
   title,
   setTitle,
   description,
-  setDescription,
   manualQuestions,
   setManualQuestions,
   uploadQuestions,
@@ -20,14 +19,22 @@ export default function QuizCreator({
   onDelete,
   onBack,
   catalogId,
-  onReload,
+  playlistId,
   currentUser,
   mode
 }) {
   const navigate = useNavigate();
   const [uploading, setUploading] = useState(false);
   const [generating, setGenerating] = useState(false);
-  const [dragOver, setDragOver] = useState(false);
+  const [, setDragOver] = useState(false);
+
+  const navigateToTab = (targetMode) => {
+    if (playlistId) {
+      navigate(`/quiz/course/${playlistId}/${targetMode}`);
+    } else {
+      navigate(`/quiz/${catalogId}/${targetMode}`);
+    }
+  };
 
   const bottomRef = useRef(null);
 
@@ -173,7 +180,9 @@ export default function QuizCreator({
     try {
       const formData = new FormData();
       formData.append('file', file);
-      const url = apiUrl(`/api/quizzes/upload?catalog_id=${catalogId}`);
+      const url = playlistId 
+        ? apiUrl(`/api/quizzes/upload?playlist_id=${playlistId}`)
+        : apiUrl(`/api/quizzes/upload?catalog_id=${catalogId}`);
       const response = await fetch(url, {
         method: 'POST',
         body: formData
@@ -198,13 +207,21 @@ export default function QuizCreator({
     try {
       const email = currentUser?.email || 'anonymous@summarix.io';
       const role = currentUser?.role || 'user';
-      const url = apiUrl(
-        `/api/quizzes/generate?catalog_id=${catalogId}&owner_email=${encodeURIComponent(
-          email
-        )}&role=${role}&num_questions=${numQuestions}&difficulty=${difficulty}&focus_topics=${encodeURIComponent(
-          focusTopics
-        )}`
-      );
+      const url = playlistId
+        ? apiUrl(
+            `/api/quizzes/generate?playlist_id=${playlistId}&owner_email=${encodeURIComponent(
+              email
+            )}&role=${role}&num_questions=${numQuestions}&difficulty=${difficulty}&focus_topics=${encodeURIComponent(
+              focusTopics
+            )}`
+          )
+        : apiUrl(
+            `/api/quizzes/generate?catalog_id=${catalogId}&owner_email=${encodeURIComponent(
+              email
+            )}&role=${role}&num_questions=${numQuestions}&difficulty=${difficulty}&focus_topics=${encodeURIComponent(
+              focusTopics
+            )}`
+          );
       const response = await fetch(url, {
         method: 'POST'
       });
@@ -365,7 +382,7 @@ export default function QuizCreator({
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full">
           {/* Card 1: Manual Question Builder */}
           <div
-            onClick={() => navigate(`/quiz/${catalogId}/manual`)}
+            onClick={() => navigateToTab('manual')}
             className="group glass-panel p-6 rounded-3xl border border-white/5 bg-gradient-to-br from-indigo-950/20 via-slate-900/10 to-indigo-950/5 hover:border-indigo-500/30 hover:shadow-indigo-500/5 cursor-pointer transition-all duration-300 transform hover:-translate-y-1 flex flex-col justify-between"
           >
             <div>
@@ -386,7 +403,7 @@ export default function QuizCreator({
 
           {/* Card 2: Document File Import */}
           <div
-            onClick={() => navigate(`/quiz/${catalogId}/upload`)}
+            onClick={() => navigateToTab('upload')}
             className="group glass-panel p-6 rounded-3xl border border-white/5 bg-gradient-to-br from-emerald-950/20 via-slate-900/10 to-emerald-950/5 hover:border-emerald-500/30 hover:shadow-emerald-500/5 cursor-pointer transition-all duration-300 transform hover:-translate-y-1 flex flex-col justify-between"
           >
             <div>
@@ -407,7 +424,7 @@ export default function QuizCreator({
 
           {/* Card 3: Generate with Gemini AI */}
           <div
-            onClick={() => navigate(`/quiz/${catalogId}/ai`)}
+            onClick={() => navigateToTab('ai')}
             className="group glass-panel p-6 rounded-3xl border border-white/5 bg-gradient-to-br from-cyan-950/20 via-slate-900/10 to-cyan-950/5 hover:border-cyan-500/30 hover:shadow-cyan-500/5 cursor-pointer transition-all duration-300 transform hover:-translate-y-1 flex flex-col justify-between"
           >
             <div>
@@ -453,13 +470,13 @@ export default function QuizCreator({
 
         {/* Tab switch navigation */}
         <div className="flex bg-white/5 border border-white/5 p-1 rounded-2xl max-w-fit md:mx-auto">
-          <div onClick={() => navigate(`/quiz/${catalogId}/manual`)} className={activeTabClass('manual')}>
+          <div onClick={() => navigateToTab('manual')} className={activeTabClass('manual')}>
             <span>✏️</span> Manual Creator
           </div>
-          <div onClick={() => navigate(`/quiz/${catalogId}/upload`)} className={activeTabClass('upload')}>
+          <div onClick={() => navigateToTab('upload')} className={activeTabClass('upload')}>
             <span>📁</span> Document Import
           </div>
-          <div onClick={() => navigate(`/quiz/${catalogId}/ai`)} className={activeTabClass('ai')}>
+          <div onClick={() => navigateToTab('ai')} className={activeTabClass('ai')}>
             <span>✨</span> Gemini AI
           </div>
         </div>
